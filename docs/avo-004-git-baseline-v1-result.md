@@ -37,10 +37,13 @@ branches, AVO-004.2 remains in progress and autonomous promotion remains disable
 
 ## Quality evidence
 
-- Tests: 351 passed, 3 expected Windows platform skips.
-- Branch coverage: 85.54%, above the 85% gate.
+- Hosted CI: [run 33113102611](https://github.com/vandyand/avo/actions/runs/33113102611) passed
+  on Ubuntu and Windows at commit `809dea3d57264f37c9d6ea110660635330094c27`.
+- Canonical Linux suite: 373 passed with no skips.
+- Native Windows portability suite: 365 passed, 1 expected platform skip.
+- Branch coverage: 85.40% on the canonical Linux gate, above the 85% threshold.
+- Local Windows/Docker verification: 370 passed, 3 expected platform skips, 85.41% coverage.
 - Ruff: passed.
 - Strict Pyright: 0 errors and 0 warnings.
 - Generated schema parity: passed.
 - Roadmap validation: passed before this evidence update and must pass again with the update.
-

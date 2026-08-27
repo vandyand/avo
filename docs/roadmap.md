@@ -40,8 +40,9 @@ production authority outside the proposing agent's control.
   a tagged clean baseline, and a successful disposable-clone recovery rehearsal. GitHub rejected
   private branch protection under the current provider plan; autonomous promotion remains blocked
   until server-side protection is available. Candidate workspaces remain intentionally VCS-free.
-- All 351 runnable tests pass with three expected Windows platform skips. Branch coverage is 85.54%,
-  satisfying the configured 85% gate.
+- Trusted hosted CI is green on Ubuntu and Windows. The canonical Linux gate passes all 373 tests
+  at 85.40% branch coverage, and the native Windows portability gate passes 365 tests with one
+  expected platform skip.
 
 ## Milestone register
 
@@ -69,7 +70,7 @@ approving every ordinary patch.
 | Gate | Status | Deliverable | Verification |
 | --- | --- | --- | --- |
 | AVO-004.1 | complete | Canonical `docs/roadmap.md`, project-local `avo-roadmap` skill, deterministic validation, and CI freshness enforcement. | Skill validation, roadmap validator tests, link audit, Ruff, and strict Pyright. |
-| AVO-004.2 | in_progress | Green trusted CI baseline plus a controlling Git repository and remote, with candidate workspaces still VCS-free. | Repository, private remote, tagged commit/tree baseline, and disposable-clone recovery pass; server-side branch protection is blocked by the current GitHub plan. |
+| AVO-004.2 | in_progress | Green trusted CI baseline plus a controlling Git repository and remote, with candidate workspaces still VCS-free. | Hosted Linux/Windows CI, repository, private remote, tagged commit/tree baseline, and disposable-clone recovery pass; server-side branch protection is blocked by the current GitHub plan. |
 | AVO-004.3 | complete | ADR defining risk classes, constitutional paths, reviewer independence, exception policy, and rollback limits. | ADR 0007, exported strict schemas, 85 focused policy tests, independent adversarial review, and the full trusted suite pass. |
 | AVO-004.4 | planned | Dry-run promotion controller producing a content-addressed promotion bundle without merging. | Replays prove deterministic classification, trusted-base evaluation, provenance, and compare-and-swap behavior. |
 | AVO-004.5 | planned | Automatic ordinary-change promotion to a protected integration branch. | Required trusted checks, independent review quorum, private regression evaluation, and integration soak all pass. |
