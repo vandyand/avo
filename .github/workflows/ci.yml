@@ -16,8 +16,8 @@ jobs:
         os: [ubuntu-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     env:
-      AVO_REFERENCE_DEVELOPMENT_METADATA_FILE: ${{ runner.temp }}/avo-reference-development-metadata.json
-      AVO_REFERENCE_ADMISSION_METADATA_FILE: ${{ runner.temp }}/avo-reference-admission-metadata.json
+      AVO_REFERENCE_DEVELOPMENT_METADATA_FILE: .avo-runtime/ci-development-metadata.json
+      AVO_REFERENCE_ADMISSION_METADATA_FILE: .avo-runtime/ci-admission-metadata.json
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
@@ -33,6 +33,7 @@ jobs:
       - name: Build tier-separated evaluator images
         if: runner.os == 'Linux'
         run: |
+          mkdir -p .avo-runtime
           docker buildx build --load --provenance=false --build-arg SOURCE_DATE_EPOCH=0 --file evaluators/reference/Dockerfile.development --tag avo-reference-development:1.0.0 --metadata-file "$AVO_REFERENCE_DEVELOPMENT_METADATA_FILE" .
           docker buildx build --load --provenance=false --build-arg SOURCE_DATE_EPOCH=0 --file evaluators/reference/Dockerfile.admission --tag avo-reference-admission:1.0.0 --metadata-file "$AVO_REFERENCE_ADMISSION_METADATA_FILE" .
       - name: Measure evaluator platform overhead
