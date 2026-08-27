@@ -1,6 +1,6 @@
 # AVO-004 promotion dry-run v1 result
 
-Status: local verification and independent review passed; protected hosted promotion pending
+Status: complete; protected hosted promotion and independent review passed
 
 Recorded: 2026-08-27
 
@@ -46,5 +46,17 @@ remaining acceptance-critical AVO-004.4 bypass.
 - Authoritative roadmap validation: passed.
 
 The first complete coverage run measured 84.83%, below the project floor after adding the new
-security branches. Additional adversarial tests raised coverage to 85.93%. The protected hosted CI
-result remains pending; this implementation candidate therefore does not mark AVO-004.4 complete.
+security branches. Additional adversarial tests raised coverage to 85.93%.
+
+## Protected promotion result
+
+Implementation PR [#1](https://github.com/vandyand/avo/pull/1) passed the enforced Ubuntu and
+Windows checks in [hosted run 33119106564](https://github.com/vandyand/avo/actions/runs/33119106564)
+and was squash-merged as commit `76d89a4a329deca8e27f314fec98dcfb21c8c4ae`. Ubuntu passed 452
+tests at 85.96% branch coverage; Windows passed 441 tests with 4 expected platform skips.
+
+The first hosted attempt exposed three Linux-only defects in the new test code: two path cases had
+been normalized before reaching the scanner and the executable-mode fixture omitted Git's message
+flag. The implementation remained protected from merge. The tests were corrected, rerun on both
+required hosts, and passed before branch protection admitted the squash merge. This separate
+evidence update closes AVO-004.4; it was not part of the implementation candidate that it certifies.

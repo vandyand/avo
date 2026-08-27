@@ -71,15 +71,16 @@ approving every ordinary patch.
 | AVO-004.1 | complete | Canonical `docs/roadmap.md`, project-local `avo-roadmap` skill, deterministic validation, and CI freshness enforcement. | Skill validation, roadmap validator tests, link audit, Ruff, and strict Pyright. |
 | AVO-004.2 | complete | Green trusted CI baseline plus a controlling Git repository and remote, with candidate workspaces still VCS-free. | Hosted Linux/Windows CI, public repository, tagged commit/tree baseline, disposable-clone recovery, and enforced server-side `main` protection pass. |
 | AVO-004.3 | complete | ADR defining risk classes, constitutional paths, reviewer independence, exception policy, and rollback limits. | ADR 0007, exported strict schemas, 85 focused policy tests, independent adversarial review, and the full trusted suite pass. |
-| AVO-004.4 | in_progress | Dry-run promotion controller producing a content-addressed promotion bundle without merging. | [ADR 0008](adr/0008-dry-run-promotion-controller.md) and the [v1 result](avo-004-promotion-dry-run-v1-result.md) must pass deterministic replay, trusted-base evaluation, provenance, adversarial review, coverage, and compare-and-swap checks. |
-| AVO-004.5 | planned | Automatic ordinary-change promotion to a protected integration branch. | Required trusted checks, independent review quorum, private regression evaluation, and integration soak all pass. |
+| AVO-004.4 | complete | Dry-run promotion controller producing a content-addressed promotion bundle without merging. | [ADR 0008](adr/0008-dry-run-promotion-controller.md) and the [v1 result](avo-004-promotion-dry-run-v1-result.md) pass deterministic replay, trusted-base evaluation, provenance, adversarial review, coverage, and compare-and-swap checks. |
+| AVO-004.5 | ready | Automatic ordinary-change promotion to a protected integration branch. | Required trusted checks, independent review quorum, private regression evaluation, and integration soak all pass. |
 | AVO-004.6 | planned | Rollback and failure drills with immutable evidence. | Injected stale-base, flaky-check, reviewer-disagreement, failed-soak, and revert scenarios fail closed and reconstruct. |
 | AVO-004.7 | planned | Graduation of ordinary changes from integration to automatic protected-main promotion. | A preregistered clean-run threshold is met with zero boundary violations and successful rollback drills. |
 
 The roadmap gate was completed first because the operator explicitly authorized it. The green test
 and coverage baseline, controlling repository, public remote, baseline tag, recovery rehearsal, and
-server-side `main` protection now pass. AVO-004.4 is implementing the first no-merge controller gate
-on a protected feature-branch and pull-request path.
+server-side `main` protection now pass. AVO-004.4's no-merge controller passed independent
+adversarial review and protected Ubuntu/Windows CI before merging. AVO-004.5 is the next gate; it
+adds bounded mutation only to a protected integration branch, not directly to `main`.
 
 ### Promotion policy target
 
