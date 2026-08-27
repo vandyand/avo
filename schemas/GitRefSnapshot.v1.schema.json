@@ -1,0 +1,44 @@
+{
+  "additionalProperties": false,
+  "description": "The trusted Git state against which a dry-run was evaluated.",
+  "properties": {
+    "commit": {
+      "title": "Commit",
+      "type": "string"
+    },
+    "protection_evidence_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Protection Evidence Digest",
+      "type": "string"
+    },
+    "repository_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Repository Digest",
+      "type": "string"
+    },
+    "source_tree_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Source Tree Digest",
+      "type": "string"
+    },
+    "target_ref": {
+      "minLength": 1,
+      "title": "Target Ref",
+      "type": "string"
+    },
+    "tree": {
+      "title": "Tree",
+      "type": "string"
+    }
+  },
+  "required": [
+    "repository_digest",
+    "target_ref",
+    "commit",
+    "tree",
+    "source_tree_digest",
+    "protection_evidence_digest"
+  ],
+  "title": "GitRefSnapshot",
+  "type": "object"
+}

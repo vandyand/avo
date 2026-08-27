@@ -1,13 +1,13 @@
 # AVO-004 Git baseline v1 result
 
-Status: recovery-verified; remote protection blocked by provider plan
+Status: recovery-verified; remote protection active
 
 Recorded: 2026-08-27
 
 ## Controlling baseline
 
 - Canonical repository root: `C:\Users\vandy\avo`
-- Remote: `https://github.com/vandyand/avo.git` (private)
+- Remote: `https://github.com/vandyand/avo.git` (public)
 - Branch: `main`
 - Baseline tag: `avo-004.2-baseline-v1`
 - Commit: `acdf49a595deea522e7419c2bedbebf9c17133e5`
@@ -29,11 +29,12 @@ clone was then removed.
 
 ## Remote protection result
 
-GitHub accepted the private repository and baseline push but rejected protected-branch
-configuration with HTTP 403: private-repository branch protection requires an eligible paid
-GitHub plan, or the repository must be public. AVO will not make the repository public merely to
-bypass this gate. Until the account or repository placement provides server-side protected
-branches, AVO-004.2 remains in progress and autonomous promotion remains disabled.
+The operator explicitly authorized public visibility on 2026-08-27. GitHub now enforces
+server-side protection on `main`, including strict Ubuntu and Windows CI checks, pull requests,
+administrator enforcement, linear history, stale-review dismissal, and conversation resolution.
+Force pushes and branch deletion are disabled. The sanitized provider response is recorded in
+[`avo-004-main-protection-v1.json`](avo-004-main-protection-v1.json). AVO-004.2 is complete;
+automatic promotion remains disabled until the later controller gates pass.
 
 ## Quality evidence
 

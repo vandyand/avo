@@ -73,8 +73,7 @@ def path_manifest(paths: list[str], **overrides: object) -> dict[str, object]:
         "candidate_digest": CANDIDATE,
         "base_digest": BASE,
         "evidence_digest": OTHER,
-        "path_manifest_digest": "sha256:"
-        + hashlib.sha256(canonical.encode("utf-8")).hexdigest(),
+        "path_manifest_digest": "sha256:" + hashlib.sha256(canonical.encode("utf-8")).hexdigest(),
         "issuer_id": "diff",
         "valid_from_epoch": 1,
         "valid_until_epoch": 3,
@@ -170,7 +169,20 @@ def test_risk_classification_is_case_insensitive(paths: list[str], risk: RiskCla
 
 
 @pytest.mark.parametrize(
-    "path", ["C:/unsafe", "a:b", "a\\b", "/absolute", "../unsafe", "a/./b", "a//b"]
+    "path",
+    [
+        "C:/unsafe",
+        "a:b",
+        "a\\b",
+        "/absolute",
+        "../unsafe",
+        "a/./b",
+        "a//b",
+        "docs/CON.txt",
+        "docs/file. ",
+        "docs/file.",
+        "docs/a?.txt",
+    ],
 )
 def test_unsafe_paths_are_invalid(path: str) -> None:
     with pytest.raises(ValidationError):
@@ -231,8 +243,7 @@ def test_proposer_identity_is_controller_bound_to_candidate() -> None:
         update={"candidate_proposers": {CANDIDATE: "someone-else"}}
     )
     assert (
-        PromotionPolicy().classify(request(), wrong_binding).outcome
-        is PromotionOutcome.QUARANTINE
+        PromotionPolicy().classify(request(), wrong_binding).outcome is PromotionOutcome.QUARANTINE
     )
 
 

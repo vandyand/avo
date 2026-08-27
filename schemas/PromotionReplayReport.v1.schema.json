@@ -1,0 +1,50 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "bundle_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Bundle Digest",
+      "type": "string"
+    },
+    "checks": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Checks",
+      "type": "array"
+    },
+    "errors": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "title": "Errors",
+      "type": "array"
+    },
+    "outcome": {
+      "enum": [
+        "would_apply",
+        "not_applicable",
+        "stale_base",
+        "invalid_bundle"
+      ],
+      "title": "Outcome",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "bundle_digest",
+    "outcome",
+    "checks"
+  ],
+  "title": "PromotionReplayReport",
+  "type": "object"
+}

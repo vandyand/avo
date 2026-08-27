@@ -1,0 +1,767 @@
+{
+  "$defs": {
+    "GateAttestation": {
+      "additionalProperties": false,
+      "properties": {
+        "base_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Base Digest",
+          "type": "string"
+        },
+        "candidate_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Candidate Digest",
+          "type": "string"
+        },
+        "evidence_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Evidence Digest",
+          "type": "string"
+        },
+        "gate_name": {
+          "minLength": 1,
+          "title": "Gate Name",
+          "type": "string"
+        },
+        "issuer_id": {
+          "minLength": 1,
+          "title": "Issuer Id",
+          "type": "string"
+        },
+        "passed": {
+          "title": "Passed",
+          "type": "boolean"
+        },
+        "valid_from_epoch": {
+          "minimum": 0,
+          "title": "Valid From Epoch",
+          "type": "integer"
+        },
+        "valid_until_epoch": {
+          "minimum": 0,
+          "title": "Valid Until Epoch",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "gate_name",
+        "candidate_digest",
+        "base_digest",
+        "evidence_digest",
+        "issuer_id",
+        "passed",
+        "valid_from_epoch",
+        "valid_until_epoch"
+      ],
+      "title": "GateAttestation",
+      "type": "object"
+    },
+    "GitRefSnapshot": {
+      "additionalProperties": false,
+      "description": "The trusted Git state against which a dry-run was evaluated.",
+      "properties": {
+        "commit": {
+          "title": "Commit",
+          "type": "string"
+        },
+        "protection_evidence_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Protection Evidence Digest",
+          "type": "string"
+        },
+        "repository_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Repository Digest",
+          "type": "string"
+        },
+        "source_tree_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Source Tree Digest",
+          "type": "string"
+        },
+        "target_ref": {
+          "minLength": 1,
+          "title": "Target Ref",
+          "type": "string"
+        },
+        "tree": {
+          "title": "Tree",
+          "type": "string"
+        }
+      },
+      "required": [
+        "repository_digest",
+        "target_ref",
+        "commit",
+        "tree",
+        "source_tree_digest",
+        "protection_evidence_digest"
+      ],
+      "title": "GitRefSnapshot",
+      "type": "object"
+    },
+    "PathManifestAttestation": {
+      "additionalProperties": false,
+      "properties": {
+        "base_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Base Digest",
+          "type": "string"
+        },
+        "candidate_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Candidate Digest",
+          "type": "string"
+        },
+        "evidence_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Evidence Digest",
+          "type": "string"
+        },
+        "issuer_id": {
+          "minLength": 1,
+          "title": "Issuer Id",
+          "type": "string"
+        },
+        "path_manifest_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Path Manifest Digest",
+          "type": "string"
+        },
+        "valid_from_epoch": {
+          "minimum": 0,
+          "title": "Valid From Epoch",
+          "type": "integer"
+        },
+        "valid_until_epoch": {
+          "minimum": 0,
+          "title": "Valid Until Epoch",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "candidate_digest",
+        "base_digest",
+        "evidence_digest",
+        "path_manifest_digest",
+        "issuer_id",
+        "valid_from_epoch",
+        "valid_until_epoch"
+      ],
+      "title": "PathManifestAttestation",
+      "type": "object"
+    },
+    "PromotionConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "candidate_proposers": {
+          "minProperties": 1,
+          "patternProperties": {
+            "^sha256:[0-9a-f]{64}$": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          "title": "Candidate Proposers",
+          "type": "object"
+        },
+        "evaluation_epoch": {
+          "minimum": 0,
+          "title": "Evaluation Epoch",
+          "type": "integer"
+        },
+        "low_gates": {
+          "default": [
+            "deterministic",
+            "provenance"
+          ],
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Low Gates",
+          "type": "array",
+          "uniqueItems": true
+        },
+        "ordinary_gates": {
+          "default": [
+            "integration_soak",
+            "private_evaluation",
+            "provenance",
+            "trusted_ci"
+          ],
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Ordinary Gates",
+          "type": "array",
+          "uniqueItems": true
+        },
+        "proposer_domains": {
+          "additionalProperties": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "minProperties": 1,
+          "propertyNames": {
+            "minLength": 1
+          },
+          "title": "Proposer Domains",
+          "type": "object"
+        },
+        "reviewer_domains": {
+          "additionalProperties": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "minProperties": 1,
+          "propertyNames": {
+            "minLength": 1
+          },
+          "title": "Reviewer Domains",
+          "type": "object"
+        },
+        "rollback_issuer_ids": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Rollback Issuer Ids",
+          "type": "array"
+        },
+        "rollback_limit": {
+          "minimum": 0,
+          "title": "Rollback Limit",
+          "type": "integer"
+        },
+        "trusted_base_issuers": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Trusted Base Issuers",
+          "type": "array"
+        },
+        "trusted_gate_issuers": {
+          "additionalProperties": {
+            "items": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "propertyNames": {
+            "minLength": 1
+          },
+          "title": "Trusted Gate Issuers",
+          "type": "object"
+        },
+        "trusted_path_issuers": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Trusted Path Issuers",
+          "type": "array"
+        },
+        "trusted_reviewer_issuers": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Trusted Reviewer Issuers",
+          "type": "array"
+        }
+      },
+      "required": [
+        "evaluation_epoch",
+        "trusted_base_issuers",
+        "trusted_reviewer_issuers",
+        "trusted_path_issuers",
+        "rollback_issuer_ids",
+        "rollback_limit",
+        "reviewer_domains",
+        "proposer_domains",
+        "candidate_proposers"
+      ],
+      "title": "PromotionConfig",
+      "type": "object"
+    },
+    "PromotionControllerConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "base_issuer_id": {
+          "minLength": 1,
+          "title": "Base Issuer Id",
+          "type": "string"
+        },
+        "controller_identity": {
+          "minLength": 1,
+          "title": "Controller Identity",
+          "type": "string"
+        },
+        "controller_version": {
+          "minLength": 1,
+          "title": "Controller Version",
+          "type": "string"
+        },
+        "path_issuer_id": {
+          "minLength": 1,
+          "title": "Path Issuer Id",
+          "type": "string"
+        },
+        "policy": {
+          "$ref": "#/$defs/PromotionConfig"
+        }
+      },
+      "required": [
+        "controller_identity",
+        "controller_version",
+        "base_issuer_id",
+        "path_issuer_id",
+        "policy"
+      ],
+      "title": "PromotionControllerConfig",
+      "type": "object"
+    },
+    "PromotionDecision": {
+      "additionalProperties": false,
+      "properties": {
+        "candidate_id": {
+          "minLength": 1,
+          "title": "Candidate Id",
+          "type": "string"
+        },
+        "outcome": {
+          "$ref": "#/$defs/PromotionOutcome"
+        },
+        "reason_codes": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Reason Codes",
+          "type": "array"
+        },
+        "required_quorum": {
+          "minimum": 0,
+          "title": "Required Quorum",
+          "type": "integer"
+        },
+        "risk_class": {
+          "$ref": "#/$defs/RiskClass"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "candidate_id",
+        "outcome",
+        "risk_class",
+        "reason_codes",
+        "required_quorum"
+      ],
+      "title": "PromotionDecision",
+      "type": "object"
+    },
+    "PromotionOutcome": {
+      "enum": [
+        "allow",
+        "deny",
+        "quarantine",
+        "escalate"
+      ],
+      "title": "PromotionOutcome",
+      "type": "string"
+    },
+    "PromotionProvenanceBinding": {
+      "additionalProperties": false,
+      "properties": {
+        "base_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Base Digest",
+          "type": "string"
+        },
+        "candidate_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Candidate Digest",
+          "type": "string"
+        },
+        "controller_config_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Controller Config Digest",
+          "type": "string"
+        },
+        "decision_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Decision Digest",
+          "type": "string"
+        },
+        "evidence_manifest_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Evidence Manifest Digest",
+          "type": "string"
+        },
+        "path_manifest_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Path Manifest Digest",
+          "type": "string"
+        },
+        "request_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Request Digest",
+          "type": "string"
+        },
+        "source_provenance_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Source Provenance Digest",
+          "type": "string"
+        },
+        "verified": {
+          "title": "Verified",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "candidate_digest",
+        "base_digest",
+        "source_provenance_digest",
+        "request_digest",
+        "controller_config_digest",
+        "decision_digest",
+        "path_manifest_digest",
+        "evidence_manifest_digest",
+        "verified"
+      ],
+      "title": "PromotionProvenanceBinding",
+      "type": "object"
+    },
+    "PromotionRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "base_attestation": {
+          "$ref": "#/$defs/GateAttestation"
+        },
+        "base_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Base Digest",
+          "type": "string"
+        },
+        "candidate_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Candidate Digest",
+          "type": "string"
+        },
+        "candidate_id": {
+          "minLength": 1,
+          "title": "Candidate Id",
+          "type": "string"
+        },
+        "changed_paths": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Changed Paths",
+          "type": "array"
+        },
+        "exception_requested": {
+          "default": false,
+          "title": "Exception Requested",
+          "type": "boolean"
+        },
+        "gate_attestations": {
+          "items": {
+            "$ref": "#/$defs/GateAttestation"
+          },
+          "title": "Gate Attestations",
+          "type": "array"
+        },
+        "path_manifest_attestation": {
+          "$ref": "#/$defs/PathManifestAttestation"
+        },
+        "proposer_id": {
+          "minLength": 1,
+          "title": "Proposer Id",
+          "type": "string"
+        },
+        "reviewer_attestations": {
+          "items": {
+            "$ref": "#/$defs/ReviewerAttestation"
+          },
+          "title": "Reviewer Attestations",
+          "type": "array"
+        },
+        "rollback_attestation": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RollbackAttestation"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "candidate_id",
+        "proposer_id",
+        "candidate_digest",
+        "base_digest",
+        "changed_paths",
+        "path_manifest_attestation",
+        "base_attestation"
+      ],
+      "title": "PromotionRequest",
+      "type": "object"
+    },
+    "ReviewerAttestation": {
+      "additionalProperties": false,
+      "properties": {
+        "approved": {
+          "title": "Approved",
+          "type": "boolean"
+        },
+        "base_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Base Digest",
+          "type": "string"
+        },
+        "candidate_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Candidate Digest",
+          "type": "string"
+        },
+        "evidence_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Evidence Digest",
+          "type": "string"
+        },
+        "issuer_id": {
+          "minLength": 1,
+          "title": "Issuer Id",
+          "type": "string"
+        },
+        "reviewer_id": {
+          "minLength": 1,
+          "title": "Reviewer Id",
+          "type": "string"
+        },
+        "valid_from_epoch": {
+          "minimum": 0,
+          "title": "Valid From Epoch",
+          "type": "integer"
+        },
+        "valid_until_epoch": {
+          "minimum": 0,
+          "title": "Valid Until Epoch",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "reviewer_id",
+        "candidate_digest",
+        "base_digest",
+        "evidence_digest",
+        "issuer_id",
+        "approved",
+        "valid_from_epoch",
+        "valid_until_epoch"
+      ],
+      "title": "ReviewerAttestation",
+      "type": "object"
+    },
+    "RiskClass": {
+      "enum": [
+        "low",
+        "ordinary",
+        "constitutional",
+        "production"
+      ],
+      "title": "RiskClass",
+      "type": "string"
+    },
+    "RollbackAttestation": {
+      "additionalProperties": false,
+      "properties": {
+        "available": {
+          "title": "Available",
+          "type": "boolean"
+        },
+        "base_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Base Digest",
+          "type": "string"
+        },
+        "candidate_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Candidate Digest",
+          "type": "string"
+        },
+        "evidence_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Evidence Digest",
+          "type": "string"
+        },
+        "issuer_id": {
+          "minLength": 1,
+          "title": "Issuer Id",
+          "type": "string"
+        },
+        "rollback_count": {
+          "minimum": 0,
+          "title": "Rollback Count",
+          "type": "integer"
+        },
+        "valid_from_epoch": {
+          "minimum": 0,
+          "title": "Valid From Epoch",
+          "type": "integer"
+        },
+        "valid_until_epoch": {
+          "minimum": 0,
+          "title": "Valid Until Epoch",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "rollback_count",
+        "candidate_digest",
+        "base_digest",
+        "evidence_digest",
+        "issuer_id",
+        "available",
+        "valid_from_epoch",
+        "valid_until_epoch"
+      ],
+      "title": "RollbackAttestation",
+      "type": "object"
+    },
+    "WorkspaceComparison": {
+      "additionalProperties": false,
+      "properties": {
+        "base_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Base Digest",
+          "type": "string"
+        },
+        "candidate_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Candidate Digest",
+          "type": "string"
+        },
+        "changed_paths": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Changed Paths",
+          "type": "array"
+        },
+        "target_ref": {
+          "minLength": 1,
+          "title": "Target Ref",
+          "type": "string"
+        }
+      },
+      "required": [
+        "target_ref",
+        "base_digest",
+        "candidate_digest",
+        "changed_paths"
+      ],
+      "title": "WorkspaceComparison",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "comparison": {
+      "$ref": "#/$defs/WorkspaceComparison"
+    },
+    "controller_config": {
+      "$ref": "#/$defs/PromotionControllerConfig"
+    },
+    "controller_config_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Controller Config Digest",
+      "type": "string"
+    },
+    "decision": {
+      "$ref": "#/$defs/PromotionDecision"
+    },
+    "decision_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Decision Digest",
+      "type": "string"
+    },
+    "evidence_digests": {
+      "items": {
+        "pattern": "^sha256:[0-9a-f]{64}$",
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Evidence Digests",
+      "type": "array"
+    },
+    "format": {
+      "const": "avo-promotion-bundle-v1",
+      "default": "avo-promotion-bundle-v1",
+      "title": "Format",
+      "type": "string"
+    },
+    "provenance": {
+      "$ref": "#/$defs/PromotionProvenanceBinding"
+    },
+    "request": {
+      "$ref": "#/$defs/PromotionRequest"
+    },
+    "request_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Request Digest",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "snapshot": {
+      "$ref": "#/$defs/GitRefSnapshot"
+    }
+  },
+  "required": [
+    "snapshot",
+    "comparison",
+    "request",
+    "request_digest",
+    "controller_config",
+    "controller_config_digest",
+    "decision",
+    "decision_digest",
+    "provenance",
+    "evidence_digests"
+  ],
+  "title": "PromotionBundle",
+  "type": "object"
+}

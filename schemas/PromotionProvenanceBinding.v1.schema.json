@@ -1,0 +1,62 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "base_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Base Digest",
+      "type": "string"
+    },
+    "candidate_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Candidate Digest",
+      "type": "string"
+    },
+    "controller_config_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Controller Config Digest",
+      "type": "string"
+    },
+    "decision_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Decision Digest",
+      "type": "string"
+    },
+    "evidence_manifest_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Evidence Manifest Digest",
+      "type": "string"
+    },
+    "path_manifest_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Path Manifest Digest",
+      "type": "string"
+    },
+    "request_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Request Digest",
+      "type": "string"
+    },
+    "source_provenance_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Source Provenance Digest",
+      "type": "string"
+    },
+    "verified": {
+      "title": "Verified",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "candidate_digest",
+    "base_digest",
+    "source_provenance_digest",
+    "request_digest",
+    "controller_config_digest",
+    "decision_digest",
+    "path_manifest_digest",
+    "evidence_manifest_digest",
+    "verified"
+  ],
+  "title": "PromotionProvenanceBinding",
+  "type": "object"
+}

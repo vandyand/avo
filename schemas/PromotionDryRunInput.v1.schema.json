@@ -1,0 +1,243 @@
+{
+  "$defs": {
+    "GateAttestation": {
+      "additionalProperties": false,
+      "properties": {
+        "base_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Base Digest",
+          "type": "string"
+        },
+        "candidate_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Candidate Digest",
+          "type": "string"
+        },
+        "evidence_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Evidence Digest",
+          "type": "string"
+        },
+        "gate_name": {
+          "minLength": 1,
+          "title": "Gate Name",
+          "type": "string"
+        },
+        "issuer_id": {
+          "minLength": 1,
+          "title": "Issuer Id",
+          "type": "string"
+        },
+        "passed": {
+          "title": "Passed",
+          "type": "boolean"
+        },
+        "valid_from_epoch": {
+          "minimum": 0,
+          "title": "Valid From Epoch",
+          "type": "integer"
+        },
+        "valid_until_epoch": {
+          "minimum": 0,
+          "title": "Valid Until Epoch",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "gate_name",
+        "candidate_digest",
+        "base_digest",
+        "evidence_digest",
+        "issuer_id",
+        "passed",
+        "valid_from_epoch",
+        "valid_until_epoch"
+      ],
+      "title": "GateAttestation",
+      "type": "object"
+    },
+    "ReviewerAttestation": {
+      "additionalProperties": false,
+      "properties": {
+        "approved": {
+          "title": "Approved",
+          "type": "boolean"
+        },
+        "base_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Base Digest",
+          "type": "string"
+        },
+        "candidate_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Candidate Digest",
+          "type": "string"
+        },
+        "evidence_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Evidence Digest",
+          "type": "string"
+        },
+        "issuer_id": {
+          "minLength": 1,
+          "title": "Issuer Id",
+          "type": "string"
+        },
+        "reviewer_id": {
+          "minLength": 1,
+          "title": "Reviewer Id",
+          "type": "string"
+        },
+        "valid_from_epoch": {
+          "minimum": 0,
+          "title": "Valid From Epoch",
+          "type": "integer"
+        },
+        "valid_until_epoch": {
+          "minimum": 0,
+          "title": "Valid Until Epoch",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "reviewer_id",
+        "candidate_digest",
+        "base_digest",
+        "evidence_digest",
+        "issuer_id",
+        "approved",
+        "valid_from_epoch",
+        "valid_until_epoch"
+      ],
+      "title": "ReviewerAttestation",
+      "type": "object"
+    },
+    "RollbackAttestation": {
+      "additionalProperties": false,
+      "properties": {
+        "available": {
+          "title": "Available",
+          "type": "boolean"
+        },
+        "base_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Base Digest",
+          "type": "string"
+        },
+        "candidate_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Candidate Digest",
+          "type": "string"
+        },
+        "evidence_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Evidence Digest",
+          "type": "string"
+        },
+        "issuer_id": {
+          "minLength": 1,
+          "title": "Issuer Id",
+          "type": "string"
+        },
+        "rollback_count": {
+          "minimum": 0,
+          "title": "Rollback Count",
+          "type": "integer"
+        },
+        "valid_from_epoch": {
+          "minimum": 0,
+          "title": "Valid From Epoch",
+          "type": "integer"
+        },
+        "valid_until_epoch": {
+          "minimum": 0,
+          "title": "Valid Until Epoch",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "rollback_count",
+        "candidate_digest",
+        "base_digest",
+        "evidence_digest",
+        "issuer_id",
+        "available",
+        "valid_from_epoch",
+        "valid_until_epoch"
+      ],
+      "title": "RollbackAttestation",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "candidate_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Candidate Digest",
+      "type": "string"
+    },
+    "candidate_id": {
+      "minLength": 1,
+      "title": "Candidate Id",
+      "type": "string"
+    },
+    "evidence_digests": {
+      "items": {
+        "pattern": "^sha256:[0-9a-f]{64}$",
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Evidence Digests",
+      "type": "array"
+    },
+    "exception_requested": {
+      "default": false,
+      "title": "Exception Requested",
+      "type": "boolean"
+    },
+    "gate_attestations": {
+      "items": {
+        "$ref": "#/$defs/GateAttestation"
+      },
+      "title": "Gate Attestations",
+      "type": "array"
+    },
+    "proposer_id": {
+      "minLength": 1,
+      "title": "Proposer Id",
+      "type": "string"
+    },
+    "reviewer_attestations": {
+      "items": {
+        "$ref": "#/$defs/ReviewerAttestation"
+      },
+      "title": "Reviewer Attestations",
+      "type": "array"
+    },
+    "rollback_attestation": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/RollbackAttestation"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "source_provenance_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Source Provenance Digest",
+      "type": "string"
+    }
+  },
+  "required": [
+    "candidate_id",
+    "proposer_id",
+    "candidate_digest",
+    "source_provenance_digest",
+    "evidence_digests"
+  ],
+  "title": "PromotionDryRunInput",
+  "type": "object"
+}

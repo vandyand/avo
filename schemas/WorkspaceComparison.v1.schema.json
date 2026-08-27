@@ -1,0 +1,37 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "base_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Base Digest",
+      "type": "string"
+    },
+    "candidate_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Candidate Digest",
+      "type": "string"
+    },
+    "changed_paths": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Changed Paths",
+      "type": "array"
+    },
+    "target_ref": {
+      "minLength": 1,
+      "title": "Target Ref",
+      "type": "string"
+    }
+  },
+  "required": [
+    "target_ref",
+    "base_digest",
+    "candidate_digest",
+    "changed_paths"
+  ],
+  "title": "WorkspaceComparison",
+  "type": "object"
+}
