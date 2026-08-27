@@ -77,7 +77,8 @@ def resolve_verified_image(
         metadata_manifest = _read_buildkit_manifest(Path(metadata_file))
         if metadata_manifest != expected_manifest:
             raise ImageVerificationError(
-                "BuildKit metadata manifest does not match the reviewed manifest"
+                "BuildKit metadata manifest "
+                f"{metadata_manifest} does not match reviewed manifest {expected_manifest}"
             )
         if repo_digests and set(repo_digests) != {expected_manifest}:
             raise ImageVerificationError("Docker RepoDigests conflict with BuildKit metadata")
