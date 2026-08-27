@@ -5,6 +5,16 @@ from avo_correlate.contracts.budgets import BudgetSpec, UsageRecord
 from avo_correlate.contracts.evaluation import AdmissionDecision, EvaluationRecord
 from avo_correlate.contracts.experiment import ExperimentSpec
 from avo_correlate.contracts.policy import PolicyDecision
+from avo_correlate.contracts.promotion_bundle import (
+    GitRefSnapshot,
+    PromotionBundle,
+    PromotionControllerConfig,
+    PromotionDryRunInput,
+    PromotionDryRunResult,
+    PromotionProvenanceBinding,
+    PromotionReplayReport,
+    WorkspaceComparison,
+)
 from avo_correlate.contracts.promotion_policy import (
     PromotionConfig,
     PromotionDecision,
@@ -38,11 +48,18 @@ __all__ = [
     "EconomicUsageRecord",
     "EvaluationRecord",
     "ExperimentSpec",
+    "GitRefSnapshot",
     "HarnessInvocationRecord",
     "HarnessRuntimeProfile",
     "PolicyDecision",
+    "PromotionBundle",
     "PromotionConfig",
+    "PromotionControllerConfig",
     "PromotionDecision",
+    "PromotionDryRunInput",
+    "PromotionDryRunResult",
+    "PromotionProvenanceBinding",
+    "PromotionReplayReport",
     "PromotionRequest",
     "ReconciliationCaseRecord",
     "RuntimeCapabilityReport",
@@ -55,4 +72,5 @@ __all__ = [
     "VariationSessionRequest",
     "VariationSessionResult",
     "VersionedComponentRef",
+    "WorkspaceComparison",
 ]

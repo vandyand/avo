@@ -17,19 +17,31 @@ def _validate_window(value: int, info: object) -> int:
     return value
 
 
-def _valid_path(path: str) -> bool:
+_WINDOWS_RESERVED_NAMES = frozenset(
+    {"con", "prn", "aux", "nul"}
+    | {f"com{index}" for index in range(1, 10)}
+    | {f"lpt{index}" for index in range(1, 10)}
+)
+
+
+def is_valid_promotion_path(path: str) -> bool:
     """Return whether *path* is a normalized, relative POSIX repository path."""
+    parts = path.split("/")
     return not (
         unicodedata.normalize("NFC", path) != path
         or any(ord(character) < 32 for character in path)
         or "\\" in path
         or ":" in path
+        or any(character in '<>"|?*' for character in path)
         or path.startswith(("/", "~"))
-        or any(part in {"", ".", ".."} for part in path.split("/"))
+        or any(part in {"", ".", ".."} or part.endswith((" ", ".")) for part in parts)
+        or any(
+            part.split(".", maxsplit=1)[0].casefold() in _WINDOWS_RESERVED_NAMES for part in parts
+        )
     )
 
 
-def _path_manifest_digest(paths: list[str]) -> str:
+def path_manifest_digest(paths: list[str]) -> str:
     canonical = json.dumps(
         sorted(path.casefold() for path in paths),
         ensure_ascii=False,
@@ -38,10 +50,14 @@ def _path_manifest_digest(paths: list[str]) -> str:
     return "sha256:" + hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
+# Kept as a private compatibility alias for callers of the original helper.
+_path_manifest_digest = path_manifest_digest
+
+
 def _validate_paths(paths: list[str]) -> list[str]:
     if not paths:
         raise ValueError("changed paths cannot be empty")
-    if any(not _valid_path(path) for path in paths):
+    if any(not is_valid_promotion_path(path) for path in paths):
         raise ValueError("paths must be normalized relative paths")
     canonical = [path.casefold() for path in paths]
     if len(canonical) != len(set(canonical)):
@@ -430,10 +446,7 @@ class PromotionPolicy:
             or path.startswith(cls.CONSTITUTIONAL_PREFIXES)
             or filename in cls.DEPENDENCY_FILENAMES
             or filename.endswith((".lock", ".lockb", "-lock.json"))
-            or (
-                filename.startswith("requirements")
-                and filename.endswith((".in", ".txt"))
-            )
+            or (filename.startswith("requirements") and filename.endswith((".in", ".txt")))
             or filename.startswith(("build.gradle", "settings.gradle"))
             or filename == ".env"
             or any(term in path for term in cls.CONSTITUTIONAL_TERMS)
@@ -454,18 +467,15 @@ class PromotionPolicy:
         )
 
     @classmethod
-    def _path_manifest_valid(
-        cls, request: PromotionRequest, config: PromotionConfig
-    ) -> bool:
+    def _path_manifest_valid(cls, request: PromotionRequest, config: PromotionConfig) -> bool:
         attestation = request.path_manifest_attestation
-        return (
-            attestation.path_manifest_digest == _path_manifest_digest(request.changed_paths)
-            and cls._bound(
-                attestation,
-                request,
-                config.evaluation_epoch,
-                config.trusted_path_issuers,
-            )
+        return attestation.path_manifest_digest == path_manifest_digest(
+            request.changed_paths
+        ) and cls._bound(
+            attestation,
+            request,
+            config.evaluation_epoch,
+            config.trusted_path_issuers,
         )
 
     @classmethod
@@ -520,9 +530,7 @@ class PromotionPolicy:
         )
 
     @classmethod
-    def _duplicate_gate(
-        cls, request: PromotionRequest, gate: str, config: PromotionConfig
-    ) -> bool:
+    def _duplicate_gate(cls, request: PromotionRequest, gate: str, config: PromotionConfig) -> bool:
         return (
             sum(
                 cls._gate_valid(attestation, request, gate, config)
@@ -583,4 +591,6 @@ __all__ = [
     "ReviewerAttestation",
     "RiskClass",
     "RollbackAttestation",
+    "is_valid_promotion_path",
+    "path_manifest_digest",
 ]

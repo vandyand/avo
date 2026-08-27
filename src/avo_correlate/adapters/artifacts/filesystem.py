@@ -19,11 +19,15 @@ class ArtifactIntegrityError(RuntimeError):
 
 class FilesystemArtifactStore:
     def __init__(self, root: Path) -> None:
-        self._root = root
-        self._objects = root / "objects" / "sha256"
-        self._temporary = root / "temporary"
-        self._objects.mkdir(parents=True, exist_ok=True)
-        self._temporary.mkdir(parents=True, exist_ok=True)
+        self._root = root.resolve()
+        self._objects = self._root / "objects" / "sha256"
+        self._temporary = self._root / "temporary"
+
+    @property
+    def root(self) -> Path:
+        """The storage root used for controller isolation checks."""
+
+        return self._root
 
     def put_bytes(
         self,
@@ -33,6 +37,8 @@ class FilesystemArtifactStore:
         role: str,
         max_bytes: int,
     ) -> ArtifactRef:
+        self._objects.mkdir(parents=True, exist_ok=True)
+        self._temporary.mkdir(parents=True, exist_ok=True)
         if len(data) > max_bytes:
             raise ArtifactTooLargeError(f"artifact exceeds {max_bytes} bytes")
         hex_digest = hashlib.sha256(data).hexdigest()
