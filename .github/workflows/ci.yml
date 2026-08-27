@@ -20,7 +20,7 @@ jobs:
       - uses: astral-sh/setup-uv@v6
         with:
           enable-cache: true
-      - run: uv sync --all-groups --frozen
+      - run: uv sync --all-groups --all-extras --frozen
       - name: Validate authoritative roadmap
         run: >-
           uv run python .agents/skills/avo-roadmap/scripts/validate_roadmap.py
@@ -50,7 +50,7 @@ jobs:
       - name: Sync canonical WSL environment
         shell: pwsh
         run: >-
-          wsl.exe --cd $env:AVO_WSL_PROJECT_PATH --exec uv sync --all-groups --frozen
+          wsl.exe --cd $env:AVO_WSL_PROJECT_PATH --exec uv sync --all-groups --all-extras --frozen
       - name: Build development evaluator in WSL
         shell: pwsh
         run: >-
