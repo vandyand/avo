@@ -1,8 +1,8 @@
 """Canonical Docker benchmark with workload/platform-time decomposition."""
 
+import os
 import platform
 import shutil
-import subprocess
 from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
@@ -11,6 +11,7 @@ from tempfile import TemporaryDirectory
 from avo_correlate.adapters.sandbox import DockerSandbox
 from avo_correlate.contracts.operations import PlatformOverheadReport
 from avo_correlate.contracts.sandbox import SandboxExecutionSpec, SandboxMount
+from avo_correlate.devtools.oci_image import resolve_verified_image
 from avo_correlate.domain.canonical import source_tree_digest
 from avo_correlate.domain.evaluator_reports import parse_evaluation_report
 
@@ -21,8 +22,14 @@ def measure_platform_overhead(
     project_root: Path,
     *,
     image: str = "avo-reference-development:1.0.0",
+    metadata_path: Path | None = None,
 ) -> PlatformOverheadReport:
-    image_digest = _inspect_image_digest(image)
+    verified_image = resolve_verified_image(
+        image,
+        _development_manifest(),
+        metadata_file=metadata_path or _metadata_path_from_environment(),
+    )
+    image_digest = verified_image.reviewed_manifest
     with TemporaryDirectory(prefix="avo-platform-benchmark-") as temporary:
         root = Path(temporary)
         workspace = root / "workspace"
@@ -37,7 +44,7 @@ def measure_platform_overhead(
         workspace_digest = source_tree_digest(workspace)
         paths = {workspace_digest: workspace, _OUTPUT_DIGEST: output}
         execution = DockerSandbox(
-            image_resolver=lambda _: image_digest,
+            image_resolver=lambda _: verified_image.execution_reference,
             artifact_resolver=paths.__getitem__,
         ).execute(
             SandboxExecutionSpec(
@@ -88,15 +95,17 @@ def measure_platform_overhead(
     )
 
 
-def _inspect_image_digest(image: str) -> str:
-    completed = subprocess.run(
-        ["docker", "image", "inspect", image, "--format", "{{.Id}}"],
-        stdin=subprocess.DEVNULL,
-        capture_output=True,
-        check=False,
-        shell=False,
-        timeout=10,
-    )
-    if completed.returncode:
-        raise RuntimeError(f"benchmark image is unavailable: {image}")
-    return completed.stdout.decode("utf-8").strip()
+def _development_manifest() -> str:
+    return "sha256:586dcc790c714be468b38874eeb8e48fca53b9b85b3d3e30f3f70ee526d401b2"
+
+
+def _metadata_path_from_environment() -> Path | None:
+    for name in (
+        "AVO_REFERENCE_DEVELOPMENT_METADATA_FILE",
+        "AVO_REFERENCE_DEVELOPMENT_METADATA_PATH",
+        "AVO_DEVELOPMENT_IMAGE_METADATA_FILE",
+    ):
+        value = os.environ.get(name)
+        if value:
+            return Path(value)
+    return None

@@ -15,6 +15,9 @@ jobs:
       matrix:
         os: [ubuntu-latest, windows-latest]
     runs-on: ${{ matrix.os }}
+    env:
+      AVO_REFERENCE_DEVELOPMENT_METADATA_FILE: ${{ runner.temp }}/avo-reference-development-metadata.json
+      AVO_REFERENCE_ADMISSION_METADATA_FILE: ${{ runner.temp }}/avo-reference-admission-metadata.json
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v6
@@ -30,12 +33,21 @@ jobs:
       - name: Build tier-separated evaluator images
         if: runner.os == 'Linux'
         run: |
-          docker build --provenance=false --build-arg SOURCE_DATE_EPOCH=0 --file evaluators/reference/Dockerfile.development --tag avo-reference-development:1.0.0 .
-          docker build --provenance=false --build-arg SOURCE_DATE_EPOCH=0 --file evaluators/reference/Dockerfile.admission --tag avo-reference-admission:1.0.0 .
+          docker buildx build --load --provenance=false --build-arg SOURCE_DATE_EPOCH=0 --file evaluators/reference/Dockerfile.development --tag avo-reference-development:1.0.0 --metadata-file "$AVO_REFERENCE_DEVELOPMENT_METADATA_FILE" .
+          docker buildx build --load --provenance=false --build-arg SOURCE_DATE_EPOCH=0 --file evaluators/reference/Dockerfile.admission --tag avo-reference-admission:1.0.0 --metadata-file "$AVO_REFERENCE_ADMISSION_METADATA_FILE" .
       - name: Measure evaluator platform overhead
         if: runner.os == 'Linux'
         run: uv run avoctl platform benchmark
-      - run: uv run pytest --cov=avo_correlate --cov-report=term
+      - name: Run complete canonical suite with coverage
+        if: runner.os == 'Linux'
+        run: uv run pytest --cov=avo_correlate --cov-report=term
+      - name: Run native Windows portability suite
+        if: runner.os == 'Windows'
+        run: >-
+          uv run pytest
+          --ignore tests/e2e/test_reference_scenario.py
+          --ignore tests/integration/test_docker_evaluator.py
+          --ignore tests/performance/test_platform_overhead.py
       - run: uv run python -m avo_correlate.devtools.export_schemas
       - name: Verify generated schemas are committed
         run: git diff --exit-code -- schemas
@@ -45,6 +57,9 @@ jobs:
     runs-on: [self-hosted, Windows, X64, wsl2, docker]
     env:
       AVO_WSL_PROJECT_PATH: ${{ vars.AVO_WSL_PROJECT_PATH }}
+      AVO_REFERENCE_DEVELOPMENT_METADATA_FILE: ${{ vars.AVO_WSL_PROJECT_PATH }}/.avo-runtime/ci-development-metadata.json
+      AVO_REFERENCE_ADMISSION_METADATA_FILE: ${{ vars.AVO_WSL_PROJECT_PATH }}/.avo-runtime/ci-admission-metadata.json
+      WSLENV: "AVO_REFERENCE_DEVELOPMENT_METADATA_FILE:AVO_REFERENCE_ADMISSION_METADATA_FILE"
     steps:
       - uses: actions/checkout@v4
       - name: Sync canonical WSL environment
@@ -54,18 +69,22 @@ jobs:
       - name: Build development evaluator in WSL
         shell: pwsh
         run: >-
-          wsl.exe --cd $env:AVO_WSL_PROJECT_PATH --exec docker build
+          wsl.exe --cd $env:AVO_WSL_PROJECT_PATH --exec docker buildx build
+          --load
           --provenance=false
           --build-arg SOURCE_DATE_EPOCH=0
           --file evaluators/reference/Dockerfile.development
+          --metadata-file $env:AVO_REFERENCE_DEVELOPMENT_METADATA_FILE
           --tag avo-reference-development:1.0.0 .
       - name: Build admission evaluator in WSL
         shell: pwsh
         run: >-
-          wsl.exe --cd $env:AVO_WSL_PROJECT_PATH --exec docker build
+          wsl.exe --cd $env:AVO_WSL_PROJECT_PATH --exec docker buildx build
+          --load
           --provenance=false
           --build-arg SOURCE_DATE_EPOCH=0
           --file evaluators/reference/Dockerfile.admission
+          --metadata-file $env:AVO_REFERENCE_ADMISSION_METADATA_FILE
           --tag avo-reference-admission:1.0.0 .
       - name: Measure WSL evaluator platform overhead
         shell: pwsh

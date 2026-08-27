@@ -1,6 +1,7 @@
 """Executable reference scenario joining the v1 trust zones end to end."""
 
 import asyncio
+import os
 import shutil
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
@@ -40,6 +41,7 @@ from avo_correlate.contracts.variation import (
     VariationAttemptRecord,
     VariationSessionRequest,
 )
+from avo_correlate.devtools.oci_image import resolve_verified_image
 from avo_correlate.domain.admission import compare_evaluations
 from avo_correlate.domain.canonical import canonical_digest, source_tree_digest
 from avo_correlate.domain.evaluator_reports import parse_evaluation_report
@@ -55,11 +57,21 @@ class ReferenceScenarioRunner:
         project_root: Path,
         development_image_digest: str,
         admission_image_digest: str,
+        development_image_reference: str = "avo-reference-development:1.0.0",
+        admission_image_reference: str = "avo-reference-admission:1.0.0",
+        development_metadata_path: Path | None = None,
+        admission_metadata_path: Path | None = None,
     ) -> None:
         self._root = root
         self._project = project_root
         self._development_image = development_image_digest
         self._admission_image = admission_image_digest
+        self._development_image_reference = development_image_reference
+        self._admission_image_reference = admission_image_reference
+        self._development_metadata_path = development_metadata_path or _metadata_path(
+            "development"
+        )
+        self._admission_metadata_path = admission_metadata_path or _metadata_path("admission")
 
     def run(self) -> ReferenceScenarioResult:
         spec = ExperimentSpec.model_validate_json(
@@ -160,6 +172,8 @@ class ReferenceScenarioRunner:
                 evaluation_id="development-candidate-1",
                 tier="development",
                 image_digest=self._development_image,
+                image_reference=self._development_image_reference,
+                metadata_path=self._development_metadata_path,
             )
             development_records.append((record, raw))
             return record.outcome == "passed"
@@ -244,6 +258,8 @@ class ReferenceScenarioRunner:
             evaluation_id="admission-incumbent",
             tier="admission",
             image_digest=self._admission_image,
+            image_reference=self._admission_image_reference,
+            metadata_path=self._admission_metadata_path,
         )
         candidate_record, admission_raw = self._evaluate(
             workspace,
@@ -251,6 +267,8 @@ class ReferenceScenarioRunner:
             evaluation_id="admission-candidate-1",
             tier="admission",
             image_digest=self._admission_image,
+            image_reference=self._admission_image_reference,
+            metadata_path=self._admission_metadata_path,
         )
         admission_ref = artifacts.put_bytes(
             admission_raw,
@@ -351,25 +369,32 @@ class ReferenceScenarioRunner:
         evaluation_id: str,
         tier: str,
         image_digest: str,
+        image_reference: str,
+        metadata_path: Path | None,
     ) -> tuple[EvaluationRecord, bytes]:
         output = self._root / f"output-{evaluation_id}-{uuid4()}"
         output.mkdir(parents=True)
         workspace_digest = source_tree_digest(workspace)
         paths = {workspace_digest: workspace, _OUTPUT_DIGEST: output}
+        verified_image = resolve_verified_image(
+            image_reference,
+            image_digest,
+            metadata_file=metadata_path,
+        )
         sandbox = DockerSandbox(
-            image_resolver=lambda _: image_digest,
+            image_resolver=lambda _: verified_image.execution_reference,
             artifact_resolver=paths.__getitem__,
         )
         executed = sandbox.execute(
             SandboxExecutionSpec(
                 execution_id=evaluation_id,
-                image_digest=image_digest,
+                image_digest=verified_image.reviewed_manifest,
                 command=["evaluate"],
                 environment={
                     "AVO_CANDIDATE_ID": candidate_id,
                     "AVO_EVALUATION_ID": evaluation_id,
                     "AVO_EVALUATOR_TIER": tier,
-                    "AVO_IMAGE_DIGEST": image_digest,
+                    "AVO_IMAGE_DIGEST": verified_image.reviewed_manifest,
                     "AVO_WORKSPACE_DIGEST": workspace_digest,
                 },
                 mounts=[
@@ -419,3 +444,17 @@ def _usage(
             "artifact_bytes": artifact_bytes,
         }
     )
+
+
+def _metadata_path(tier: str) -> Path | None:
+    """Read only the fixed CI metadata location for a trusted evaluator tier."""
+
+    for name in (
+        f"AVO_REFERENCE_{tier.upper()}_METADATA_FILE",
+        f"AVO_REFERENCE_{tier.upper()}_METADATA_PATH",
+        f"AVO_{tier.upper()}_IMAGE_METADATA_FILE",
+    ):
+        value = os.environ.get(name)
+        if value:
+            return Path(value)
+    return None
