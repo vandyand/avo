@@ -1,0 +1,104 @@
+{
+  "$defs": {
+    "AgentObservation": {
+      "additionalProperties": false,
+      "properties": {
+        "outcome": {
+          "enum": [
+            "succeeded",
+            "failed",
+            "policy_blocked"
+          ],
+          "title": "Outcome",
+          "type": "string"
+        },
+        "result_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Result Digest",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "summary": {
+          "minLength": 1,
+          "title": "Summary",
+          "type": "string"
+        },
+        "tool_id": {
+          "minLength": 1,
+          "title": "Tool Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "tool_id",
+        "outcome",
+        "result_digest",
+        "summary"
+      ],
+      "title": "AgentObservation",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "champion_workspace_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Champion Workspace Digest",
+      "type": "string"
+    },
+    "initial_context_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Initial Context Digest",
+      "type": "string"
+    },
+    "observations": {
+      "items": {
+        "$ref": "#/$defs/AgentObservation"
+      },
+      "title": "Observations",
+      "type": "array"
+    },
+    "run_id": {
+      "minLength": 1,
+      "title": "Run Id",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "session_id": {
+      "minLength": 1,
+      "title": "Session Id",
+      "type": "string"
+    },
+    "turn_number": {
+      "minimum": 1,
+      "title": "Turn Number",
+      "type": "integer"
+    },
+    "turns_remaining": {
+      "minimum": 0,
+      "title": "Turns Remaining",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "run_id",
+    "session_id",
+    "champion_workspace_digest",
+    "initial_context_digest",
+    "observations",
+    "turn_number",
+    "turns_remaining"
+  ],
+  "title": "AgentContext",
+  "type": "object"
+}

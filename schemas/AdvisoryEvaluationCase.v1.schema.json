@@ -1,0 +1,415 @@
+{
+  "$defs": {
+    "AdvisoryEvaluationStage": {
+      "enum": [
+        "accepted",
+        "parse_rejected",
+        "wire_rejected",
+        "semantic_rejected",
+        "provider_rejected"
+      ],
+      "title": "AdvisoryEvaluationStage",
+      "type": "string"
+    },
+    "AdvisoryEvaluationSummary": {
+      "additionalProperties": false,
+      "description": "A bounded, already-produced evaluator summary supplied as context.",
+      "properties": {
+        "evaluation_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Evaluation Id",
+          "type": "string"
+        },
+        "evidence_refs": {
+          "items": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 32,
+          "title": "Evidence Refs",
+          "type": "array"
+        },
+        "outcome": {
+          "enum": [
+            "passed",
+            "failed",
+            "errored",
+            "timed_out",
+            "policy_blocked",
+            "invalid_report"
+          ],
+          "title": "Outcome",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "summary": {
+          "maxLength": 4000,
+          "minLength": 1,
+          "title": "Summary",
+          "type": "string"
+        }
+      },
+      "required": [
+        "evaluation_id",
+        "outcome",
+        "summary"
+      ],
+      "title": "AdvisoryEvaluationSummary",
+      "type": "object"
+    },
+    "AdvisoryEvidenceItem": {
+      "additionalProperties": false,
+      "description": "An immutable catalog entry that a review may cite.",
+      "properties": {
+        "content_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Content Digest",
+          "type": "string"
+        },
+        "evidence_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Evidence Id",
+          "type": "string"
+        },
+        "label": {
+          "default": "",
+          "maxLength": 512,
+          "title": "Label",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "evidence_id",
+        "content_digest"
+      ],
+      "title": "AdvisoryEvidenceItem",
+      "type": "object"
+    },
+    "AdvisoryFindingCategory": {
+      "enum": [
+        "correctness",
+        "compatibility",
+        "security",
+        "testing",
+        "maintainability",
+        "efficiency",
+        "documentation"
+      ],
+      "title": "AdvisoryFindingCategory",
+      "type": "string"
+    },
+    "AdvisoryFindingSeverity": {
+      "enum": [
+        "info",
+        "low",
+        "medium",
+        "high",
+        "critical"
+      ],
+      "title": "AdvisoryFindingSeverity",
+      "type": "string"
+    },
+    "AdvisoryPatchReviewInput": {
+      "additionalProperties": false,
+      "description": "The complete, bounded input presented to an advisory review model.",
+      "properties": {
+        "candidate_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Candidate Id",
+          "type": "string"
+        },
+        "changed_paths": {
+          "items": {
+            "maxLength": 512,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 256,
+          "minItems": 1,
+          "title": "Changed Paths",
+          "type": "array"
+        },
+        "evaluation_summaries": {
+          "items": {
+            "$ref": "#/$defs/AdvisoryEvaluationSummary"
+          },
+          "maxItems": 64,
+          "title": "Evaluation Summaries",
+          "type": "array"
+        },
+        "evidence_catalog": {
+          "items": {
+            "$ref": "#/$defs/AdvisoryEvidenceItem"
+          },
+          "maxItems": 256,
+          "title": "Evidence Catalog",
+          "type": "array"
+        },
+        "objective": {
+          "maxLength": 12000,
+          "minLength": 1,
+          "title": "Objective",
+          "type": "string"
+        },
+        "patch": {
+          "maxLength": 200000,
+          "title": "Patch",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "candidate_id",
+        "objective",
+        "patch",
+        "changed_paths"
+      ],
+      "title": "AdvisoryPatchReviewInput",
+      "type": "object"
+    },
+    "ForbiddenClaim": {
+      "additionalProperties": false,
+      "description": "A claim pattern whose complete marker expression is disallowed by the rubric.",
+      "properties": {
+        "claim_id": {
+          "minLength": 1,
+          "title": "Claim Id",
+          "type": "string"
+        },
+        "marker_groups": {
+          "items": {
+            "items": {
+              "maxLength": 512,
+              "minLength": 1,
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "maxItems": 64,
+          "minItems": 1,
+          "title": "Marker Groups",
+          "type": "array"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "claim_id",
+        "marker_groups"
+      ],
+      "title": "ForbiddenClaim",
+      "type": "object"
+    },
+    "RecordedObservation": {
+      "additionalProperties": false,
+      "description": "A captured provider result; ``payload`` is never interpreted as authority.",
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/RecordedObservationKind"
+        },
+        "payload": {
+          "maxLength": 2000000,
+          "title": "Payload",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "kind",
+        "payload"
+      ],
+      "title": "RecordedObservation",
+      "type": "object"
+    },
+    "RecordedObservationKind": {
+      "enum": [
+        "review_json",
+        "malformed_json",
+        "refusal",
+        "truncated"
+      ],
+      "title": "RecordedObservationKind",
+      "type": "string"
+    },
+    "SeverityExpectation": {
+      "additionalProperties": false,
+      "description": "A bounded severity range for a category/evidence-bound finding.",
+      "properties": {
+        "category": {
+          "$ref": "#/$defs/AdvisoryFindingCategory"
+        },
+        "evidence_refs": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 32,
+          "title": "Evidence Refs",
+          "type": "array"
+        },
+        "max_severity": {
+          "$ref": "#/$defs/AdvisoryFindingSeverity"
+        },
+        "min_severity": {
+          "$ref": "#/$defs/AdvisoryFindingSeverity"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "category",
+        "min_severity",
+        "max_severity"
+      ],
+      "title": "SeverityExpectation",
+      "type": "object"
+    },
+    "ThemeExpectation": {
+      "additionalProperties": false,
+      "description": "Conjunctive literal marker groups, optionally bound to finding evidence.",
+      "properties": {
+        "marker_groups": {
+          "items": {
+            "items": {
+              "maxLength": 512,
+              "minLength": 1,
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "maxItems": 64,
+          "minItems": 1,
+          "title": "Marker Groups",
+          "type": "array"
+        },
+        "required_evidence_refs": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 32,
+          "title": "Required Evidence Refs",
+          "type": "array"
+        },
+        "required_finding_category": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AdvisoryFindingCategory"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "theme_id": {
+          "minLength": 1,
+          "title": "Theme Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "theme_id",
+        "marker_groups"
+      ],
+      "title": "ThemeExpectation",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "One input, recorded observation, and private deterministic rubric.",
+  "properties": {
+    "case_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Case Id",
+      "type": "string"
+    },
+    "expected_stage": {
+      "$ref": "#/$defs/AdvisoryEvaluationStage"
+    },
+    "forbidden_claims": {
+      "items": {
+        "$ref": "#/$defs/ForbiddenClaim"
+      },
+      "maxItems": 128,
+      "title": "Forbidden Claims",
+      "type": "array"
+    },
+    "observation": {
+      "$ref": "#/$defs/RecordedObservation"
+    },
+    "review_input": {
+      "$ref": "#/$defs/AdvisoryPatchReviewInput"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "severity_expectations": {
+      "items": {
+        "$ref": "#/$defs/SeverityExpectation"
+      },
+      "maxItems": 128,
+      "title": "Severity Expectations",
+      "type": "array"
+    },
+    "themes": {
+      "items": {
+        "$ref": "#/$defs/ThemeExpectation"
+      },
+      "maxItems": 128,
+      "title": "Themes",
+      "type": "array"
+    }
+  },
+  "required": [
+    "case_id",
+    "review_input",
+    "observation",
+    "expected_stage"
+  ],
+  "title": "AdvisoryEvaluationCase",
+  "type": "object"
+}

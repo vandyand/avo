@@ -1,0 +1,185 @@
+{
+  "$defs": {
+    "AdvisoryFinding": {
+      "additionalProperties": false,
+      "description": "A bounded observation; it is not an instruction or an authority decision.",
+      "properties": {
+        "affected_paths": {
+          "items": {
+            "maxLength": 512,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 256,
+          "title": "Affected Paths",
+          "type": "array"
+        },
+        "category": {
+          "$ref": "#/$defs/AdvisoryFindingCategory"
+        },
+        "evidence_refs": {
+          "items": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 32,
+          "title": "Evidence Refs",
+          "type": "array"
+        },
+        "rationale": {
+          "maxLength": 4000,
+          "minLength": 1,
+          "title": "Rationale",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "severity": {
+          "$ref": "#/$defs/AdvisoryFindingSeverity"
+        },
+        "suggested_fix": {
+          "anyOf": [
+            {
+              "maxLength": 2000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Suggested Fix"
+        },
+        "summary": {
+          "maxLength": 2000,
+          "minLength": 1,
+          "title": "Summary",
+          "type": "string"
+        }
+      },
+      "required": [
+        "category",
+        "severity",
+        "summary",
+        "rationale"
+      ],
+      "title": "AdvisoryFinding",
+      "type": "object"
+    },
+    "AdvisoryFindingCategory": {
+      "enum": [
+        "correctness",
+        "compatibility",
+        "security",
+        "testing",
+        "maintainability",
+        "efficiency",
+        "documentation"
+      ],
+      "title": "AdvisoryFindingCategory",
+      "type": "string"
+    },
+    "AdvisoryFindingSeverity": {
+      "enum": [
+        "info",
+        "low",
+        "medium",
+        "high",
+        "critical"
+      ],
+      "title": "AdvisoryFindingSeverity",
+      "type": "string"
+    },
+    "AdvisoryRecommendation": {
+      "description": "Non-authoritative recommendation made by an advisory reviewer.",
+      "enum": [
+        "accept",
+        "accept_with_follow_up",
+        "revise",
+        "reject",
+        "no_conclusion"
+      ],
+      "title": "AdvisoryRecommendation",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Validated advisory output, intentionally disconnected from campaign authority.",
+  "properties": {
+    "candidate_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Candidate Id",
+      "type": "string"
+    },
+    "confidence_micros": {
+      "maximum": 1000000,
+      "minimum": 0,
+      "title": "Confidence Micros",
+      "type": "integer"
+    },
+    "findings": {
+      "items": {
+        "$ref": "#/$defs/AdvisoryFinding"
+      },
+      "maxItems": 32,
+      "title": "Findings",
+      "type": "array"
+    },
+    "limitations": {
+      "items": {
+        "maxLength": 1000,
+        "minLength": 1,
+        "type": "string"
+      },
+      "maxItems": 32,
+      "title": "Limitations",
+      "type": "array"
+    },
+    "missing_tests": {
+      "items": {
+        "maxLength": 1000,
+        "minLength": 1,
+        "type": "string"
+      },
+      "maxItems": 32,
+      "title": "Missing Tests",
+      "type": "array"
+    },
+    "rationale": {
+      "maxLength": 8000,
+      "minLength": 1,
+      "title": "Rationale",
+      "type": "string"
+    },
+    "recommendation": {
+      "$ref": "#/$defs/AdvisoryRecommendation"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "summary": {
+      "maxLength": 4000,
+      "minLength": 1,
+      "title": "Summary",
+      "type": "string"
+    }
+  },
+  "required": [
+    "candidate_id",
+    "recommendation",
+    "summary",
+    "rationale",
+    "confidence_micros"
+  ],
+  "title": "AdvisoryPatchReview",
+  "type": "object"
+}

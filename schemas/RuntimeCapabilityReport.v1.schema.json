@@ -1,0 +1,84 @@
+{
+  "$defs": {
+    "CheckStatus": {
+      "enum": [
+        "pass",
+        "warn",
+        "fail"
+      ],
+      "title": "CheckStatus",
+      "type": "string"
+    },
+    "DoctorCheck": {
+      "additionalProperties": false,
+      "properties": {
+        "detail": {
+          "minLength": 1,
+          "title": "Detail",
+          "type": "string"
+        },
+        "name": {
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "next_action": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Next Action"
+        },
+        "status": {
+          "$ref": "#/$defs/CheckStatus"
+        }
+      },
+      "required": [
+        "name",
+        "status",
+        "detail"
+      ],
+      "title": "DoctorCheck",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "checks": {
+      "items": {
+        "$ref": "#/$defs/DoctorCheck"
+      },
+      "minItems": 1,
+      "title": "Checks",
+      "type": "array"
+    },
+    "compatible": {
+      "title": "Compatible",
+      "type": "boolean"
+    },
+    "profile_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Profile Digest",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "profile_digest",
+    "compatible",
+    "checks"
+  ],
+  "title": "RuntimeCapabilityReport",
+  "type": "object"
+}

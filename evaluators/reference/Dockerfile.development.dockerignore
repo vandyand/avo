@@ -1,0 +1,6 @@
+**
+!evaluators/
+!evaluators/reference/
+!evaluators/reference/entrypoint.py
+!evaluators/reference/development/
+!evaluators/reference/development/tests.json

@@ -1,0 +1,78 @@
+{
+  "schema_version": 1,
+  "pilot_id": "comparison-v2",
+  "status": "preregistered",
+  "created_at": "2026-08-25T21:38:30Z",
+  "suite_digest": "sha256:49191e7309957f122a8e67e2d18e6f82004da99b6147026aaef48b062accf680",
+  "repetitions_per_task": 1,
+  "task_order": [
+    "rolling-window",
+    "identifier-boundary",
+    "integer-allocation",
+    "bounded-backoff",
+    "interval-union",
+    "dependency-order",
+    "event-reconciliation",
+    "configuration-overlay"
+  ],
+  "paired_execution_order": [
+    {"repetition": 1, "arm": "openrouter-native"},
+    {"repetition": 1, "arm": "codex"}
+  ],
+  "common_controls": {
+    "requested_base_model": "gpt-5.6-luna",
+    "reasoning_effort": "high",
+    "max_turns": 20,
+    "max_wall_time_seconds": 900,
+    "evaluator_image": "python:3.12.10-slim-bookworm@sha256:97983fa8cc88343512862c62307159a82261c3528dc025f79e5a3f7af43e50b4",
+    "formal_run_purpose": "comparison",
+    "replacement_runs": "forbidden except paired evaluator-infrastructure voids"
+  },
+  "arms": {
+    "codex": {
+      "interface": "OpenAI Codex coding-agent runtime",
+      "authentication_class": "ChatGPT subscription",
+      "chatgpt_account": "vandyand@gmail.com",
+      "api_tokens_forbidden": true,
+      "requested_model": "gpt-5.6-luna",
+      "codex_cli_version": "0.149.1",
+      "python_sdk_version": "0.147.0",
+      "profile_path": "runtime-profiles/codex-luna-high-v2.json",
+      "profile_file_digest": "sha256:6eace22c867ec868eb8c728002a6eb947dc929b0d2d4e4f9404b7f186d6aacb7",
+      "profile_canonical_digest": "sha256:f43f44484ccefcdb42ced28644b8b9d415f4da13850d52baf1f1c1b995a0cc59",
+      "completion_prompt_path": "prompts/codex-completion.md",
+      "completion_prompt_digest": "sha256:35d0625ed8bc9a83ce60fa65664fb076f3070ee3ab6d937d6485257e74ccbbd9",
+      "runner_digest": "sha256:540f153071d7d0f1bf7352257cdbc5d01ee0e5c0aff934dfcd6b9f4d52346d26",
+      "validated_canary_run_id": "comparison-v2-codex-canary-r1-20260825T213641Z-10b86398"
+    },
+    "openrouter-native": {
+      "interface": "AVO native structured agent over OpenAI-compatible chat completions",
+      "authentication_class": "metered API key",
+      "requested_model": "openai/gpt-5.6-luna",
+      "observed_canonical_model": "openai/gpt-5.6-luna",
+      "httpx2_version": "2.12.0",
+      "profile_path": "runtime-profiles/openrouter-luna-high-v2.json",
+      "profile_file_digest": "sha256:0acab89e6ee1e0819c02ea6ff8c939934926d3ddc831ad3e6e23de01660f9c88",
+      "profile_canonical_digest": "sha256:fe7c29a61a0d73657235440b1757ff50217d4987f6c416b33085078121af337f",
+      "runner_digest": "sha256:6abf9c4747c872d801f653ee82946c6bf1110d23420d5797de1f02c944c38f42",
+      "input_usd_per_million_tokens": 0.20,
+      "output_usd_per_million_tokens": 1.20,
+      "minimum_credit_balance_usd": 2.00,
+      "credit_snapshot": {
+        "captured_at": "2026-08-25T21:36:23.3373309Z",
+        "total_credits_usd": 665.0,
+        "total_usage_usd": 654.151377662,
+        "remaining_usd": 10.848622338
+      },
+      "validated_canary_run_id": "comparison-v2-openrouter-canary-r1-20260825T213430Z-940a40f1",
+      "validated_canary_cost_microusd": 12882,
+      "calibration_note": "The first typed-tool canary exposed null arguments for a no-argument tool. The adapter now normalizes that provider representation to an empty object; the subsequent canary admitted. The observed-model metadata was then normalized to the exact alias returned by OpenRouter without changing request parameters."
+    }
+  },
+  "interpretation": {
+    "primary_outcome": "paired first-attempt hidden-evaluator admission",
+    "interface_effect": "Results compare complete interfaces, not isolated raw model intelligence.",
+    "cost_comparison": "OpenRouter cost is actual provider cost; Codex subscription usage is reported separately and is not assigned a counterfactual dollar cost.",
+    "claim_limit": "This one-repetition frozen task set is diagnostic; it cannot estimate run-to-run variance or establish general superiority."
+  }
+}

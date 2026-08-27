@@ -1,0 +1,66 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "candidate_id": {
+      "minLength": 1,
+      "title": "Candidate Id",
+      "type": "string"
+    },
+    "lineage_sequence": {
+      "minimum": 0,
+      "title": "Lineage Sequence",
+      "type": "integer"
+    },
+    "novelty": {
+      "anyOf": [
+        {
+          "minimum": 0.0,
+          "type": "number"
+        },
+        {
+          "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+          "type": "string"
+        }
+      ],
+      "title": "Novelty"
+    },
+    "quality": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+          "type": "string"
+        }
+      ],
+      "title": "Quality"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "selection_count": {
+      "minimum": 0,
+      "title": "Selection Count",
+      "type": "integer"
+    },
+    "workspace_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Workspace Digest",
+      "type": "string"
+    }
+  },
+  "required": [
+    "candidate_id",
+    "workspace_digest",
+    "lineage_sequence",
+    "quality",
+    "novelty",
+    "selection_count"
+  ],
+  "title": "SearchCandidate",
+  "type": "object"
+}

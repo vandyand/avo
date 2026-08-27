@@ -1,0 +1,47 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "method": {
+      "enum": [
+        "single_lineage_agentic",
+        "hybrid_archive_agentic",
+        "population_agentic"
+      ],
+      "title": "Method",
+      "type": "string"
+    },
+    "method_version": {
+      "minLength": 1,
+      "title": "Method Version",
+      "type": "string"
+    },
+    "parent_candidate_id": {
+      "minLength": 1,
+      "title": "Parent Candidate Id",
+      "type": "string"
+    },
+    "reason_codes": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Reason Codes",
+      "type": "array"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "method",
+    "method_version",
+    "parent_candidate_id",
+    "reason_codes"
+  ],
+  "title": "SearchDecision",
+  "type": "object"
+}

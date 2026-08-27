@@ -1,0 +1,48 @@
+{
+  "manifest_digest": "sha256:5eaf45cf8f497cf54521020995481f6c568f6d2aa592452e53c3160a88d0df0c",
+  "pilot_id": "comparison-v2",
+  "schema_version": 1,
+  "suite_digest": "sha256:49191e7309957f122a8e67e2d18e6f82004da99b6147026aaef48b062accf680",
+  "tasks": {
+    "bounded-backoff": {
+      "hidden_tree_digest": "sha256:7b8c3cf500cedd074df23a7de319f07538710eca9f4f2645ffed0bf500d411e5",
+      "seed_tree_digest": "sha256:97f1c6e84de656a1850db0b9c6a017add5668e8588c011371d2dfcddea9b8380",
+      "task_spec_digest": "sha256:b5de23b6101a7f5698aa1406ecb0299f691985dc2306364c50cf65a2f60b15f5"
+    },
+    "configuration-overlay": {
+      "hidden_tree_digest": "sha256:08c517a1ca82514b45d658fece74b384aab6da91712eae31a94a79ac8f834716",
+      "seed_tree_digest": "sha256:3d3367c333f04bcc8f6790f79fcc6de308c3c17bac26e42dc0cdf0a2c8958a95",
+      "task_spec_digest": "sha256:7bcc079d98414561b9cbe02a2d5f782c81459882a7a5245b51651a093a954a00"
+    },
+    "dependency-order": {
+      "hidden_tree_digest": "sha256:440b1afe08b294b5fff9242fc88076e09e1ac258ed3140db705fdba361ce9201",
+      "seed_tree_digest": "sha256:922fbb53d585d392d91f8523af7fc1e1f025ba7dae7e58721f4b36bcaff188b5",
+      "task_spec_digest": "sha256:2b8ece72b3953a7e21bab3d51ecb11490c26ff4f7d8463a9c78bc9f1b3fc6c53"
+    },
+    "event-reconciliation": {
+      "hidden_tree_digest": "sha256:bba1ed5a509957001065a09cf1e27a357debe03dfa635949349680daa368022d",
+      "seed_tree_digest": "sha256:f3e1adb32ca70b6a7bf9a23a8328fdf56e1c7761dc81159fbe658e1ad596a603",
+      "task_spec_digest": "sha256:663c2c0b66cd367fdf6e1a9bbd9b68c27c04a97cf6e0a1f6c28ba595bc42f90e"
+    },
+    "identifier-boundary": {
+      "hidden_tree_digest": "sha256:07fbd5b8dc51b482128e08f327db9cfd2517820c0829158d7a4670d25e7491dc",
+      "seed_tree_digest": "sha256:a5ac28c501440d52caeff78fd585e9e0500efe25700688a8d36c4631fa66e016",
+      "task_spec_digest": "sha256:e59e003618dfe9261e6ea95143e27fad50455a9f624a1b98ec45bd42b968498d"
+    },
+    "integer-allocation": {
+      "hidden_tree_digest": "sha256:8a50d347244ebd331a02c741d9852fc45b2c37b9d7c95a5ac49370a8e8d8ea58",
+      "seed_tree_digest": "sha256:3fcf25a1221b75c1ac187aae1fc7b0542076e579b8c3f14d0ffa601de620f0af",
+      "task_spec_digest": "sha256:02de4d3a3bf7b7c5cc50a83d5c0aa690a63e59f43f373dd5a628a62de870a83d"
+    },
+    "interval-union": {
+      "hidden_tree_digest": "sha256:a3d8832c531b5b4afe350b1a2fb9819687de43121d45bc03f28e7dbff5d04ebb",
+      "seed_tree_digest": "sha256:498a9c6c31d6bc848d8bb70942eaf82793750c220b4c087e204770b99982e874",
+      "task_spec_digest": "sha256:e6e3423d7d71f194ed6d3d5cc21bfbb58728f7dd62a280ed16a3357cad3c5df9"
+    },
+    "rolling-window": {
+      "hidden_tree_digest": "sha256:7d899b739b989881ccd30a107113c9fb9655f8df04b65830e0af7d6e5cf64ce6",
+      "seed_tree_digest": "sha256:043e77b140937e07994ce4b4af70a1e61d8eb4bef86244e68a41f39ce07af5cf",
+      "task_spec_digest": "sha256:f7826531061f8115ccc563cf66416c53ed022975fcea65ceddfae23393cb0dad"
+    }
+  }
+}

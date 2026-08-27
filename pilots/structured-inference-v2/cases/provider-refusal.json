@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "case_id": "provider-refusal",
+  "review_input": {
+    "schema_version": 1,
+    "candidate_id": "candidate-provider-refusal",
+    "objective": "Review a synthetic bounded change.",
+    "patch": "diff --git a/src/value.py b/src/value.py\n+@@\n+ def value(raw):\n+     return raw\n+",
+    "changed_paths": ["src/value.py"],
+    "evaluation_summaries": [],
+    "evidence_catalog": [
+      {"schema_version": 1, "evidence_id": "ev-value-patch", "content_digest": "sha256:7777777777777777777777777777777777777777777777777777777777777777", "label": "Synthetic value patch"}
+    ]
+  },
+  "observation": {
+    "schema_version": 1,
+    "kind": "refusal",
+    "payload": "The provider declined to produce an advisory review."
+  },
+  "expected_stage": "provider_rejected",
+  "themes": [],
+  "forbidden_claims": [],
+  "severity_expectations": []
+}

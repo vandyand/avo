@@ -1,0 +1,81 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "completed_at": {
+      "format": "date-time",
+      "title": "Completed At",
+      "type": "string"
+    },
+    "execution_id": {
+      "minLength": 1,
+      "title": "Execution Id",
+      "type": "string"
+    },
+    "exit_code": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Exit Code"
+    },
+    "outcome": {
+      "enum": [
+        "succeeded",
+        "failed",
+        "timed_out",
+        "output_limit",
+        "policy_blocked"
+      ],
+      "title": "Outcome",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "started_at": {
+      "format": "date-time",
+      "title": "Started At",
+      "type": "string"
+    },
+    "stderr_bytes": {
+      "minimum": 0,
+      "title": "Stderr Bytes",
+      "type": "integer"
+    },
+    "stderr_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Stderr Digest",
+      "type": "string"
+    },
+    "stdout_bytes": {
+      "minimum": 0,
+      "title": "Stdout Bytes",
+      "type": "integer"
+    },
+    "stdout_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Stdout Digest",
+      "type": "string"
+    }
+  },
+  "required": [
+    "execution_id",
+    "outcome",
+    "exit_code",
+    "stdout_digest",
+    "stderr_digest",
+    "stdout_bytes",
+    "stderr_bytes",
+    "started_at",
+    "completed_at"
+  ],
+  "title": "SandboxExecutionResult",
+  "type": "object"
+}

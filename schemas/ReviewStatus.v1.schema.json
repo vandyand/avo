@@ -1,0 +1,45 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "approvals": {
+      "minimum": 0,
+      "title": "Approvals",
+      "type": "integer"
+    },
+    "approvals_required": {
+      "maximum": 2,
+      "minimum": 1,
+      "title": "Approvals Required",
+      "type": "integer"
+    },
+    "review_id": {
+      "minLength": 1,
+      "title": "Review Id",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "state": {
+      "enum": [
+        "pending",
+        "approved",
+        "rejected",
+        "expired"
+      ],
+      "title": "State",
+      "type": "string"
+    }
+  },
+  "required": [
+    "review_id",
+    "state",
+    "approvals",
+    "approvals_required"
+  ],
+  "title": "ReviewStatus",
+  "type": "object"
+}

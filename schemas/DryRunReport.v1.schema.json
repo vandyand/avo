@@ -1,0 +1,84 @@
+{
+  "$defs": {
+    "ValidationCheck": {
+      "additionalProperties": false,
+      "properties": {
+        "check_id": {
+          "minLength": 1,
+          "title": "Check Id",
+          "type": "string"
+        },
+        "detail": {
+          "minLength": 1,
+          "title": "Detail",
+          "type": "string"
+        },
+        "outcome": {
+          "enum": [
+            "pass",
+            "warn",
+            "fail"
+          ],
+          "title": "Outcome",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "check_id",
+        "outcome",
+        "detail"
+      ],
+      "title": "ValidationCheck",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "checks": {
+      "items": {
+        "$ref": "#/$defs/ValidationCheck"
+      },
+      "minItems": 1,
+      "title": "Checks",
+      "type": "array"
+    },
+    "experiment_id": {
+      "minLength": 1,
+      "title": "Experiment Id",
+      "type": "string"
+    },
+    "outcome": {
+      "enum": [
+        "ready",
+        "blocked"
+      ],
+      "title": "Outcome",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "spec_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Spec Digest",
+      "type": "string"
+    }
+  },
+  "required": [
+    "experiment_id",
+    "spec_digest",
+    "outcome",
+    "checks"
+  ],
+  "title": "DryRunReport",
+  "type": "object"
+}

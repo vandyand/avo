@@ -1,0 +1,141 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "candidate_proposers": {
+      "minProperties": 1,
+      "patternProperties": {
+        "^sha256:[0-9a-f]{64}$": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "title": "Candidate Proposers",
+      "type": "object"
+    },
+    "evaluation_epoch": {
+      "minimum": 0,
+      "title": "Evaluation Epoch",
+      "type": "integer"
+    },
+    "low_gates": {
+      "default": [
+        "deterministic",
+        "provenance"
+      ],
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "title": "Low Gates",
+      "type": "array",
+      "uniqueItems": true
+    },
+    "ordinary_gates": {
+      "default": [
+        "integration_soak",
+        "private_evaluation",
+        "provenance",
+        "trusted_ci"
+      ],
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "title": "Ordinary Gates",
+      "type": "array",
+      "uniqueItems": true
+    },
+    "proposer_domains": {
+      "additionalProperties": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "minProperties": 1,
+      "propertyNames": {
+        "minLength": 1
+      },
+      "title": "Proposer Domains",
+      "type": "object"
+    },
+    "reviewer_domains": {
+      "additionalProperties": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "minProperties": 1,
+      "propertyNames": {
+        "minLength": 1
+      },
+      "title": "Reviewer Domains",
+      "type": "object"
+    },
+    "rollback_issuer_ids": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Rollback Issuer Ids",
+      "type": "array"
+    },
+    "rollback_limit": {
+      "minimum": 0,
+      "title": "Rollback Limit",
+      "type": "integer"
+    },
+    "trusted_base_issuers": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Trusted Base Issuers",
+      "type": "array"
+    },
+    "trusted_gate_issuers": {
+      "additionalProperties": {
+        "items": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "propertyNames": {
+        "minLength": 1
+      },
+      "title": "Trusted Gate Issuers",
+      "type": "object"
+    },
+    "trusted_path_issuers": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Trusted Path Issuers",
+      "type": "array"
+    },
+    "trusted_reviewer_issuers": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Trusted Reviewer Issuers",
+      "type": "array"
+    }
+  },
+  "required": [
+    "evaluation_epoch",
+    "trusted_base_issuers",
+    "trusted_reviewer_issuers",
+    "trusted_path_issuers",
+    "rollback_issuer_ids",
+    "rollback_limit",
+    "reviewer_domains",
+    "proposer_domains",
+    "candidate_proposers"
+  ],
+  "title": "PromotionConfig",
+  "type": "object"
+}

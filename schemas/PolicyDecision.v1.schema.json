@@ -1,0 +1,112 @@
+{
+  "$defs": {
+    "PolicyObligation": {
+      "additionalProperties": false,
+      "properties": {
+        "obligation_type": {
+          "minLength": 1,
+          "title": "Obligation Type",
+          "type": "string"
+        },
+        "parameters": {
+          "additionalProperties": true,
+          "title": "Parameters",
+          "type": "object"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "obligation_type"
+      ],
+      "title": "PolicyObligation",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "action": {
+      "minLength": 1,
+      "title": "Action",
+      "type": "string"
+    },
+    "decided_at": {
+      "format": "date-time",
+      "title": "Decided At",
+      "type": "string"
+    },
+    "decision_id": {
+      "minLength": 1,
+      "title": "Decision Id",
+      "type": "string"
+    },
+    "input_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Input Digest",
+      "type": "string"
+    },
+    "obligations": {
+      "items": {
+        "$ref": "#/$defs/PolicyObligation"
+      },
+      "title": "Obligations",
+      "type": "array"
+    },
+    "outcome": {
+      "enum": [
+        "allow",
+        "deny",
+        "review"
+      ],
+      "title": "Outcome",
+      "type": "string"
+    },
+    "policy_bundle_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Policy Bundle Digest",
+      "type": "string"
+    },
+    "policy_engine_id": {
+      "minLength": 1,
+      "title": "Policy Engine Id",
+      "type": "string"
+    },
+    "reason_codes": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Reason Codes",
+      "type": "array"
+    },
+    "resource": {
+      "minLength": 1,
+      "title": "Resource",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "decision_id",
+    "policy_engine_id",
+    "policy_bundle_digest",
+    "action",
+    "resource",
+    "input_digest",
+    "outcome",
+    "reason_codes",
+    "decided_at"
+  ],
+  "title": "PolicyDecision",
+  "type": "object"
+}

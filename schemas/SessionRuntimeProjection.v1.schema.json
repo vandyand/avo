@@ -1,0 +1,51 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "invocations": {
+      "items": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "title": "Invocations",
+      "type": "array"
+    },
+    "reconciliations": {
+      "items": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "title": "Reconciliations",
+      "type": "array"
+    },
+    "run_id": {
+      "minLength": 1,
+      "title": "Run Id",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "session_id": {
+      "minLength": 1,
+      "title": "Session Id",
+      "type": "string"
+    },
+    "session_state": {
+      "minLength": 1,
+      "title": "Session State",
+      "type": "string"
+    }
+  },
+  "required": [
+    "session_id",
+    "run_id",
+    "session_state",
+    "invocations",
+    "reconciliations"
+  ],
+  "title": "SessionRuntimeProjection",
+  "type": "object"
+}

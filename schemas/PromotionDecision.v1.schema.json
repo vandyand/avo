@@ -1,0 +1,67 @@
+{
+  "$defs": {
+    "PromotionOutcome": {
+      "enum": [
+        "allow",
+        "deny",
+        "quarantine",
+        "escalate"
+      ],
+      "title": "PromotionOutcome",
+      "type": "string"
+    },
+    "RiskClass": {
+      "enum": [
+        "low",
+        "ordinary",
+        "constitutional",
+        "production"
+      ],
+      "title": "RiskClass",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "candidate_id": {
+      "minLength": 1,
+      "title": "Candidate Id",
+      "type": "string"
+    },
+    "outcome": {
+      "$ref": "#/$defs/PromotionOutcome"
+    },
+    "reason_codes": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Reason Codes",
+      "type": "array"
+    },
+    "required_quorum": {
+      "minimum": 0,
+      "title": "Required Quorum",
+      "type": "integer"
+    },
+    "risk_class": {
+      "$ref": "#/$defs/RiskClass"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "candidate_id",
+    "outcome",
+    "risk_class",
+    "reason_codes",
+    "required_quorum"
+  ],
+  "title": "PromotionDecision",
+  "type": "object"
+}

@@ -1,0 +1,80 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  schedule:
+    - cron: "23 5 * * 1"
+
+jobs:
+  validate:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - run: uv sync --all-groups --frozen
+      - name: Validate authoritative roadmap
+        run: >-
+          uv run python .agents/skills/avo-roadmap/scripts/validate_roadmap.py
+          docs/roadmap.md --max-review-age-days 45
+      - run: uv run ruff check .
+      - run: uv run pyright
+      - name: Build tier-separated evaluator images
+        if: runner.os == 'Linux'
+        run: |
+          docker build --provenance=false --build-arg SOURCE_DATE_EPOCH=0 --file evaluators/reference/Dockerfile.development --tag avo-reference-development:1.0.0 .
+          docker build --provenance=false --build-arg SOURCE_DATE_EPOCH=0 --file evaluators/reference/Dockerfile.admission --tag avo-reference-admission:1.0.0 .
+      - name: Measure evaluator platform overhead
+        if: runner.os == 'Linux'
+        run: uv run avoctl platform benchmark
+      - run: uv run pytest --cov=avo_correlate --cov-report=term
+      - run: uv run python -m avo_correlate.devtools.export_schemas
+      - name: Verify generated schemas are committed
+        run: git diff --exit-code -- schemas
+
+  windows-wsl-parity:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: [self-hosted, Windows, X64, wsl2, docker]
+    env:
+      AVO_WSL_PROJECT_PATH: ${{ vars.AVO_WSL_PROJECT_PATH }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Sync canonical WSL environment
+        shell: pwsh
+        run: >-
+          wsl.exe --cd $env:AVO_WSL_PROJECT_PATH --exec uv sync --all-groups --frozen
+      - name: Build development evaluator in WSL
+        shell: pwsh
+        run: >-
+          wsl.exe --cd $env:AVO_WSL_PROJECT_PATH --exec docker build
+          --provenance=false
+          --build-arg SOURCE_DATE_EPOCH=0
+          --file evaluators/reference/Dockerfile.development
+          --tag avo-reference-development:1.0.0 .
+      - name: Build admission evaluator in WSL
+        shell: pwsh
+        run: >-
+          wsl.exe --cd $env:AVO_WSL_PROJECT_PATH --exec docker build
+          --provenance=false
+          --build-arg SOURCE_DATE_EPOCH=0
+          --file evaluators/reference/Dockerfile.admission
+          --tag avo-reference-admission:1.0.0 .
+      - name: Measure WSL evaluator platform overhead
+        shell: pwsh
+        run: .\scripts\avoctl.ps1 platform benchmark
+      - name: Run full parity and recovery suite through wrapper
+        shell: pwsh
+        run: .\scripts\avoctl.ps1 test parity
+      - name: Run complete canonical suite
+        shell: pwsh
+        run: >-
+          wsl.exe --cd $env:AVO_WSL_PROJECT_PATH --exec uv run pytest
+          --cov=avo_correlate --cov-report=term

@@ -1,0 +1,193 @@
+{
+  "$defs": {
+    "AdvisoryEvaluationStage": {
+      "enum": [
+        "accepted",
+        "parse_rejected",
+        "wire_rejected",
+        "semantic_rejected",
+        "provider_rejected"
+      ],
+      "title": "AdvisoryEvaluationStage",
+      "type": "string"
+    },
+    "AdvisoryFindingSeverity": {
+      "enum": [
+        "info",
+        "low",
+        "medium",
+        "high",
+        "critical"
+      ],
+      "title": "AdvisoryFindingSeverity",
+      "type": "string"
+    },
+    "SeverityMatch": {
+      "additionalProperties": false,
+      "properties": {
+        "error": {
+          "anyOf": [
+            {
+              "maxLength": 2000,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Error"
+        },
+        "expectation_id": {
+          "minLength": 1,
+          "title": "Expectation Id",
+          "type": "string"
+        },
+        "finding_severity": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AdvisoryFindingSeverity"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "matched": {
+          "title": "Matched",
+          "type": "boolean"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "expectation_id",
+        "matched"
+      ],
+      "title": "SeverityMatch",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Detailed, deterministic result for a single corpus case.",
+  "properties": {
+    "actual_stage": {
+      "$ref": "#/$defs/AdvisoryEvaluationStage"
+    },
+    "case_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Case Id",
+      "type": "string"
+    },
+    "error_code": {
+      "anyOf": [
+        {
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Error Code"
+    },
+    "error_message": {
+      "anyOf": [
+        {
+          "maxLength": 2000,
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Error Message"
+    },
+    "evidence": {
+      "items": {
+        "maxLength": 2000,
+        "minLength": 1,
+        "type": "string"
+      },
+      "maxItems": 64,
+      "title": "Evidence",
+      "type": "array"
+    },
+    "expected_stage": {
+      "$ref": "#/$defs/AdvisoryEvaluationStage"
+    },
+    "expected_stage_correct": {
+      "title": "Expected Stage Correct",
+      "type": "boolean"
+    },
+    "matched_forbidden_claim_ids": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "maxItems": 128,
+      "title": "Matched Forbidden Claim Ids",
+      "type": "array"
+    },
+    "matched_theme_ids": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "maxItems": 128,
+      "title": "Matched Theme Ids",
+      "type": "array"
+    },
+    "missing_theme_ids": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "maxItems": 128,
+      "title": "Missing Theme Ids",
+      "type": "array"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "semantic_valid": {
+      "title": "Semantic Valid",
+      "type": "boolean"
+    },
+    "severity_matches": {
+      "items": {
+        "$ref": "#/$defs/SeverityMatch"
+      },
+      "maxItems": 128,
+      "title": "Severity Matches",
+      "type": "array"
+    },
+    "strict_schema_valid": {
+      "title": "Strict Schema Valid",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "case_id",
+    "expected_stage",
+    "actual_stage",
+    "expected_stage_correct",
+    "strict_schema_valid",
+    "semantic_valid"
+  ],
+  "title": "AdvisoryCaseScore",
+  "type": "object"
+}

@@ -1,0 +1,19 @@
+--- a/src/reference_target/optimizer.py
++++ b/src/reference_target/optimizer.py
+@@ -1,6 +1,13 @@
+ def best_window(values: list[int], width: int) -> tuple[int, int]:
+-    """Return the start index and sum of the highest-scoring fixed-width window."""
++    """Return the earliest start index and sum of the best fixed-width window."""
+     if width <= 0 or width > len(values):
+         raise ValueError("width must select at least one available value")
+-    # Seeded defect: this inspects only the first window.
+-    return 0, sum(values[:width])
++    current = sum(values[:width])
++    best_sum = current
++    best_start = 0
++    for start in range(1, len(values) - width + 1):
++        current += values[start + width - 1] - values[start - 1]
++        if current > best_sum:
++            best_sum = current
++            best_start = start
++    return best_start, best_sum

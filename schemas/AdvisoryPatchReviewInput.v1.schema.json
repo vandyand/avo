@@ -1,0 +1,154 @@
+{
+  "$defs": {
+    "AdvisoryEvaluationSummary": {
+      "additionalProperties": false,
+      "description": "A bounded, already-produced evaluator summary supplied as context.",
+      "properties": {
+        "evaluation_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Evaluation Id",
+          "type": "string"
+        },
+        "evidence_refs": {
+          "items": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 32,
+          "title": "Evidence Refs",
+          "type": "array"
+        },
+        "outcome": {
+          "enum": [
+            "passed",
+            "failed",
+            "errored",
+            "timed_out",
+            "policy_blocked",
+            "invalid_report"
+          ],
+          "title": "Outcome",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "summary": {
+          "maxLength": 4000,
+          "minLength": 1,
+          "title": "Summary",
+          "type": "string"
+        }
+      },
+      "required": [
+        "evaluation_id",
+        "outcome",
+        "summary"
+      ],
+      "title": "AdvisoryEvaluationSummary",
+      "type": "object"
+    },
+    "AdvisoryEvidenceItem": {
+      "additionalProperties": false,
+      "description": "An immutable catalog entry that a review may cite.",
+      "properties": {
+        "content_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Content Digest",
+          "type": "string"
+        },
+        "evidence_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Evidence Id",
+          "type": "string"
+        },
+        "label": {
+          "default": "",
+          "maxLength": 512,
+          "title": "Label",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "evidence_id",
+        "content_digest"
+      ],
+      "title": "AdvisoryEvidenceItem",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "The complete, bounded input presented to an advisory review model.",
+  "properties": {
+    "candidate_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Candidate Id",
+      "type": "string"
+    },
+    "changed_paths": {
+      "items": {
+        "maxLength": 512,
+        "minLength": 1,
+        "type": "string"
+      },
+      "maxItems": 256,
+      "minItems": 1,
+      "title": "Changed Paths",
+      "type": "array"
+    },
+    "evaluation_summaries": {
+      "items": {
+        "$ref": "#/$defs/AdvisoryEvaluationSummary"
+      },
+      "maxItems": 64,
+      "title": "Evaluation Summaries",
+      "type": "array"
+    },
+    "evidence_catalog": {
+      "items": {
+        "$ref": "#/$defs/AdvisoryEvidenceItem"
+      },
+      "maxItems": 256,
+      "title": "Evidence Catalog",
+      "type": "array"
+    },
+    "objective": {
+      "maxLength": 12000,
+      "minLength": 1,
+      "title": "Objective",
+      "type": "string"
+    },
+    "patch": {
+      "maxLength": 200000,
+      "title": "Patch",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "candidate_id",
+    "objective",
+    "patch",
+    "changed_paths"
+  ],
+  "title": "AdvisoryPatchReviewInput",
+  "type": "object"
+}

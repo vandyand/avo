@@ -1,0 +1,138 @@
+{
+  "$defs": {
+    "UsageRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact_bytes": {
+          "minimum": 0,
+          "title": "Artifact Bytes",
+          "type": "integer"
+        },
+        "authoritative_evaluations": {
+          "minimum": 0,
+          "title": "Authoritative Evaluations",
+          "type": "integer"
+        },
+        "model_cost_microusd": {
+          "minimum": 0,
+          "title": "Model Cost Microusd",
+          "type": "integer"
+        },
+        "model_input_tokens": {
+          "minimum": 0,
+          "title": "Model Input Tokens",
+          "type": "integer"
+        },
+        "model_output_tokens": {
+          "minimum": 0,
+          "title": "Model Output Tokens",
+          "type": "integer"
+        },
+        "sandbox_cpu_seconds": {
+          "minimum": 0,
+          "title": "Sandbox Cpu Seconds",
+          "type": "integer"
+        },
+        "sandbox_gpu_seconds": {
+          "minimum": 0,
+          "title": "Sandbox Gpu Seconds",
+          "type": "integer"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "tool_calls": {
+          "minimum": 0,
+          "title": "Tool Calls",
+          "type": "integer"
+        },
+        "variation_sessions": {
+          "minimum": 0,
+          "title": "Variation Sessions",
+          "type": "integer"
+        },
+        "wall_clock_seconds": {
+          "minimum": 0,
+          "title": "Wall Clock Seconds",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "wall_clock_seconds",
+        "model_input_tokens",
+        "model_output_tokens",
+        "model_cost_microusd",
+        "tool_calls",
+        "sandbox_cpu_seconds",
+        "sandbox_gpu_seconds",
+        "authoritative_evaluations",
+        "variation_sessions",
+        "artifact_bytes"
+      ],
+      "title": "UsageRecord",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "finish_reason": {
+      "minLength": 1,
+      "title": "Finish Reason",
+      "type": "string"
+    },
+    "invocation_id": {
+      "minLength": 1,
+      "title": "Invocation Id",
+      "type": "string"
+    },
+    "output_artifact_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Output Artifact Digest",
+      "type": "string"
+    },
+    "provider_model_revision": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Provider Model Revision"
+    },
+    "provider_request_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Provider Request Id"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "usage": {
+      "$ref": "#/$defs/UsageRecord"
+    }
+  },
+  "required": [
+    "invocation_id",
+    "output_artifact_digest",
+    "finish_reason",
+    "usage"
+  ],
+  "title": "ModelResponse",
+  "type": "object"
+}

@@ -1,0 +1,48 @@
+{
+  "manifest_digest": "sha256:0b57086e5a78e785e953c53076af1f23971f16513dd45aaecfcf4cb054f02fd0",
+  "pilot_id": "structured-inference-v2",
+  "schema_version": 1,
+  "cases": {
+    "correctness-invariant": {
+      "path": "cases/correctness-invariant.json",
+      "case_digest": "sha256:f5999807ae74a9daf37e27d34e2976f7190465edfa3c54c51f307e71f48d22e0"
+    },
+    "missing-positive-tests": {
+      "path": "cases/missing-positive-tests.json",
+      "case_digest": "sha256:99c254749e6cbf7b44f4c31fd102fbb9f1514a03691973ff2a582e4c1e0353da"
+    },
+    "path-traversal-guard": {
+      "path": "cases/path-traversal-guard.json",
+      "case_digest": "sha256:0997684f6a8b93993a9109d95d1aea36102018f8045875feb833b8ea3d36495f"
+    },
+    "compatibility-break": {
+      "path": "cases/compatibility-break.json",
+      "case_digest": "sha256:2843430152e7294b8bea4ffea07f43e1e76a3a2325904c17137e0d4189d33a84"
+    },
+    "insufficient-evidence": {
+      "path": "cases/insufficient-evidence.json",
+      "case_digest": "sha256:708af23a25c06a7b8dbf58a8b1a6018c288b242cf98ff0ed0b66e453b692e106"
+    },
+    "fabricated-evidence-reference": {
+      "path": "cases/fabricated-evidence-reference.json",
+      "case_digest": "sha256:1a5379e23a384b6c96de00a9170d88c8fcf8d552e6cb7b2553f8a5044b90463d"
+    },
+    "omitted-required-strict-fields": {
+      "path": "cases/omitted-required-strict-fields.json",
+      "case_digest": "sha256:f645d44e6c1dfe522958f8cda062043221c6c0911d68769f83bce3b40ef95d52"
+    },
+    "malformed-json": {
+      "path": "cases/malformed-json.json",
+      "case_digest": "sha256:e9c9676f4f6869e770e1451052371f0da4966f5c2434803348578b6da48c0657"
+    },
+    "provider-refusal": {
+      "path": "cases/provider-refusal.json",
+      "case_digest": "sha256:df287230a669f664e09d7a414a6ced352143256df3ceda541b48a8eb4f94e45e"
+    },
+    "truncated-output": {
+      "path": "cases/truncated-output.json",
+      "case_digest": "sha256:b2b78c1114bcc68f9a1335d7ec46c2e67c0b282b3a0773c27ce52ca041200e0a"
+    }
+  },
+  "suite_digest": "sha256:6138214c26c2f9eef8fba74d97978bb757d08e7e0a3d33c4f8c505d5acc412bd"
+}

@@ -1,0 +1,172 @@
+{
+  "$defs": {
+    "AgentCompletion": {
+      "additionalProperties": false,
+      "properties": {
+        "claimed_tests": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Claimed Tests",
+          "type": "array"
+        },
+        "outcome": {
+          "enum": [
+            "proposal",
+            "stop"
+          ],
+          "title": "Outcome",
+          "type": "string"
+        },
+        "rationale": {
+          "minLength": 1,
+          "title": "Rationale",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "outcome",
+        "rationale"
+      ],
+      "title": "AgentCompletion",
+      "type": "object"
+    },
+    "RuntimeSessionRef": {
+      "additionalProperties": false,
+      "properties": {
+        "adapter_id": {
+          "minLength": 1,
+          "title": "Adapter Id",
+          "type": "string"
+        },
+        "checkpoint": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Checkpoint"
+        },
+        "invocation_id": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Invocation Id"
+        },
+        "native_operation_id": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Native Operation Id"
+        },
+        "native_session_id": {
+          "minLength": 1,
+          "title": "Native Session Id",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "storage_class": {
+          "enum": [
+            "memory",
+            "local",
+            "provider"
+          ],
+          "title": "Storage Class",
+          "type": "string"
+        }
+      },
+      "required": [
+        "adapter_id",
+        "native_session_id",
+        "storage_class"
+      ],
+      "title": "RuntimeSessionRef",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Provider observation used to make retry versus reconciliation explicit.",
+  "properties": {
+    "completion": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/AgentCompletion"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "evidence_digests": {
+      "items": {
+        "pattern": "^sha256:[0-9a-f]{64}$",
+        "type": "string"
+      },
+      "title": "Evidence Digests",
+      "type": "array"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "session": {
+      "$ref": "#/$defs/RuntimeSessionRef"
+    },
+    "state": {
+      "enum": [
+        "not_started",
+        "running",
+        "completed",
+        "interrupted",
+        "missing",
+        "unknown"
+      ],
+      "title": "State",
+      "type": "string"
+    }
+  },
+  "required": [
+    "state",
+    "session"
+  ],
+  "title": "RuntimeInspection",
+  "type": "object"
+}

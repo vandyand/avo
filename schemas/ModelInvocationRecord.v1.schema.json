@@ -1,0 +1,269 @@
+{
+  "$defs": {
+    "UsageRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact_bytes": {
+          "minimum": 0,
+          "title": "Artifact Bytes",
+          "type": "integer"
+        },
+        "authoritative_evaluations": {
+          "minimum": 0,
+          "title": "Authoritative Evaluations",
+          "type": "integer"
+        },
+        "model_cost_microusd": {
+          "minimum": 0,
+          "title": "Model Cost Microusd",
+          "type": "integer"
+        },
+        "model_input_tokens": {
+          "minimum": 0,
+          "title": "Model Input Tokens",
+          "type": "integer"
+        },
+        "model_output_tokens": {
+          "minimum": 0,
+          "title": "Model Output Tokens",
+          "type": "integer"
+        },
+        "sandbox_cpu_seconds": {
+          "minimum": 0,
+          "title": "Sandbox Cpu Seconds",
+          "type": "integer"
+        },
+        "sandbox_gpu_seconds": {
+          "minimum": 0,
+          "title": "Sandbox Gpu Seconds",
+          "type": "integer"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "tool_calls": {
+          "minimum": 0,
+          "title": "Tool Calls",
+          "type": "integer"
+        },
+        "variation_sessions": {
+          "minimum": 0,
+          "title": "Variation Sessions",
+          "type": "integer"
+        },
+        "wall_clock_seconds": {
+          "minimum": 0,
+          "title": "Wall Clock Seconds",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "wall_clock_seconds",
+        "model_input_tokens",
+        "model_output_tokens",
+        "model_cost_microusd",
+        "tool_calls",
+        "sandbox_cpu_seconds",
+        "sandbox_gpu_seconds",
+        "authoritative_evaluations",
+        "variation_sessions",
+        "artifact_bytes"
+      ],
+      "title": "UsageRecord",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "activity_id": {
+      "minLength": 1,
+      "title": "Activity Id",
+      "type": "string"
+    },
+    "completed_at": {
+      "format": "date-time",
+      "title": "Completed At",
+      "type": "string"
+    },
+    "cost_source": {
+      "enum": [
+        "provider",
+        "price_table",
+        "estimate"
+      ],
+      "title": "Cost Source",
+      "type": "string"
+    },
+    "developer_artifact_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Developer Artifact Digest",
+      "type": "string"
+    },
+    "endpoint_class": {
+      "minLength": 1,
+      "title": "Endpoint Class",
+      "type": "string"
+    },
+    "error_class": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Error Class"
+    },
+    "finish_reason": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Finish Reason"
+    },
+    "invocation_id": {
+      "minLength": 1,
+      "title": "Invocation Id",
+      "type": "string"
+    },
+    "parameters": {
+      "additionalProperties": true,
+      "title": "Parameters",
+      "type": "object"
+    },
+    "provider": {
+      "minLength": 1,
+      "title": "Provider",
+      "type": "string"
+    },
+    "provider_model_revision": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Provider Model Revision"
+    },
+    "provider_request_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Provider Request Id"
+    },
+    "provider_usage": {
+      "additionalProperties": {
+        "type": "integer"
+      },
+      "title": "Provider Usage",
+      "type": "object"
+    },
+    "request_artifact_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Request Artifact Digest",
+      "type": "string"
+    },
+    "requested_model": {
+      "minLength": 1,
+      "title": "Requested Model",
+      "type": "string"
+    },
+    "response_artifact_digest": {
+      "anyOf": [
+        {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Response Artifact Digest"
+    },
+    "retry_parent_invocation_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Retry Parent Invocation Id"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "session_id": {
+      "minLength": 1,
+      "title": "Session Id",
+      "type": "string"
+    },
+    "started_at": {
+      "format": "date-time",
+      "title": "Started At",
+      "type": "string"
+    },
+    "system_artifact_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "System Artifact Digest",
+      "type": "string"
+    },
+    "tool_schema_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Tool Schema Digest",
+      "type": "string"
+    },
+    "usage": {
+      "$ref": "#/$defs/UsageRecord"
+    },
+    "user_artifact_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "User Artifact Digest",
+      "type": "string"
+    }
+  },
+  "required": [
+    "invocation_id",
+    "activity_id",
+    "session_id",
+    "provider",
+    "endpoint_class",
+    "requested_model",
+    "system_artifact_digest",
+    "developer_artifact_digest",
+    "user_artifact_digest",
+    "tool_schema_digest",
+    "usage",
+    "request_artifact_digest",
+    "cost_source",
+    "started_at",
+    "completed_at"
+  ],
+  "title": "ModelInvocationRecord",
+  "type": "object"
+}

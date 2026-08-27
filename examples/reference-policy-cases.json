@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "cases": [
+    {
+      "name": "reference harness can read its workspace",
+      "request": {
+        "schema_version": 1,
+        "action": "read_file",
+        "resource": "run/reference/workspace/src/calculator.py",
+        "actor_id": "reference-harness",
+        "attributes": {}
+      },
+      "expected_outcome": "allow"
+    },
+    {
+      "name": "private evaluator remains inaccessible",
+      "request": {
+        "schema_version": 1,
+        "action": "read_file",
+        "resource": "private/admission/tests.json",
+        "actor_id": "reference-harness",
+        "attributes": {}
+      },
+      "expected_outcome": "deny"
+    },
+    {
+      "name": "unmatched operations fail closed",
+      "request": {
+        "schema_version": 1,
+        "action": "host.shell",
+        "resource": "host/root",
+        "actor_id": "reference-harness",
+        "attributes": {}
+      },
+      "expected_outcome": "deny"
+    },
+    {
+      "name": "control plane may perform admission",
+      "request": {
+        "schema_version": 1,
+        "action": "candidate.admit",
+        "resource": "run/reference/candidate/proposal",
+        "actor_id": "admission-controller",
+        "attributes": {}
+      },
+      "expected_outcome": "allow"
+    }
+  ]
+}

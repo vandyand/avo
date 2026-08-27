@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "case_id": "correctness-invariant",
+  "review_input": {
+    "schema_version": 1,
+    "candidate_id": "candidate-correctness-invariant",
+    "objective": "Preserve record ordering while making index lookup explicit.",
+    "patch": "diff --git a/src/index.py b/src/index.py\n+@@\n+ def insert(records, item):\n+     records.append(item)\n+     records.sort(key=lambda record: record['key'])\n+",
+    "changed_paths": ["src/index.py"],
+    "evaluation_summaries": [
+      {"schema_version": 1, "evaluation_id": "eval-ordering", "outcome": "passed", "summary": "Ordering invariant test passed", "evidence_refs": ["ev-tests"]}
+    ],
+    "evidence_catalog": [
+      {"schema_version": 1, "evidence_id": "ev-patch", "content_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "label": "Synthetic patch"},
+      {"schema_version": 1, "evidence_id": "ev-tests", "content_digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "label": "Ordering test result"}
+    ]
+  },
+  "observation": {
+    "schema_version": 1,
+    "kind": "review_json",
+    "payload": "{\"schema_version\":1,\"candidate_id\":\"candidate-correctness-invariant\",\"recommendation\":\"accept\",\"summary\":\"The ordering invariant is preserved.\",\"rationale\":\"The sort key remains explicit and the passing invariant test supports the changed behavior.\",\"findings\":[{\"schema_version\":1,\"category\":\"correctness\",\"severity\":\"low\",\"summary\":\"The ordering invariant remains explicit.\",\"rationale\":\"The insertion path sorts by the existing key and the invariant test passed.\",\"evidence_refs\":[\"ev-patch\",\"ev-tests\"],\"affected_paths\":[\"src/index.py\"],\"suggested_fix\":null}],\"missing_tests\":[],\"limitations\":[],\"confidence_micros\":900000}"
+  },
+  "expected_stage": "accepted",
+  "themes": [{"schema_version": 1, "theme_id": "correctness-invariant", "marker_groups": [["ordering", "invariant"], ["invariant", "sort"]], "required_finding_category": "correctness", "required_evidence_refs": ["ev-patch", "ev-tests"]}],
+  "forbidden_claims": [{"schema_version": 1, "claim_id": "unsupported-authority", "marker_groups": [["approved"], ["authorize"]]}],
+  "severity_expectations": [{"schema_version": 1, "category": "correctness", "evidence_refs": ["ev-patch"], "min_severity": "info", "max_severity": "medium"}]
+}

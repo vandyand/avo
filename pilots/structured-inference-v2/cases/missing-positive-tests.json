@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "case_id": "missing-positive-tests",
+  "review_input": {
+    "schema_version": 1,
+    "candidate_id": "candidate-missing-positive-tests",
+    "objective": "Add a bounded cache lookup branch with regression coverage.",
+    "patch": "diff --git a/src/cache.py b/src/cache.py\n+@@\n+ def lookup(key):\n+     if key in CACHE:\n+         return CACHE[key]\n+     return load(key)\n+",
+    "changed_paths": ["src/cache.py"],
+    "evaluation_summaries": [
+      {"schema_version": 1, "evaluation_id": "eval-existing-tests", "outcome": "passed", "summary": "Existing cache tests passed", "evidence_refs": ["ev-tests"]}
+    ],
+    "evidence_catalog": [
+      {"schema_version": 1, "evidence_id": "ev-patch", "content_digest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", "label": "Synthetic cache patch"},
+      {"schema_version": 1, "evidence_id": "ev-tests", "content_digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd", "label": "Existing test result"}
+    ]
+  },
+  "observation": {
+    "schema_version": 1,
+    "kind": "review_json",
+    "payload": "{\"schema_version\":1,\"candidate_id\":\"candidate-missing-positive-tests\",\"recommendation\":\"accept_with_follow_up\",\"summary\":\"The cache branch is bounded but needs a positive regression test.\",\"rationale\":\"Existing tests pass, while the newly added cache-hit behavior has no direct positive test.\",\"findings\":[{\"schema_version\":1,\"category\":\"testing\",\"severity\":\"medium\",\"summary\":\"The cache-hit branch lacks a positive test.\",\"rationale\":\"The patch adds a cache hit path, but supplied test evidence covers only existing behavior.\",\"evidence_refs\":[\"ev-patch\",\"ev-tests\"],\"affected_paths\":[\"src/cache.py\"],\"suggested_fix\":\"Add a test that returns a cached value for a known key.\"}],\"missing_tests\":[\"Add a positive cache-hit regression test.\"],\"limitations\":[],\"confidence_micros\":850000}"
+  },
+  "expected_stage": "accepted",
+  "themes": [{"schema_version": 1, "theme_id": "test-gap", "marker_groups": [["positive", "test"], ["regression", "cache-hit"]], "required_finding_category": "testing", "required_evidence_refs": ["ev-patch", "ev-tests"]}],
+  "forbidden_claims": [{"schema_version": 1, "claim_id": "all-covered", "marker_groups": [["all", "covered"], ["no", "test", "gap"]]}],
+  "severity_expectations": [{"schema_version": 1, "category": "testing", "evidence_refs": ["ev-patch"], "min_severity": "medium", "max_severity": "high"}]
+}

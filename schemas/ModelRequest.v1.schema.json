@@ -1,0 +1,56 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "developer_artifact_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Developer Artifact Digest",
+      "type": "string"
+    },
+    "invocation_id": {
+      "minLength": 1,
+      "title": "Invocation Id",
+      "type": "string"
+    },
+    "model": {
+      "minLength": 1,
+      "title": "Model",
+      "type": "string"
+    },
+    "parameters": {
+      "additionalProperties": true,
+      "title": "Parameters",
+      "type": "object"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "system_artifact_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "System Artifact Digest",
+      "type": "string"
+    },
+    "tool_schema_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Tool Schema Digest",
+      "type": "string"
+    },
+    "user_artifact_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "User Artifact Digest",
+      "type": "string"
+    }
+  },
+  "required": [
+    "invocation_id",
+    "model",
+    "system_artifact_digest",
+    "developer_artifact_digest",
+    "user_artifact_digest",
+    "tool_schema_digest"
+  ],
+  "title": "ModelRequest",
+  "type": "object"
+}

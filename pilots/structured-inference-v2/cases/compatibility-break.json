@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "case_id": "compatibility-break",
+  "review_input": {
+    "schema_version": 1,
+    "candidate_id": "candidate-compatibility-break",
+    "objective": "Rename the API parameter while preserving existing callers.",
+    "patch": "diff --git a/src/api.py b/src/api.py\n+@@\n+- def fetch(limit=20):\n++ def fetch(page_size=20):\n+     return query(page_size)\n+",
+    "changed_paths": ["src/api.py"],
+    "evaluation_summaries": [
+      {"schema_version": 1, "evaluation_id": "eval-api-tests", "outcome": "failed", "summary": "Legacy caller test failed on parameter name", "evidence_refs": ["ev-compat-tests"]}
+    ],
+    "evidence_catalog": [
+      {"schema_version": 1, "evidence_id": "ev-api-patch", "content_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111", "label": "Synthetic API patch"},
+      {"schema_version": 1, "evidence_id": "ev-compat-tests", "content_digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222", "label": "Legacy caller test result"}
+    ]
+  },
+  "observation": {
+    "schema_version": 1,
+    "kind": "review_json",
+    "payload": "{\"schema_version\":1,\"candidate_id\":\"candidate-compatibility-break\",\"recommendation\":\"revise\",\"summary\":\"The parameter rename breaks the legacy caller contract.\",\"rationale\":\"The failed legacy caller test is directly tied to the renamed parameter; an alias or coordinated migration is needed.\",\"findings\":[{\"schema_version\":1,\"category\":\"compatibility\",\"severity\":\"high\",\"summary\":\"The renamed parameter breaks existing callers.\",\"rationale\":\"A legacy caller still supplies the prior parameter name and the compatibility test fails.\",\"evidence_refs\":[\"ev-api-patch\",\"ev-compat-tests\"],\"affected_paths\":[\"src/api.py\"],\"suggested_fix\":\"Accept the old name as an alias during migration.\"}],\"missing_tests\":[],\"limitations\":[],\"confidence_micros\":920000}"
+  },
+  "expected_stage": "accepted",
+  "themes": [{"schema_version": 1, "theme_id": "caller-compatibility", "marker_groups": [["legacy", "caller"], ["parameter", "rename", "break"]], "required_finding_category": "compatibility", "required_evidence_refs": ["ev-api-patch", "ev-compat-tests"]}],
+  "forbidden_claims": [{"schema_version": 1, "claim_id": "backward-compatible", "marker_groups": [["backward", "compatible"], ["no", "breaking"]]}],
+  "severity_expectations": [{"schema_version": 1, "category": "compatibility", "evidence_refs": ["ev-compat-tests"], "min_severity": "high", "max_severity": "critical"}]
+}

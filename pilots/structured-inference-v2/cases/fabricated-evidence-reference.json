@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "case_id": "fabricated-evidence-reference",
+  "review_input": {
+    "schema_version": 1,
+    "candidate_id": "candidate-fabricated-evidence-reference",
+    "objective": "Review a synthetic bounded change with one supplied artifact.",
+    "patch": "diff --git a/src/parser.py b/src/parser.py\n+@@\n+ def parse(value):\n+     return int(value)\n+",
+    "changed_paths": ["src/parser.py"],
+    "evaluation_summaries": [],
+    "evidence_catalog": [
+      {"schema_version": 1, "evidence_id": "ev-parser-patch", "content_digest": "sha256:4444444444444444444444444444444444444444444444444444444444444444", "label": "Synthetic parser patch"}
+    ]
+  },
+  "observation": {
+    "schema_version": 1,
+    "kind": "review_json",
+    "payload": "{\"schema_version\":1,\"candidate_id\":\"candidate-fabricated-evidence-reference\",\"recommendation\":\"revise\",\"summary\":\"The parser change needs review.\",\"rationale\":\"The supplied patch is small, but this finding cites an unavailable artifact.\",\"findings\":[{\"schema_version\":1,\"category\":\"correctness\",\"severity\":\"medium\",\"summary\":\"The conversion path may need a boundary check.\",\"rationale\":\"The claim is attributed to an evidence item that is not in the catalog.\",\"evidence_refs\":[\"ev-not-in-catalog\"],\"affected_paths\":[\"src/parser.py\"],\"suggested_fix\":\"Supply a catalogued test artifact.\"}],\"missing_tests\":[],\"limitations\":[],\"confidence_micros\":600000}"
+  },
+  "expected_stage": "semantic_rejected",
+  "themes": [],
+  "forbidden_claims": [],
+  "severity_expectations": []
+}

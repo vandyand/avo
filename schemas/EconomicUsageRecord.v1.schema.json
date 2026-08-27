@@ -1,0 +1,105 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "billing_mode": {
+      "enum": [
+        "metered",
+        "subscription",
+        "local",
+        "unknown"
+      ],
+      "title": "Billing Mode",
+      "type": "string"
+    },
+    "charged_cost_microusd": {
+      "anyOf": [
+        {
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Charged Cost Microusd"
+    },
+    "cost_source": {
+      "enum": [
+        "provider",
+        "price_table",
+        "estimate",
+        "none"
+      ],
+      "title": "Cost Source",
+      "type": "string"
+    },
+    "counterfactual_cost_microusd": {
+      "anyOf": [
+        {
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Counterfactual Cost Microusd"
+    },
+    "price_table_digest": {
+      "anyOf": [
+        {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Price Table Digest"
+    },
+    "provider_equivalent_cost_microusd": {
+      "anyOf": [
+        {
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Provider Equivalent Cost Microusd"
+    },
+    "quota_details": {
+      "additionalProperties": {
+        "minimum": 0,
+        "type": "integer"
+      },
+      "title": "Quota Details",
+      "type": "object"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "token_details": {
+      "additionalProperties": {
+        "minimum": 0,
+        "type": "integer"
+      },
+      "title": "Token Details",
+      "type": "object"
+    }
+  },
+  "required": [
+    "billing_mode",
+    "cost_source"
+  ],
+  "title": "EconomicUsageRecord",
+  "type": "object"
+}

@@ -1,0 +1,343 @@
+{
+  "$defs": {
+    "AdvisoryAggregateScore": {
+      "additionalProperties": false,
+      "properties": {
+        "expected_stage_accuracy": {
+          "$ref": "#/$defs/IntegerMicrosMetric"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "semantic_validity": {
+          "$ref": "#/$defs/IntegerMicrosMetric"
+        },
+        "severity_calibration_accuracy": {
+          "$ref": "#/$defs/IntegerMicrosMetric"
+        },
+        "strict_schema_validity": {
+          "$ref": "#/$defs/IntegerMicrosMetric"
+        },
+        "theme_recall": {
+          "$ref": "#/$defs/IntegerMicrosMetric"
+        },
+        "unsupported_claim_rate": {
+          "$ref": "#/$defs/IntegerMicrosMetric"
+        }
+      },
+      "required": [
+        "expected_stage_accuracy",
+        "strict_schema_validity",
+        "semantic_validity",
+        "theme_recall",
+        "unsupported_claim_rate",
+        "severity_calibration_accuracy"
+      ],
+      "title": "AdvisoryAggregateScore",
+      "type": "object"
+    },
+    "AdvisoryCaseScore": {
+      "additionalProperties": false,
+      "description": "Detailed, deterministic result for a single corpus case.",
+      "properties": {
+        "actual_stage": {
+          "$ref": "#/$defs/AdvisoryEvaluationStage"
+        },
+        "case_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Case Id",
+          "type": "string"
+        },
+        "error_code": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Error Code"
+        },
+        "error_message": {
+          "anyOf": [
+            {
+              "maxLength": 2000,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Error Message"
+        },
+        "evidence": {
+          "items": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 64,
+          "title": "Evidence",
+          "type": "array"
+        },
+        "expected_stage": {
+          "$ref": "#/$defs/AdvisoryEvaluationStage"
+        },
+        "expected_stage_correct": {
+          "title": "Expected Stage Correct",
+          "type": "boolean"
+        },
+        "matched_forbidden_claim_ids": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 128,
+          "title": "Matched Forbidden Claim Ids",
+          "type": "array"
+        },
+        "matched_theme_ids": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 128,
+          "title": "Matched Theme Ids",
+          "type": "array"
+        },
+        "missing_theme_ids": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "maxItems": 128,
+          "title": "Missing Theme Ids",
+          "type": "array"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "semantic_valid": {
+          "title": "Semantic Valid",
+          "type": "boolean"
+        },
+        "severity_matches": {
+          "items": {
+            "$ref": "#/$defs/SeverityMatch"
+          },
+          "maxItems": 128,
+          "title": "Severity Matches",
+          "type": "array"
+        },
+        "strict_schema_valid": {
+          "title": "Strict Schema Valid",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "case_id",
+        "expected_stage",
+        "actual_stage",
+        "expected_stage_correct",
+        "strict_schema_valid",
+        "semantic_valid"
+      ],
+      "title": "AdvisoryCaseScore",
+      "type": "object"
+    },
+    "AdvisoryEvaluationStage": {
+      "enum": [
+        "accepted",
+        "parse_rejected",
+        "wire_rejected",
+        "semantic_rejected",
+        "provider_rejected"
+      ],
+      "title": "AdvisoryEvaluationStage",
+      "type": "string"
+    },
+    "AdvisoryFindingSeverity": {
+      "enum": [
+        "info",
+        "low",
+        "medium",
+        "high",
+        "critical"
+      ],
+      "title": "AdvisoryFindingSeverity",
+      "type": "string"
+    },
+    "IntegerMicrosMetric": {
+      "additionalProperties": false,
+      "description": "A ratio represented without floating-point arithmetic.",
+      "properties": {
+        "denominator": {
+          "minimum": 0,
+          "title": "Denominator",
+          "type": "integer"
+        },
+        "numerator": {
+          "minimum": 0,
+          "title": "Numerator",
+          "type": "integer"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "value_micros": {
+          "maximum": 1000000,
+          "minimum": 0,
+          "title": "Value Micros",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "numerator",
+        "denominator",
+        "value_micros"
+      ],
+      "title": "IntegerMicrosMetric",
+      "type": "object"
+    },
+    "SeverityMatch": {
+      "additionalProperties": false,
+      "properties": {
+        "error": {
+          "anyOf": [
+            {
+              "maxLength": 2000,
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Error"
+        },
+        "expectation_id": {
+          "minLength": 1,
+          "title": "Expectation Id",
+          "type": "string"
+        },
+        "finding_severity": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AdvisoryFindingSeverity"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "matched": {
+          "title": "Matched",
+          "type": "boolean"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "expectation_id",
+        "matched"
+      ],
+      "title": "SeverityMatch",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "aggregate": {
+      "$ref": "#/$defs/AdvisoryAggregateScore"
+    },
+    "case_scores": {
+      "items": {
+        "$ref": "#/$defs/AdvisoryCaseScore"
+      },
+      "maxItems": 10000,
+      "title": "Case Scores",
+      "type": "array"
+    },
+    "corpus_digest": {
+      "anyOf": [
+        {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Corpus Digest"
+    },
+    "evaluator_id": {
+      "const": "avo-advisory-evaluation",
+      "title": "Evaluator Id",
+      "type": "string"
+    },
+    "evaluator_version": {
+      "const": 1,
+      "title": "Evaluator Version",
+      "type": "integer"
+    },
+    "report_id": {
+      "minLength": 1,
+      "title": "Report Id",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "source_digests": {
+      "additionalProperties": {
+        "pattern": "^sha256:[0-9a-f]{64}$",
+        "type": "string"
+      },
+      "propertyNames": {
+        "minLength": 1
+      },
+      "title": "Source Digests",
+      "type": "object"
+    },
+    "wire_schema_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Wire Schema Digest",
+      "type": "string"
+    }
+  },
+  "required": [
+    "evaluator_id",
+    "evaluator_version",
+    "wire_schema_digest",
+    "report_id",
+    "case_scores",
+    "aggregate"
+  ],
+  "title": "AdvisoryEvaluationReport",
+  "type": "object"
+}

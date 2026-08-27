@@ -1,0 +1,283 @@
+{
+  "$defs": {
+    "PluginCapabilityManifest": {
+      "additionalProperties": false,
+      "properties": {
+        "architectures": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Architectures",
+          "type": "array"
+        },
+        "configuration_schema": {
+          "additionalProperties": true,
+          "title": "Configuration Schema",
+          "type": "object"
+        },
+        "health_check": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Health Check",
+          "type": "array"
+        },
+        "license": {
+          "minLength": 1,
+          "title": "License",
+          "type": "string"
+        },
+        "network_access": {
+          "enum": [
+            "none",
+            "control-plane-only",
+            "brokered"
+          ],
+          "title": "Network Access",
+          "type": "string"
+        },
+        "operating_systems": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Operating Systems",
+          "type": "array"
+        },
+        "package_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Package Digest",
+          "type": "string"
+        },
+        "plugin_id": {
+          "minLength": 1,
+          "title": "Plugin Id",
+          "type": "string"
+        },
+        "plugin_version": {
+          "minLength": 1,
+          "title": "Plugin Version",
+          "type": "string"
+        },
+        "required_executables": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Required Executables",
+          "type": "array"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "security_classification": {
+          "minLength": 1,
+          "title": "Security Classification",
+          "type": "string"
+        },
+        "side_effects": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Side Effects",
+          "type": "array"
+        },
+        "source_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Source Digest",
+          "type": "string"
+        },
+        "supported_contract_versions": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Supported Contract Versions",
+          "type": "array"
+        },
+        "supported_schema_versions": {
+          "items": {
+            "type": "integer"
+          },
+          "minItems": 1,
+          "title": "Supported Schema Versions",
+          "type": "array"
+        }
+      },
+      "required": [
+        "plugin_id",
+        "plugin_version",
+        "package_digest",
+        "source_digest",
+        "supported_contract_versions",
+        "supported_schema_versions",
+        "operating_systems",
+        "architectures",
+        "network_access",
+        "configuration_schema",
+        "security_classification",
+        "health_check",
+        "license"
+      ],
+      "title": "PluginCapabilityManifest",
+      "type": "object"
+    },
+    "SignedPluginManifest": {
+      "additionalProperties": false,
+      "properties": {
+        "manifest": {
+          "$ref": "#/$defs/PluginCapabilityManifest"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "signature_algorithm": {
+          "const": "hmac-sha256",
+          "title": "Signature Algorithm",
+          "type": "string"
+        },
+        "signature_hex": {
+          "minLength": 1,
+          "title": "Signature Hex",
+          "type": "string"
+        },
+        "signer_key_id": {
+          "minLength": 1,
+          "title": "Signer Key Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "manifest",
+        "signature_algorithm",
+        "signer_key_id",
+        "signature_hex"
+      ],
+      "title": "SignedPluginManifest",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "authentication_class": {
+      "enum": [
+        "subscription",
+        "api_key",
+        "none"
+      ],
+      "title": "Authentication Class",
+      "type": "string"
+    },
+    "completion_schema_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Completion Schema Digest",
+      "type": "string"
+    },
+    "configuration": {
+      "additionalProperties": true,
+      "title": "Configuration",
+      "type": "object"
+    },
+    "credential_profile_ref": {
+      "anyOf": [
+        {
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Credential Profile Ref"
+    },
+    "development_evaluator_id": {
+      "minLength": 1,
+      "title": "Development Evaluator Id",
+      "type": "string"
+    },
+    "max_turns": {
+      "exclusiveMinimum": 0,
+      "title": "Max Turns",
+      "type": "integer"
+    },
+    "max_wall_time_seconds": {
+      "exclusiveMinimum": 0,
+      "title": "Max Wall Time Seconds",
+      "type": "integer"
+    },
+    "permission_profile_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Permission Profile Digest",
+      "type": "string"
+    },
+    "plugin": {
+      "$ref": "#/$defs/SignedPluginManifest"
+    },
+    "price_table_digest": {
+      "anyOf": [
+        {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Price Table Digest"
+    },
+    "profile_id": {
+      "minLength": 1,
+      "title": "Profile Id",
+      "type": "string"
+    },
+    "requested_model": {
+      "minLength": 1,
+      "title": "Requested Model",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "transport": {
+      "enum": [
+        "sdk",
+        "subprocess",
+        "http"
+      ],
+      "title": "Transport",
+      "type": "string"
+    }
+  },
+  "required": [
+    "profile_id",
+    "plugin",
+    "transport",
+    "requested_model",
+    "authentication_class",
+    "permission_profile_digest",
+    "development_evaluator_id",
+    "max_wall_time_seconds",
+    "max_turns",
+    "completion_schema_digest"
+  ],
+  "title": "HarnessRuntimeProfile",
+  "type": "object"
+}

@@ -1,0 +1,61 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "actor_id": {
+      "minLength": 1,
+      "title": "Actor Id",
+      "type": "string"
+    },
+    "expires_at": {
+      "format": "date-time",
+      "title": "Expires At",
+      "type": "string"
+    },
+    "policy_decision_id": {
+      "minLength": 1,
+      "title": "Policy Decision Id",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "session_id": {
+      "minLength": 1,
+      "title": "Session Id",
+      "type": "string"
+    },
+    "token_id": {
+      "minLength": 1,
+      "title": "Token Id",
+      "type": "string"
+    },
+    "tools": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Tools",
+      "type": "array"
+    },
+    "workspace_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Workspace Digest",
+      "type": "string"
+    }
+  },
+  "required": [
+    "token_id",
+    "session_id",
+    "actor_id",
+    "workspace_digest",
+    "tools",
+    "policy_decision_id",
+    "expires_at"
+  ],
+  "title": "CapabilityClaims",
+  "type": "object"
+}

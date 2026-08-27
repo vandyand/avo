@@ -1,0 +1,57 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "admission_id": {
+      "minLength": 1,
+      "title": "Admission Id",
+      "type": "string"
+    },
+    "candidate_id": {
+      "minLength": 1,
+      "title": "Candidate Id",
+      "type": "string"
+    },
+    "final_state": {
+      "const": "completed",
+      "title": "Final State",
+      "type": "string"
+    },
+    "provenance_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Provenance Digest",
+      "type": "string"
+    },
+    "provenance_verified": {
+      "const": true,
+      "default": true,
+      "title": "Provenance Verified",
+      "type": "boolean"
+    },
+    "run_id": {
+      "minLength": 1,
+      "title": "Run Id",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "session_id": {
+      "minLength": 1,
+      "title": "Session Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "run_id",
+    "session_id",
+    "candidate_id",
+    "admission_id",
+    "final_state",
+    "provenance_digest"
+  ],
+  "title": "ReferenceScenarioResult",
+  "type": "object"
+}

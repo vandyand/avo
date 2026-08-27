@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "pilot_id": "structured-inference-v1",
+  "status": "preregistered",
+  "model": "openai/gpt-5.6-luna",
+  "reasoning_effort": "medium",
+  "maximum_provider_calls": 1,
+  "candidate_id": "fdf17fa5-e0e0-5b79-8d70-6abc6a0db7c7",
+  "candidate_patch_digest": "sha256:fc3ad61cf2f72ea37732664586e1c9c03207489a80bceee7d33a8d66cbfe1c73",
+  "hard_requirements": [
+    "The provider response validates against the exact strict wire schema before local defaults are applied.",
+    "The review passes candidate, changed-path, and evidence-reference semantic validation.",
+    "The review makes no policy, admission, mutation, or lifecycle decision.",
+    "The evidence bundle, invocation record, and result manifest are content-addressed and linked.",
+    "No critical or high-severity finding is accepted unless it is directly supported by supplied evidence."
+  ],
+  "quality_themes": [
+    {
+      "theme_id": "centralized_invariant",
+      "description": "The patch adds a real centralized RuntimeInspection invariant: completed status requires completion data."
+    },
+    {
+      "theme_id": "existing_downstream_guard",
+      "description": "A downstream campaign guard already rejected the inconsistent completed state, so the improvement is valuable but its practical impact is bounded."
+    },
+    {
+      "theme_id": "test_coverage_gap",
+      "description": "The added public test covers the invalid state but does not directly cover the valid completed-plus-completion state and representative non-completed states."
+    },
+    {
+      "theme_id": "schema_limitation",
+      "description": "The generated JSON Schema cannot express this cross-field model invariant, so schema-only consumers remain more permissive than Pydantic validation."
+    }
+  ],
+  "quality_pass_rule": "At least two distinct quality themes must be substantively present in the review, including at least one limitation or test-gap theme."
+}

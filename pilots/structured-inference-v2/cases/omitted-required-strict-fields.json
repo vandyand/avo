@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "case_id": "omitted-required-strict-fields",
+  "review_input": {
+    "schema_version": 1,
+    "candidate_id": "candidate-omitted-required-strict-fields",
+    "objective": "Review a synthetic change with a strictly shaped output.",
+    "patch": "diff --git a/src/normalize.py b/src/normalize.py\n+@@\n+ def normalize(value):\n+     return value.strip()\n+",
+    "changed_paths": ["src/normalize.py"],
+    "evaluation_summaries": [],
+    "evidence_catalog": [
+      {"schema_version": 1, "evidence_id": "ev-normalize-patch", "content_digest": "sha256:5555555555555555555555555555555555555555555555555555555555555555", "label": "Synthetic normalize patch"}
+    ]
+  },
+  "observation": {
+    "schema_version": 1,
+    "kind": "review_json",
+    "payload": "{\"schema_version\":1,\"candidate_id\":\"candidate-omitted-required-strict-fields\",\"recommendation\":\"accept\",\"summary\":\"The normalization change is bounded.\",\"findings\":[],\"missing_tests\":[],\"limitations\":[],\"confidence_micros\":700000}"
+  },
+  "expected_stage": "wire_rejected",
+  "themes": [],
+  "forbidden_claims": [],
+  "severity_expectations": []
+}

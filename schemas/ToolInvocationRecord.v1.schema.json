@@ -1,0 +1,207 @@
+{
+  "$defs": {
+    "UsageRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact_bytes": {
+          "minimum": 0,
+          "title": "Artifact Bytes",
+          "type": "integer"
+        },
+        "authoritative_evaluations": {
+          "minimum": 0,
+          "title": "Authoritative Evaluations",
+          "type": "integer"
+        },
+        "model_cost_microusd": {
+          "minimum": 0,
+          "title": "Model Cost Microusd",
+          "type": "integer"
+        },
+        "model_input_tokens": {
+          "minimum": 0,
+          "title": "Model Input Tokens",
+          "type": "integer"
+        },
+        "model_output_tokens": {
+          "minimum": 0,
+          "title": "Model Output Tokens",
+          "type": "integer"
+        },
+        "sandbox_cpu_seconds": {
+          "minimum": 0,
+          "title": "Sandbox Cpu Seconds",
+          "type": "integer"
+        },
+        "sandbox_gpu_seconds": {
+          "minimum": 0,
+          "title": "Sandbox Gpu Seconds",
+          "type": "integer"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "tool_calls": {
+          "minimum": 0,
+          "title": "Tool Calls",
+          "type": "integer"
+        },
+        "variation_sessions": {
+          "minimum": 0,
+          "title": "Variation Sessions",
+          "type": "integer"
+        },
+        "wall_clock_seconds": {
+          "minimum": 0,
+          "title": "Wall Clock Seconds",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "wall_clock_seconds",
+        "model_input_tokens",
+        "model_output_tokens",
+        "model_cost_microusd",
+        "tool_calls",
+        "sandbox_cpu_seconds",
+        "sandbox_gpu_seconds",
+        "authoritative_evaluations",
+        "variation_sessions",
+        "artifact_bytes"
+      ],
+      "title": "UsageRecord",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "activity_id": {
+      "minLength": 1,
+      "title": "Activity Id",
+      "type": "string"
+    },
+    "actor_id": {
+      "minLength": 1,
+      "title": "Actor Id",
+      "type": "string"
+    },
+    "arguments_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Arguments Digest",
+      "type": "string"
+    },
+    "completed_at": {
+      "format": "date-time",
+      "title": "Completed At",
+      "type": "string"
+    },
+    "error": {
+      "anyOf": [
+        {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Error"
+    },
+    "input_bytes": {
+      "minimum": 0,
+      "title": "Input Bytes",
+      "type": "integer"
+    },
+    "invocation_id": {
+      "minLength": 1,
+      "title": "Invocation Id",
+      "type": "string"
+    },
+    "outcome": {
+      "enum": [
+        "succeeded",
+        "failed",
+        "policy_blocked",
+        "timed_out"
+      ],
+      "title": "Outcome",
+      "type": "string"
+    },
+    "output_artifact_digests": {
+      "items": {
+        "pattern": "^sha256:[0-9a-f]{64}$",
+        "type": "string"
+      },
+      "title": "Output Artifact Digests",
+      "type": "array"
+    },
+    "output_bytes": {
+      "minimum": 0,
+      "title": "Output Bytes",
+      "type": "integer"
+    },
+    "policy_decision_id": {
+      "minLength": 1,
+      "title": "Policy Decision Id",
+      "type": "string"
+    },
+    "redaction_profile": {
+      "minLength": 1,
+      "title": "Redaction Profile",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "session_id": {
+      "minLength": 1,
+      "title": "Session Id",
+      "type": "string"
+    },
+    "started_at": {
+      "format": "date-time",
+      "title": "Started At",
+      "type": "string"
+    },
+    "tool_id": {
+      "minLength": 1,
+      "title": "Tool Id",
+      "type": "string"
+    },
+    "tool_version": {
+      "minLength": 1,
+      "title": "Tool Version",
+      "type": "string"
+    },
+    "usage": {
+      "$ref": "#/$defs/UsageRecord"
+    }
+  },
+  "required": [
+    "invocation_id",
+    "activity_id",
+    "session_id",
+    "actor_id",
+    "tool_id",
+    "tool_version",
+    "arguments_digest",
+    "policy_decision_id",
+    "outcome",
+    "output_artifact_digests",
+    "input_bytes",
+    "output_bytes",
+    "usage",
+    "redaction_profile",
+    "started_at",
+    "completed_at"
+  ],
+  "title": "ToolInvocationRecord",
+  "type": "object"
+}

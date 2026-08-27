@@ -1,0 +1,180 @@
+{
+  "$defs": {
+    "UsageRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact_bytes": {
+          "minimum": 0,
+          "title": "Artifact Bytes",
+          "type": "integer"
+        },
+        "authoritative_evaluations": {
+          "minimum": 0,
+          "title": "Authoritative Evaluations",
+          "type": "integer"
+        },
+        "model_cost_microusd": {
+          "minimum": 0,
+          "title": "Model Cost Microusd",
+          "type": "integer"
+        },
+        "model_input_tokens": {
+          "minimum": 0,
+          "title": "Model Input Tokens",
+          "type": "integer"
+        },
+        "model_output_tokens": {
+          "minimum": 0,
+          "title": "Model Output Tokens",
+          "type": "integer"
+        },
+        "sandbox_cpu_seconds": {
+          "minimum": 0,
+          "title": "Sandbox Cpu Seconds",
+          "type": "integer"
+        },
+        "sandbox_gpu_seconds": {
+          "minimum": 0,
+          "title": "Sandbox Gpu Seconds",
+          "type": "integer"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "tool_calls": {
+          "minimum": 0,
+          "title": "Tool Calls",
+          "type": "integer"
+        },
+        "variation_sessions": {
+          "minimum": 0,
+          "title": "Variation Sessions",
+          "type": "integer"
+        },
+        "wall_clock_seconds": {
+          "minimum": 0,
+          "title": "Wall Clock Seconds",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "wall_clock_seconds",
+        "model_input_tokens",
+        "model_output_tokens",
+        "model_cost_microusd",
+        "tool_calls",
+        "sandbox_cpu_seconds",
+        "sandbox_gpu_seconds",
+        "authoritative_evaluations",
+        "variation_sessions",
+        "artifact_bytes"
+      ],
+      "title": "UsageRecord",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "action": {
+      "enum": [
+        "tool",
+        "propose",
+        "stop"
+      ],
+      "title": "Action",
+      "type": "string"
+    },
+    "arguments": {
+      "anyOf": [
+        {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Arguments"
+    },
+    "proposed_patch_digest": {
+      "anyOf": [
+        {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Proposed Patch Digest"
+    },
+    "proposed_workspace_digest": {
+      "anyOf": [
+        {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Proposed Workspace Digest"
+    },
+    "rationale": {
+      "minLength": 1,
+      "title": "Rationale",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "stop_reason": {
+      "anyOf": [
+        {
+          "enum": [
+            "exhausted",
+            "policy_blocked",
+            "cancelled",
+            "failed"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Stop Reason"
+    },
+    "tool_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Tool Id"
+    },
+    "usage": {
+      "$ref": "#/$defs/UsageRecord"
+    }
+  },
+  "required": [
+    "action",
+    "rationale"
+  ],
+  "title": "AgentTurn",
+  "type": "object"
+}

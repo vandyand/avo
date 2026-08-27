@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "case_id": "insufficient-evidence",
+  "review_input": {
+    "schema_version": 1,
+    "candidate_id": "candidate-insufficient-evidence",
+    "objective": "Adjust synthetic output formatting without changing behavior.",
+    "patch": "diff --git a/src/format.py b/src/format.py\n+@@\n+- return value\n++ return f'{value}'\n+",
+    "changed_paths": ["src/format.py"],
+    "evaluation_summaries": [],
+    "evidence_catalog": [
+      {"schema_version": 1, "evidence_id": "ev-format-patch", "content_digest": "sha256:3333333333333333333333333333333333333333333333333333333333333333", "label": "Synthetic formatting patch"}
+    ]
+  },
+  "observation": {
+    "schema_version": 1,
+    "kind": "review_json",
+    "payload": "{\"schema_version\":1,\"candidate_id\":\"candidate-insufficient-evidence\",\"recommendation\":\"no_conclusion\",\"summary\":\"There is insufficient evidence to conclude whether the formatting change is safe.\",\"rationale\":\"No evaluator summaries or behavior-level evidence were supplied, so the review cannot establish impact.\",\"findings\":[],\"missing_tests\":[\"Run behavior-preservation tests for formatted output.\"],\"limitations\":[\"No evaluator result was supplied.\",\"Only the patch text is available.\"],\"confidence_micros\":250000}"
+  },
+  "expected_stage": "accepted",
+  "themes": [{"schema_version": 1, "theme_id": "evidence-limitation", "marker_groups": [["insufficient", "evidence"], ["no", "evaluator"]]}],
+  "forbidden_claims": [{"schema_version": 1, "claim_id": "invented-test-result", "marker_groups": [["invented", "fabricated", "verified"]]}],
+  "severity_expectations": []
+}

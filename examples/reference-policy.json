@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "policy_engine_id": "builtin-v1",
+  "rules": [
+    {
+      "schema_version": 1,
+      "rule_id": "deny-private-evaluator",
+      "effect": "deny",
+      "actors": ["*"],
+      "actions": ["read_file", "search_workspace"],
+      "resource_patterns": ["private*", "evaluator/admission*", "evaluator/audit*"],
+      "reason_code": "PRIVATE_EVALUATOR_DENIED",
+      "obligations": []
+    },
+    {
+      "schema_version": 1,
+      "rule_id": "allow-reference-workspace-tools",
+      "effect": "allow",
+      "actors": ["reference-harness"],
+      "actions": ["read_file", "search_workspace", "apply_patch", "inspect_diff", "run_development_evaluator", "retrieve_lineage"],
+      "resource_patterns": ["run/*/workspace/*"],
+      "reason_code": "REFERENCE_TOOL_ALLOWED",
+      "obligations": []
+    },
+    {
+      "schema_version": 1,
+      "rule_id": "allow-authoritative-admission",
+      "effect": "allow",
+      "actors": ["admission-controller"],
+      "actions": ["candidate.evaluate", "candidate.admit"],
+      "resource_patterns": ["run/*/candidate/*"],
+      "reason_code": "CONTROL_PLANE_ADMISSION_ALLOWED",
+      "obligations": []
+    }
+  ]
+}

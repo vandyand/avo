@@ -1,0 +1,99 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "attempt_id": {
+      "minLength": 1,
+      "title": "Attempt Id",
+      "type": "string"
+    },
+    "completed_at": {
+      "format": "date-time",
+      "title": "Completed At",
+      "type": "string"
+    },
+    "development_evaluation_ids": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "title": "Development Evaluation Ids",
+      "type": "array"
+    },
+    "outcome": {
+      "enum": [
+        "improved",
+        "no_improvement",
+        "invalid",
+        "errored",
+        "abandoned",
+        "policy_blocked"
+      ],
+      "title": "Outcome",
+      "type": "string"
+    },
+    "parent_workspace_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Parent Workspace Digest",
+      "type": "string"
+    },
+    "patch_digest": {
+      "anyOf": [
+        {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Patch Digest"
+    },
+    "result_workspace_digest": {
+      "anyOf": [
+        {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Result Workspace Digest"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "session_id": {
+      "minLength": 1,
+      "title": "Session Id",
+      "type": "string"
+    },
+    "started_at": {
+      "format": "date-time",
+      "title": "Started At",
+      "type": "string"
+    },
+    "tool_trace_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Tool Trace Digest",
+      "type": "string"
+    }
+  },
+  "required": [
+    "attempt_id",
+    "session_id",
+    "parent_workspace_digest",
+    "development_evaluation_ids",
+    "tool_trace_digest",
+    "outcome",
+    "started_at",
+    "completed_at"
+  ],
+  "title": "VariationAttemptRecord",
+  "type": "object"
+}

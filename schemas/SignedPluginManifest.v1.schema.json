@@ -1,0 +1,171 @@
+{
+  "$defs": {
+    "PluginCapabilityManifest": {
+      "additionalProperties": false,
+      "properties": {
+        "architectures": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Architectures",
+          "type": "array"
+        },
+        "configuration_schema": {
+          "additionalProperties": true,
+          "title": "Configuration Schema",
+          "type": "object"
+        },
+        "health_check": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Health Check",
+          "type": "array"
+        },
+        "license": {
+          "minLength": 1,
+          "title": "License",
+          "type": "string"
+        },
+        "network_access": {
+          "enum": [
+            "none",
+            "control-plane-only",
+            "brokered"
+          ],
+          "title": "Network Access",
+          "type": "string"
+        },
+        "operating_systems": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Operating Systems",
+          "type": "array"
+        },
+        "package_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Package Digest",
+          "type": "string"
+        },
+        "plugin_id": {
+          "minLength": 1,
+          "title": "Plugin Id",
+          "type": "string"
+        },
+        "plugin_version": {
+          "minLength": 1,
+          "title": "Plugin Version",
+          "type": "string"
+        },
+        "required_executables": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Required Executables",
+          "type": "array"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "security_classification": {
+          "minLength": 1,
+          "title": "Security Classification",
+          "type": "string"
+        },
+        "side_effects": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Side Effects",
+          "type": "array"
+        },
+        "source_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Source Digest",
+          "type": "string"
+        },
+        "supported_contract_versions": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Supported Contract Versions",
+          "type": "array"
+        },
+        "supported_schema_versions": {
+          "items": {
+            "type": "integer"
+          },
+          "minItems": 1,
+          "title": "Supported Schema Versions",
+          "type": "array"
+        }
+      },
+      "required": [
+        "plugin_id",
+        "plugin_version",
+        "package_digest",
+        "source_digest",
+        "supported_contract_versions",
+        "supported_schema_versions",
+        "operating_systems",
+        "architectures",
+        "network_access",
+        "configuration_schema",
+        "security_classification",
+        "health_check",
+        "license"
+      ],
+      "title": "PluginCapabilityManifest",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "manifest": {
+      "$ref": "#/$defs/PluginCapabilityManifest"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "signature_algorithm": {
+      "const": "hmac-sha256",
+      "title": "Signature Algorithm",
+      "type": "string"
+    },
+    "signature_hex": {
+      "minLength": 1,
+      "title": "Signature Hex",
+      "type": "string"
+    },
+    "signer_key_id": {
+      "minLength": 1,
+      "title": "Signer Key Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "manifest",
+    "signature_algorithm",
+    "signer_key_id",
+    "signature_hex"
+  ],
+  "title": "SignedPluginManifest",
+  "type": "object"
+}

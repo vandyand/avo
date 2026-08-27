@@ -1,0 +1,51 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Digest",
+      "type": "string"
+    },
+    "media_type": {
+      "minLength": 1,
+      "title": "Media Type",
+      "type": "string"
+    },
+    "role": {
+      "minLength": 1,
+      "title": "Role",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "size_bytes": {
+      "minimum": 0,
+      "title": "Size Bytes",
+      "type": "integer"
+    },
+    "verified_at": {
+      "format": "date-time",
+      "title": "Verified At",
+      "type": "string"
+    }
+  },
+  "required": [
+    "digest",
+    "size_bytes",
+    "media_type",
+    "role",
+    "created_at",
+    "verified_at"
+  ],
+  "title": "ArtifactMetadataProjection",
+  "type": "object"
+}

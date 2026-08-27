@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "case_id": "truncated-output",
+  "review_input": {
+    "schema_version": 1,
+    "candidate_id": "candidate-truncated-output",
+    "objective": "Review a synthetic bounded change.",
+    "patch": "diff --git a/src/constant.py b/src/constant.py\n+@@\n+ VALUE = 3\n+",
+    "changed_paths": ["src/constant.py"],
+    "evaluation_summaries": [],
+    "evidence_catalog": [
+      {"schema_version": 1, "evidence_id": "ev-constant-patch", "content_digest": "sha256:8888888888888888888888888888888888888888888888888888888888888888", "label": "Synthetic constant patch"}
+    ]
+  },
+  "observation": {
+    "schema_version": 1,
+    "kind": "truncated",
+    "payload": "{\"schema_version\":1,\"candidate_id\":\"candidate-truncated-output\",\"recommendation\":\"accept\",\"summary\":\"The change"
+  },
+  "expected_stage": "provider_rejected",
+  "themes": [],
+  "forbidden_claims": [],
+  "severity_expectations": []
+}

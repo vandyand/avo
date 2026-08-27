@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "case_id": "path-traversal-guard",
+  "review_input": {
+    "schema_version": 1,
+    "candidate_id": "candidate-path-traversal-guard",
+    "objective": "Reject unsafe archive member paths before extraction.",
+    "patch": "diff --git a/src/archive.py b/src/archive.py\n+@@\n+ def safe_member(name):\n+     path = PurePosixPath(name)\n+     return not path.is_absolute() and '..' not in path.parts\n+",
+    "changed_paths": ["src/archive.py"],
+    "evaluation_summaries": [
+      {"schema_version": 1, "evaluation_id": "eval-archive-security", "outcome": "passed", "summary": "Traversal rejection checks passed", "evidence_refs": ["ev-security-tests"]}
+    ],
+    "evidence_catalog": [
+      {"schema_version": 1, "evidence_id": "ev-security-tests", "content_digest": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", "label": "Traversal test result"},
+      {"schema_version": 1, "evidence_id": "ev-archive-patch", "content_digest": "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", "label": "Synthetic archive patch"}
+    ]
+  },
+  "observation": {
+    "schema_version": 1,
+    "kind": "review_json",
+    "payload": "{\"schema_version\":1,\"candidate_id\":\"candidate-path-traversal-guard\",\"recommendation\":\"accept\",\"summary\":\"The traversal guard rejects absolute and parent-directory paths.\",\"rationale\":\"The changed path check is bounded to normalized POSIX members and the traversal tests pass.\",\"findings\":[{\"schema_version\":1,\"category\":\"security\",\"severity\":\"high\",\"summary\":\"The extraction boundary rejects path traversal.\",\"rationale\":\"Absolute members and parent-directory segments are rejected before extraction, as shown by the security test evidence.\",\"evidence_refs\":[\"ev-archive-patch\",\"ev-security-tests\"],\"affected_paths\":[\"src/archive.py\"],\"suggested_fix\":null}],\"missing_tests\":[],\"limitations\":[],\"confidence_micros\":950000}"
+  },
+  "expected_stage": "accepted",
+  "themes": [{"schema_version": 1, "theme_id": "traversal-defense", "marker_groups": [["path", "traversal"], ["parent-directory", "absolute"]], "required_finding_category": "security", "required_evidence_refs": ["ev-archive-patch", "ev-security-tests"]}],
+  "forbidden_claims": [{"schema_version": 1, "claim_id": "zero-risk", "marker_groups": [["zero", "risk"], ["completely", "secure"]]}],
+  "severity_expectations": [{"schema_version": 1, "category": "security", "evidence_refs": ["ev-security-tests"], "min_severity": "high", "max_severity": "critical"}]
+}

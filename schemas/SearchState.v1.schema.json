@@ -1,0 +1,268 @@
+{
+  "$defs": {
+    "BudgetSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact_bytes": {
+          "minimum": 0,
+          "title": "Artifact Bytes",
+          "type": "integer"
+        },
+        "authoritative_evaluations": {
+          "minimum": 0,
+          "title": "Authoritative Evaluations",
+          "type": "integer"
+        },
+        "model_cost_microusd": {
+          "minimum": 0,
+          "title": "Model Cost Microusd",
+          "type": "integer"
+        },
+        "model_input_tokens": {
+          "minimum": 0,
+          "title": "Model Input Tokens",
+          "type": "integer"
+        },
+        "model_output_tokens": {
+          "minimum": 0,
+          "title": "Model Output Tokens",
+          "type": "integer"
+        },
+        "sandbox_cpu_seconds": {
+          "minimum": 0,
+          "title": "Sandbox Cpu Seconds",
+          "type": "integer"
+        },
+        "sandbox_gpu_seconds": {
+          "minimum": 0,
+          "title": "Sandbox Gpu Seconds",
+          "type": "integer"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "tool_calls": {
+          "minimum": 0,
+          "title": "Tool Calls",
+          "type": "integer"
+        },
+        "variation_sessions": {
+          "minimum": 0,
+          "title": "Variation Sessions",
+          "type": "integer"
+        },
+        "wall_clock_seconds": {
+          "minimum": 0,
+          "title": "Wall Clock Seconds",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "wall_clock_seconds",
+        "model_input_tokens",
+        "model_output_tokens",
+        "model_cost_microusd",
+        "tool_calls",
+        "sandbox_cpu_seconds",
+        "sandbox_gpu_seconds",
+        "authoritative_evaluations",
+        "variation_sessions",
+        "artifact_bytes"
+      ],
+      "title": "BudgetSpec",
+      "type": "object"
+    },
+    "SearchCandidate": {
+      "additionalProperties": false,
+      "properties": {
+        "candidate_id": {
+          "minLength": 1,
+          "title": "Candidate Id",
+          "type": "string"
+        },
+        "lineage_sequence": {
+          "minimum": 0,
+          "title": "Lineage Sequence",
+          "type": "integer"
+        },
+        "novelty": {
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "type": "string"
+            }
+          ],
+          "title": "Novelty"
+        },
+        "quality": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "type": "string"
+            }
+          ],
+          "title": "Quality"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "selection_count": {
+          "minimum": 0,
+          "title": "Selection Count",
+          "type": "integer"
+        },
+        "workspace_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Workspace Digest",
+          "type": "string"
+        }
+      },
+      "required": [
+        "candidate_id",
+        "workspace_digest",
+        "lineage_sequence",
+        "quality",
+        "novelty",
+        "selection_count"
+      ],
+      "title": "SearchCandidate",
+      "type": "object"
+    },
+    "UsageRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact_bytes": {
+          "minimum": 0,
+          "title": "Artifact Bytes",
+          "type": "integer"
+        },
+        "authoritative_evaluations": {
+          "minimum": 0,
+          "title": "Authoritative Evaluations",
+          "type": "integer"
+        },
+        "model_cost_microusd": {
+          "minimum": 0,
+          "title": "Model Cost Microusd",
+          "type": "integer"
+        },
+        "model_input_tokens": {
+          "minimum": 0,
+          "title": "Model Input Tokens",
+          "type": "integer"
+        },
+        "model_output_tokens": {
+          "minimum": 0,
+          "title": "Model Output Tokens",
+          "type": "integer"
+        },
+        "sandbox_cpu_seconds": {
+          "minimum": 0,
+          "title": "Sandbox Cpu Seconds",
+          "type": "integer"
+        },
+        "sandbox_gpu_seconds": {
+          "minimum": 0,
+          "title": "Sandbox Gpu Seconds",
+          "type": "integer"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "tool_calls": {
+          "minimum": 0,
+          "title": "Tool Calls",
+          "type": "integer"
+        },
+        "variation_sessions": {
+          "minimum": 0,
+          "title": "Variation Sessions",
+          "type": "integer"
+        },
+        "wall_clock_seconds": {
+          "minimum": 0,
+          "title": "Wall Clock Seconds",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "wall_clock_seconds",
+        "model_input_tokens",
+        "model_output_tokens",
+        "model_cost_microusd",
+        "tool_calls",
+        "sandbox_cpu_seconds",
+        "sandbox_gpu_seconds",
+        "authoritative_evaluations",
+        "variation_sessions",
+        "artifact_bytes"
+      ],
+      "title": "UsageRecord",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "budget_limit": {
+      "$ref": "#/$defs/BudgetSpec"
+    },
+    "budget_used": {
+      "$ref": "#/$defs/UsageRecord"
+    },
+    "candidates": {
+      "items": {
+        "$ref": "#/$defs/SearchCandidate"
+      },
+      "minItems": 1,
+      "title": "Candidates",
+      "type": "array"
+    },
+    "champion_id": {
+      "minLength": 1,
+      "title": "Champion Id",
+      "type": "string"
+    },
+    "next_session_number": {
+      "minimum": 1,
+      "title": "Next Session Number",
+      "type": "integer"
+    },
+    "run_id": {
+      "minLength": 1,
+      "title": "Run Id",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "run_id",
+    "champion_id",
+    "candidates",
+    "budget_limit",
+    "budget_used",
+    "next_session_number"
+  ],
+  "title": "SearchState",
+  "type": "object"
+}

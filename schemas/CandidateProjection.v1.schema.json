@@ -1,0 +1,79 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "admission": {
+      "anyOf": [
+        {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Admission"
+    },
+    "candidate_id": {
+      "minLength": 1,
+      "title": "Candidate Id",
+      "type": "string"
+    },
+    "evaluations": {
+      "items": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "title": "Evaluations",
+      "type": "array"
+    },
+    "manifest": {
+      "additionalProperties": true,
+      "title": "Manifest",
+      "type": "object"
+    },
+    "policy_decisions": {
+      "items": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "title": "Policy Decisions",
+      "type": "array"
+    },
+    "reviews": {
+      "items": {
+        "additionalProperties": true,
+        "type": "object"
+      },
+      "title": "Reviews",
+      "type": "array"
+    },
+    "run_id": {
+      "minLength": 1,
+      "title": "Run Id",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "state": {
+      "minLength": 1,
+      "title": "State",
+      "type": "string"
+    }
+  },
+  "required": [
+    "candidate_id",
+    "run_id",
+    "state",
+    "manifest",
+    "evaluations",
+    "admission",
+    "policy_decisions",
+    "reviews"
+  ],
+  "title": "CandidateProjection",
+  "type": "object"
+}

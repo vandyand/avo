@@ -1,0 +1,199 @@
+{
+  "$defs": {
+    "ArtifactRef": {
+      "additionalProperties": false,
+      "properties": {
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Digest",
+          "type": "string"
+        },
+        "media_type": {
+          "minLength": 1,
+          "title": "Media Type",
+          "type": "string"
+        },
+        "role": {
+          "minLength": 1,
+          "title": "Role",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "size_bytes": {
+          "minimum": 0,
+          "title": "Size Bytes",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "digest",
+        "size_bytes",
+        "media_type",
+        "role",
+        "created_at"
+      ],
+      "title": "ArtifactRef",
+      "type": "object"
+    },
+    "VersionedComponentRef": {
+      "additionalProperties": false,
+      "properties": {
+        "capability_manifest_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Capability Manifest Digest",
+          "type": "string"
+        },
+        "component_id": {
+          "minLength": 1,
+          "title": "Component Id",
+          "type": "string"
+        },
+        "component_version": {
+          "minLength": 1,
+          "title": "Component Version",
+          "type": "string"
+        },
+        "package_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Package Digest",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "component_id",
+        "component_version",
+        "package_digest",
+        "capability_manifest_digest"
+      ],
+      "title": "VersionedComponentRef",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "attempt_index_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Attempt Index Digest",
+      "type": "string"
+    },
+    "base_workspace_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Base Workspace Digest",
+      "type": "string"
+    },
+    "candidate_id": {
+      "minLength": 1,
+      "title": "Candidate Id",
+      "type": "string"
+    },
+    "context_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Context Digest",
+      "type": "string"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "execution_profile_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Execution Profile Digest",
+      "type": "string"
+    },
+    "harness_ref": {
+      "$ref": "#/$defs/VersionedComponentRef"
+    },
+    "model_config_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Model Config Digest",
+      "type": "string"
+    },
+    "parent_candidate_ids": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "title": "Parent Candidate Ids",
+      "type": "array"
+    },
+    "patch_artifact": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ArtifactRef"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "policy_bundle_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Policy Bundle Digest",
+      "type": "string"
+    },
+    "result_artifacts": {
+      "items": {
+        "$ref": "#/$defs/ArtifactRef"
+      },
+      "title": "Result Artifacts",
+      "type": "array"
+    },
+    "run_id": {
+      "minLength": 1,
+      "title": "Run Id",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "session_id": {
+      "minLength": 1,
+      "title": "Session Id",
+      "type": "string"
+    },
+    "source_tree_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Source Tree Digest",
+      "type": "string"
+    }
+  },
+  "required": [
+    "candidate_id",
+    "run_id",
+    "session_id",
+    "parent_candidate_ids",
+    "base_workspace_digest",
+    "source_tree_digest",
+    "result_artifacts",
+    "harness_ref",
+    "model_config_digest",
+    "context_digest",
+    "attempt_index_digest",
+    "execution_profile_digest",
+    "policy_bundle_digest",
+    "created_at"
+  ],
+  "title": "CandidateManifest",
+  "type": "object"
+}

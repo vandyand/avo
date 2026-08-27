@@ -1,0 +1,143 @@
+{
+  "$defs": {
+    "CandidateRef": {
+      "additionalProperties": false,
+      "properties": {
+        "candidate_id": {
+          "minLength": 1,
+          "title": "Candidate Id",
+          "type": "string"
+        },
+        "lineage_sequence": {
+          "minimum": 0,
+          "title": "Lineage Sequence",
+          "type": "integer"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "source_tree_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Source Tree Digest",
+          "type": "string"
+        }
+      },
+      "required": [
+        "candidate_id",
+        "source_tree_digest",
+        "lineage_sequence"
+      ],
+      "title": "CandidateRef",
+      "type": "object"
+    },
+    "VersionedComponentRef": {
+      "additionalProperties": false,
+      "properties": {
+        "capability_manifest_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Capability Manifest Digest",
+          "type": "string"
+        },
+        "component_id": {
+          "minLength": 1,
+          "title": "Component Id",
+          "type": "string"
+        },
+        "component_version": {
+          "minLength": 1,
+          "title": "Component Version",
+          "type": "string"
+        },
+        "package_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Package Digest",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "component_id",
+        "component_version",
+        "package_digest",
+        "capability_manifest_digest"
+      ],
+      "title": "VersionedComponentRef",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "budget_reservation_id": {
+      "minLength": 1,
+      "title": "Budget Reservation Id",
+      "type": "string"
+    },
+    "champion": {
+      "$ref": "#/$defs/CandidateRef"
+    },
+    "development_evaluator_refs": {
+      "items": {
+        "$ref": "#/$defs/VersionedComponentRef"
+      },
+      "minItems": 1,
+      "title": "Development Evaluator Refs",
+      "type": "array"
+    },
+    "initial_context_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Initial Context Digest",
+      "type": "string"
+    },
+    "lineage_index_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Lineage Index Digest",
+      "type": "string"
+    },
+    "random_seed": {
+      "title": "Random Seed",
+      "type": "integer"
+    },
+    "run_id": {
+      "minLength": 1,
+      "title": "Run Id",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "session_id": {
+      "minLength": 1,
+      "title": "Session Id",
+      "type": "string"
+    },
+    "tool_capability_token": {
+      "minLength": 1,
+      "title": "Tool Capability Token",
+      "type": "string"
+    }
+  },
+  "required": [
+    "session_id",
+    "run_id",
+    "champion",
+    "lineage_index_digest",
+    "initial_context_digest",
+    "tool_capability_token",
+    "development_evaluator_refs",
+    "budget_reservation_id",
+    "random_seed"
+  ],
+  "title": "VariationSessionRequest",
+  "type": "object"
+}

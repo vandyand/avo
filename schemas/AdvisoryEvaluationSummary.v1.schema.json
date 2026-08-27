@@ -1,0 +1,53 @@
+{
+  "additionalProperties": false,
+  "description": "A bounded, already-produced evaluator summary supplied as context.",
+  "properties": {
+    "evaluation_id": {
+      "maxLength": 128,
+      "minLength": 1,
+      "title": "Evaluation Id",
+      "type": "string"
+    },
+    "evidence_refs": {
+      "items": {
+        "maxLength": 128,
+        "minLength": 1,
+        "type": "string"
+      },
+      "maxItems": 32,
+      "title": "Evidence Refs",
+      "type": "array"
+    },
+    "outcome": {
+      "enum": [
+        "passed",
+        "failed",
+        "errored",
+        "timed_out",
+        "policy_blocked",
+        "invalid_report"
+      ],
+      "title": "Outcome",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "summary": {
+      "maxLength": 4000,
+      "minLength": 1,
+      "title": "Summary",
+      "type": "string"
+    }
+  },
+  "required": [
+    "evaluation_id",
+    "outcome",
+    "summary"
+  ],
+  "title": "AdvisoryEvaluationSummary",
+  "type": "object"
+}

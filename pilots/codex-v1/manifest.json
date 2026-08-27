@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "pilot_id": "codex-v1",
+  "purpose": "Codex-only calibration before the preregistered paired provider comparison",
+  "runtime_profile": "codex-live-wsl-v6",
+  "repetitions_per_task": 1,
+  "task_order": [
+    "rolling-window",
+    "identifier-boundary",
+    "integer-allocation"
+  ],
+  "methodology": {
+    "candidate_receives": [
+      "seed workspace",
+      "stored task prompt",
+      "public tests"
+    ],
+    "candidate_cannot_read": [
+      "hidden evaluator",
+      "other task fixtures",
+      "AVO state and artifacts"
+    ],
+    "network": "denied",
+    "admission": "independent hidden evaluator after completion",
+    "future_comparison": "Reuse byte-identical seeds, prompts, public tests, hidden evaluators, and limits."
+  }
+}
+

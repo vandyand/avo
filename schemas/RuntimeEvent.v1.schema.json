@@ -1,0 +1,75 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "event_type": {
+      "enum": [
+        "session_started",
+        "message",
+        "tool_started",
+        "tool_completed",
+        "usage",
+        "checkpoint",
+        "completion",
+        "error"
+      ],
+      "title": "Event Type",
+      "type": "string"
+    },
+    "invocation_id": {
+      "minLength": 1,
+      "title": "Invocation Id",
+      "type": "string"
+    },
+    "occurred_at": {
+      "format": "date-time",
+      "title": "Occurred At",
+      "type": "string"
+    },
+    "payload_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Payload Digest",
+      "type": "string"
+    },
+    "provider_event_type": {
+      "anyOf": [
+        {
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Provider Event Type"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "sequence": {
+      "exclusiveMinimum": 0,
+      "title": "Sequence",
+      "type": "integer"
+    },
+    "usage_delta": {
+      "additionalProperties": {
+        "minimum": 0,
+        "type": "integer"
+      },
+      "title": "Usage Delta",
+      "type": "object"
+    }
+  },
+  "required": [
+    "invocation_id",
+    "sequence",
+    "event_type",
+    "payload_digest",
+    "occurred_at"
+  ],
+  "title": "RuntimeEvent",
+  "type": "object"
+}

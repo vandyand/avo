@@ -1,0 +1,201 @@
+{
+  "$defs": {
+    "ActorRef": {
+      "additionalProperties": false,
+      "properties": {
+        "actor_id": {
+          "minLength": 1,
+          "title": "Actor Id",
+          "type": "string"
+        },
+        "actor_type": {
+          "enum": [
+            "human",
+            "service",
+            "harness",
+            "evaluator"
+          ],
+          "title": "Actor Type",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "actor_type",
+        "actor_id"
+      ],
+      "title": "ActorRef",
+      "type": "object"
+    },
+    "ComparisonRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "candidate_value": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "type": "string"
+            }
+          ],
+          "title": "Candidate Value"
+        },
+        "conclusion": {
+          "enum": [
+            "improved",
+            "not_improved",
+            "within_noise"
+          ],
+          "title": "Conclusion",
+          "type": "string"
+        },
+        "direction": {
+          "enum": [
+            "maximize",
+            "minimize"
+          ],
+          "title": "Direction",
+          "type": "string"
+        },
+        "incumbent_value": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "type": "string"
+            }
+          ],
+          "title": "Incumbent Value"
+        },
+        "metric": {
+          "minLength": 1,
+          "title": "Metric",
+          "type": "string"
+        },
+        "minimum_effect": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "type": "string"
+            }
+          ],
+          "title": "Minimum Effect"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "metric",
+        "direction",
+        "incumbent_value",
+        "candidate_value",
+        "minimum_effect",
+        "conclusion"
+      ],
+      "title": "ComparisonRecord",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "admission_id": {
+      "minLength": 1,
+      "title": "Admission Id",
+      "type": "string"
+    },
+    "candidate_id": {
+      "minLength": 1,
+      "title": "Candidate Id",
+      "type": "string"
+    },
+    "comparison": {
+      "$ref": "#/$defs/ComparisonRecord"
+    },
+    "decided_at": {
+      "format": "date-time",
+      "title": "Decided At",
+      "type": "string"
+    },
+    "decided_by": {
+      "$ref": "#/$defs/ActorRef"
+    },
+    "evaluation_ids": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Evaluation Ids",
+      "type": "array"
+    },
+    "expected_champion_id": {
+      "minLength": 1,
+      "title": "Expected Champion Id",
+      "type": "string"
+    },
+    "outcome": {
+      "enum": [
+        "admit",
+        "reject",
+        "quarantine",
+        "review_required"
+      ],
+      "title": "Outcome",
+      "type": "string"
+    },
+    "policy_decision_ids": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Policy Decision Ids",
+      "type": "array"
+    },
+    "reason_codes": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Reason Codes",
+      "type": "array"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "admission_id",
+    "candidate_id",
+    "expected_champion_id",
+    "evaluation_ids",
+    "policy_decision_ids",
+    "outcome",
+    "reason_codes",
+    "comparison",
+    "decided_by",
+    "decided_at"
+  ],
+  "title": "AdmissionDecision",
+  "type": "object"
+}

@@ -1,0 +1,73 @@
+{
+  "arms": {
+    "codex": {
+      "admitted": 8,
+      "attempts": 8,
+      "charged_cost_usd": null,
+      "input_tokens_observed": 646050,
+      "latency": {
+        "maximum_seconds": 109.080961,
+        "mean_seconds": 75.928752,
+        "median_seconds": 81.648338,
+        "p95_nearest_rank_seconds": 109.080961,
+        "total_seconds": 607.430014
+      },
+      "output_tokens_observed": 27467,
+      "public_succeeded": 8,
+      "runtime_errors": 0
+    },
+    "openrouter-native": {
+      "admitted": 6,
+      "attempts": 8,
+      "cost_sources": {
+        "provider": 79,
+        "provider_recovered_from_response_artifact": 1
+      },
+      "development_evaluator_calls": 6,
+      "failed_model_invocations": 1,
+      "input_tokens": 130215,
+      "latency": {
+        "maximum_seconds": 304.003261,
+        "mean_seconds": 155.631697,
+        "median_seconds": 136.379768,
+        "p95_nearest_rank_seconds": 304.003261,
+        "total_seconds": 1245.053573
+      },
+      "model_invocations": 80,
+      "output_tokens": 124605,
+      "provider_cost_microusd": 181327,
+      "provider_cost_usd": 0.181327,
+      "public_succeeded": 8,
+      "runtime_errors": 1,
+      "session_outcomes": {
+        "exhausted": 1,
+        "proposal_ready": 6,
+        "runtime_error": 1
+      },
+      "tool_calls": 73
+    }
+  },
+  "caveat": "One repetition cannot estimate run-to-run variance; the paired exact result is descriptive, and the small frozen suite limits inferential claims.",
+  "paired_exact_mcnemar_p_value": 0.5,
+  "paired_outcomes": {
+    "both_admitted": 6,
+    "codex_only": 2
+  },
+  "pilot_id": "comparison-v2",
+  "schema_version": 1,
+  "task_level_direction": {
+    "codex_better": 2,
+    "openrouter_better": 0,
+    "tied": 6
+  },
+  "task_results": {
+    "bounded-backoff": {"codex": 1, "difference": 0, "openrouter-native": 1},
+    "configuration-overlay": {"codex": 1, "difference": 0, "openrouter-native": 1},
+    "dependency-order": {"codex": 1, "difference": 0, "openrouter-native": 1},
+    "event-reconciliation": {"codex": 1, "difference": 0, "openrouter-native": 1},
+    "identifier-boundary": {"codex": 1, "difference": 1, "openrouter-native": 0},
+    "integer-allocation": {"codex": 1, "difference": 0, "openrouter-native": 1},
+    "interval-union": {"codex": 1, "difference": 1, "openrouter-native": 0},
+    "rolling-window": {"codex": 1, "difference": 0, "openrouter-native": 1}
+  }
+}

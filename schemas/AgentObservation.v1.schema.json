@@ -1,0 +1,43 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "outcome": {
+      "enum": [
+        "succeeded",
+        "failed",
+        "policy_blocked"
+      ],
+      "title": "Outcome",
+      "type": "string"
+    },
+    "result_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Result Digest",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "summary": {
+      "minLength": 1,
+      "title": "Summary",
+      "type": "string"
+    },
+    "tool_id": {
+      "minLength": 1,
+      "title": "Tool Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "tool_id",
+    "outcome",
+    "result_digest",
+    "summary"
+  ],
+  "title": "AgentObservation",
+  "type": "object"
+}

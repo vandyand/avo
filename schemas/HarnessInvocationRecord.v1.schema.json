@@ -1,0 +1,424 @@
+{
+  "$defs": {
+    "AgentCompletion": {
+      "additionalProperties": false,
+      "properties": {
+        "claimed_tests": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Claimed Tests",
+          "type": "array"
+        },
+        "outcome": {
+          "enum": [
+            "proposal",
+            "stop"
+          ],
+          "title": "Outcome",
+          "type": "string"
+        },
+        "rationale": {
+          "minLength": 1,
+          "title": "Rationale",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "outcome",
+        "rationale"
+      ],
+      "title": "AgentCompletion",
+      "type": "object"
+    },
+    "EconomicUsageRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "billing_mode": {
+          "enum": [
+            "metered",
+            "subscription",
+            "local",
+            "unknown"
+          ],
+          "title": "Billing Mode",
+          "type": "string"
+        },
+        "charged_cost_microusd": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Charged Cost Microusd"
+        },
+        "cost_source": {
+          "enum": [
+            "provider",
+            "price_table",
+            "estimate",
+            "none"
+          ],
+          "title": "Cost Source",
+          "type": "string"
+        },
+        "counterfactual_cost_microusd": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Counterfactual Cost Microusd"
+        },
+        "price_table_digest": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Price Table Digest"
+        },
+        "provider_equivalent_cost_microusd": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Provider Equivalent Cost Microusd"
+        },
+        "quota_details": {
+          "additionalProperties": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "title": "Quota Details",
+          "type": "object"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "token_details": {
+          "additionalProperties": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "title": "Token Details",
+          "type": "object"
+        }
+      },
+      "required": [
+        "billing_mode",
+        "cost_source"
+      ],
+      "title": "EconomicUsageRecord",
+      "type": "object"
+    },
+    "RuntimeSessionRef": {
+      "additionalProperties": false,
+      "properties": {
+        "adapter_id": {
+          "minLength": 1,
+          "title": "Adapter Id",
+          "type": "string"
+        },
+        "checkpoint": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Checkpoint"
+        },
+        "invocation_id": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Invocation Id"
+        },
+        "native_operation_id": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Native Operation Id"
+        },
+        "native_session_id": {
+          "minLength": 1,
+          "title": "Native Session Id",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "storage_class": {
+          "enum": [
+            "memory",
+            "local",
+            "provider"
+          ],
+          "title": "Storage Class",
+          "type": "string"
+        }
+      },
+      "required": [
+        "adapter_id",
+        "native_session_id",
+        "storage_class"
+      ],
+      "title": "RuntimeSessionRef",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "activity_id": {
+      "minLength": 1,
+      "title": "Activity Id",
+      "type": "string"
+    },
+    "adapter_version": {
+      "minLength": 1,
+      "title": "Adapter Version",
+      "type": "string"
+    },
+    "completed_at": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Completed At"
+    },
+    "completion": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/AgentCompletion"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "economics": {
+      "$ref": "#/$defs/EconomicUsageRecord"
+    },
+    "error_class": {
+      "anyOf": [
+        {
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Error Class"
+    },
+    "event_stream_artifact_digest": {
+      "anyOf": [
+        {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Event Stream Artifact Digest"
+    },
+    "invocation_id": {
+      "minLength": 1,
+      "title": "Invocation Id",
+      "type": "string"
+    },
+    "profile_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Profile Digest",
+      "type": "string"
+    },
+    "requested_model": {
+      "minLength": 1,
+      "title": "Requested Model",
+      "type": "string"
+    },
+    "resolved_model": {
+      "anyOf": [
+        {
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Resolved Model"
+    },
+    "run_id": {
+      "minLength": 1,
+      "title": "Run Id",
+      "type": "string"
+    },
+    "runtime_id": {
+      "minLength": 1,
+      "title": "Runtime Id",
+      "type": "string"
+    },
+    "runtime_session": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/RuntimeSessionRef"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "runtime_version": {
+      "minLength": 1,
+      "title": "Runtime Version",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "session_id": {
+      "anyOf": [
+        {
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Session Id"
+    },
+    "started_at": {
+      "format": "date-time",
+      "title": "Started At",
+      "type": "string"
+    },
+    "state": {
+      "enum": [
+        "started",
+        "running",
+        "completed",
+        "failed",
+        "reconciliation_required"
+      ],
+      "title": "State",
+      "type": "string"
+    },
+    "usage": {
+      "additionalProperties": {
+        "minimum": 0,
+        "type": "integer"
+      },
+      "title": "Usage",
+      "type": "object"
+    },
+    "workspace_after_digest": {
+      "anyOf": [
+        {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Workspace After Digest"
+    },
+    "workspace_before_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Workspace Before Digest",
+      "type": "string"
+    }
+  },
+  "required": [
+    "invocation_id",
+    "activity_id",
+    "run_id",
+    "profile_digest",
+    "runtime_id",
+    "state",
+    "adapter_version",
+    "runtime_version",
+    "requested_model",
+    "workspace_before_digest",
+    "economics",
+    "started_at"
+  ],
+  "title": "HarnessInvocationRecord",
+  "type": "object"
+}

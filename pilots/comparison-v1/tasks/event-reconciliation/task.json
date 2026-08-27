@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "task_id": "event-reconciliation",
+  "title": "Repair deterministic event reconciliation",
+  "prompt": "Repair the candidate implementation so it satisfies its documented API and public tests. Preserve the public function signature and fail closed on ambiguous event histories. You may add focused public regression tests. Do not access external resources. Finish with the required JSON completion.",
+  "public_command": ["python", "-m", "unittest", "discover", "-s", "tests", "-v"],
+  "hidden_command": ["python", "/evaluator/test_hidden.py"],
+  "seed_public_outcome": "succeeded",
+  "timeout_seconds": 30
+}

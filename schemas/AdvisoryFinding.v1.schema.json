@@ -1,0 +1,97 @@
+{
+  "$defs": {
+    "AdvisoryFindingCategory": {
+      "enum": [
+        "correctness",
+        "compatibility",
+        "security",
+        "testing",
+        "maintainability",
+        "efficiency",
+        "documentation"
+      ],
+      "title": "AdvisoryFindingCategory",
+      "type": "string"
+    },
+    "AdvisoryFindingSeverity": {
+      "enum": [
+        "info",
+        "low",
+        "medium",
+        "high",
+        "critical"
+      ],
+      "title": "AdvisoryFindingSeverity",
+      "type": "string"
+    }
+  },
+  "additionalProperties": false,
+  "description": "A bounded observation; it is not an instruction or an authority decision.",
+  "properties": {
+    "affected_paths": {
+      "items": {
+        "maxLength": 512,
+        "minLength": 1,
+        "type": "string"
+      },
+      "maxItems": 256,
+      "title": "Affected Paths",
+      "type": "array"
+    },
+    "category": {
+      "$ref": "#/$defs/AdvisoryFindingCategory"
+    },
+    "evidence_refs": {
+      "items": {
+        "maxLength": 128,
+        "minLength": 1,
+        "type": "string"
+      },
+      "maxItems": 32,
+      "title": "Evidence Refs",
+      "type": "array"
+    },
+    "rationale": {
+      "maxLength": 4000,
+      "minLength": 1,
+      "title": "Rationale",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "severity": {
+      "$ref": "#/$defs/AdvisoryFindingSeverity"
+    },
+    "suggested_fix": {
+      "anyOf": [
+        {
+          "maxLength": 2000,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Suggested Fix"
+    },
+    "summary": {
+      "maxLength": 2000,
+      "minLength": 1,
+      "title": "Summary",
+      "type": "string"
+    }
+  },
+  "required": [
+    "category",
+    "severity",
+    "summary",
+    "rationale"
+  ],
+  "title": "AdvisoryFinding",
+  "type": "object"
+}

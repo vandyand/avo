@@ -1,0 +1,131 @@
+{
+  "$defs": {
+    "SandboxMount": {
+      "additionalProperties": false,
+      "properties": {
+        "read_only": {
+          "default": true,
+          "title": "Read Only",
+          "type": "boolean"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "source_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Source Digest",
+          "type": "string"
+        },
+        "target": {
+          "minLength": 1,
+          "title": "Target",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source_digest",
+        "target"
+      ],
+      "title": "SandboxMount",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "command": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Command",
+      "type": "array"
+    },
+    "cpu_limit": {
+      "default": "1.0",
+      "title": "Cpu Limit",
+      "type": "string"
+    },
+    "environment": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "title": "Environment",
+      "type": "object"
+    },
+    "execution_id": {
+      "minLength": 1,
+      "title": "Execution Id",
+      "type": "string"
+    },
+    "image_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Image Digest",
+      "type": "string"
+    },
+    "memory_bytes": {
+      "exclusiveMinimum": 0,
+      "title": "Memory Bytes",
+      "type": "integer"
+    },
+    "mounts": {
+      "items": {
+        "$ref": "#/$defs/SandboxMount"
+      },
+      "title": "Mounts",
+      "type": "array"
+    },
+    "network_enabled": {
+      "default": false,
+      "title": "Network Enabled",
+      "type": "boolean"
+    },
+    "output_bytes_limit": {
+      "exclusiveMinimum": 0,
+      "title": "Output Bytes Limit",
+      "type": "integer"
+    },
+    "pids_limit": {
+      "default": 128,
+      "exclusiveMinimum": 0,
+      "title": "Pids Limit",
+      "type": "integer"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "termination_grace_seconds": {
+      "default": 5,
+      "exclusiveMinimum": 0,
+      "title": "Termination Grace Seconds",
+      "type": "integer"
+    },
+    "timeout_seconds": {
+      "exclusiveMinimum": 0,
+      "title": "Timeout Seconds",
+      "type": "integer"
+    },
+    "working_directory": {
+      "default": "/workspace",
+      "minLength": 1,
+      "title": "Working Directory",
+      "type": "string"
+    }
+  },
+  "required": [
+    "execution_id",
+    "image_digest",
+    "command",
+    "timeout_seconds",
+    "memory_bytes",
+    "output_bytes_limit"
+  ],
+  "title": "SandboxExecutionSpec",
+  "type": "object"
+}

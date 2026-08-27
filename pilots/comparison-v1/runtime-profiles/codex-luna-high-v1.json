@@ -1,0 +1,68 @@
+{
+  "schema_version": 1,
+  "profile_id": "codex-luna-high-v1",
+  "plugin": {
+    "schema_version": 1,
+    "manifest": {
+      "schema_version": 1,
+      "plugin_id": "openai-codex",
+      "plugin_version": "0.147.0",
+      "package_digest": "sha256:73dc5888888f411c1f0fa7b81d866e721dcc86b527ce8e3b2cf4708661e823ba",
+      "source_digest": "sha256:9924b0c86a6b2d4a0e8a8b4f054e985ad6ba3e1061252a269dd04e6a7ec3216d",
+      "supported_contract_versions": [
+        "HarnessRuntimeProfile.v1"
+      ],
+      "supported_schema_versions": [
+        1
+      ],
+      "operating_systems": [
+        "linux"
+      ],
+      "architectures": [
+        "x86_64"
+      ],
+      "required_executables": [
+        "/home/kingjames/.nvm/versions/node/v20.19.6/lib/node_modules/@openai/codex/node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/bin/codex"
+      ],
+      "network_access": "control-plane-only",
+      "configuration_schema": {
+        "required": [
+          "isolated_codex_home",
+          "private_tmpdir",
+          "codex_executable",
+          "canary_root"
+        ]
+      },
+      "side_effects": [
+        "workspace_write",
+        "provider_thread"
+      ],
+      "security_classification": "sandboxed-coding-agent",
+      "health_check": [
+        "permission-canaries",
+        "chatgpt-account"
+      ],
+      "license": "Apache-2.0"
+    },
+    "signature_algorithm": "hmac-sha256",
+    "signer_key_id": "avo-local-codex-live-v1",
+    "signature_hex": "928e5d0bd24eab21cc53eda4668f277806b37329d0b34d77c2f578ff229620b5"
+  },
+  "transport": "sdk",
+  "requested_model": "gpt-5.6-luna",
+  "authentication_class": "subscription",
+  "credential_profile_ref": null,
+  "permission_profile_digest": "sha256:cfcff9793fd18fbb0a2db869bea04f380f2b7954f58b1f5cfdf0bd3180205271",
+  "development_evaluator_id": "development",
+  "max_wall_time_seconds": 900,
+  "max_turns": 20,
+  "completion_schema_digest": "sha256:c8b544669db8686353d6a75811a15633ac29421bdfad91548326bc314644be5e",
+  "price_table_digest": null,
+  "configuration": {
+    "isolated_codex_home": "/home/kingjames/.avo-codex",
+    "private_tmpdir": "/home/kingjames/.local/state/avo/codex-tmp",
+    "codex_executable": "/home/kingjames/.nvm/versions/node/v20.19.6/lib/node_modules/@openai/codex/node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/bin/codex",
+    "canary_root": "/home/kingjames/.local/state/avo/codex-canary",
+    "reasoning_effort": "high"
+  }
+}

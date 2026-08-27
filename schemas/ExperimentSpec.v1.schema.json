@@ -1,0 +1,511 @@
+{
+  "$defs": {
+    "ActorRef": {
+      "additionalProperties": false,
+      "properties": {
+        "actor_id": {
+          "minLength": 1,
+          "title": "Actor Id",
+          "type": "string"
+        },
+        "actor_type": {
+          "enum": [
+            "human",
+            "service",
+            "harness",
+            "evaluator"
+          ],
+          "title": "Actor Type",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "actor_type",
+        "actor_id"
+      ],
+      "title": "ActorRef",
+      "type": "object"
+    },
+    "BudgetSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact_bytes": {
+          "minimum": 0,
+          "title": "Artifact Bytes",
+          "type": "integer"
+        },
+        "authoritative_evaluations": {
+          "minimum": 0,
+          "title": "Authoritative Evaluations",
+          "type": "integer"
+        },
+        "model_cost_microusd": {
+          "minimum": 0,
+          "title": "Model Cost Microusd",
+          "type": "integer"
+        },
+        "model_input_tokens": {
+          "minimum": 0,
+          "title": "Model Input Tokens",
+          "type": "integer"
+        },
+        "model_output_tokens": {
+          "minimum": 0,
+          "title": "Model Output Tokens",
+          "type": "integer"
+        },
+        "sandbox_cpu_seconds": {
+          "minimum": 0,
+          "title": "Sandbox Cpu Seconds",
+          "type": "integer"
+        },
+        "sandbox_gpu_seconds": {
+          "minimum": 0,
+          "title": "Sandbox Gpu Seconds",
+          "type": "integer"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "tool_calls": {
+          "minimum": 0,
+          "title": "Tool Calls",
+          "type": "integer"
+        },
+        "variation_sessions": {
+          "minimum": 0,
+          "title": "Variation Sessions",
+          "type": "integer"
+        },
+        "wall_clock_seconds": {
+          "minimum": 0,
+          "title": "Wall Clock Seconds",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "wall_clock_seconds",
+        "model_input_tokens",
+        "model_output_tokens",
+        "model_cost_microusd",
+        "tool_calls",
+        "sandbox_cpu_seconds",
+        "sandbox_gpu_seconds",
+        "authoritative_evaluations",
+        "variation_sessions",
+        "artifact_bytes"
+      ],
+      "title": "BudgetSpec",
+      "type": "object"
+    },
+    "EvaluatorSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "component": {
+          "$ref": "#/$defs/VersionedComponentRef"
+        },
+        "execution_image_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Execution Image Digest",
+          "type": "string"
+        },
+        "profile_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Profile Digest",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "tier": {
+          "enum": [
+            "development",
+            "admission",
+            "audit"
+          ],
+          "title": "Tier",
+          "type": "string"
+        }
+      },
+      "required": [
+        "component",
+        "tier",
+        "profile_digest",
+        "execution_image_digest"
+      ],
+      "title": "EvaluatorSpec",
+      "type": "object"
+    },
+    "HarnessSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "component": {
+          "$ref": "#/$defs/VersionedComponentRef"
+        },
+        "configuration_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Configuration Digest",
+          "type": "string"
+        },
+        "model_config_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Model Config Digest",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "component",
+        "model_config_digest",
+        "configuration_digest"
+      ],
+      "title": "HarnessSpec",
+      "type": "object"
+    },
+    "ReviewPolicy": {
+      "additionalProperties": false,
+      "properties": {
+        "approvals_required": {
+          "default": 0,
+          "maximum": 2,
+          "minimum": 0,
+          "title": "Approvals Required",
+          "type": "integer"
+        },
+        "eligible_roles": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Eligible Roles",
+          "type": "array"
+        },
+        "expires_after_seconds": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Expires After Seconds"
+        },
+        "proposer_may_review": {
+          "default": false,
+          "title": "Proposer May Review",
+          "type": "boolean"
+        },
+        "required": {
+          "default": false,
+          "title": "Required",
+          "type": "boolean"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        }
+      },
+      "title": "ReviewPolicy",
+      "type": "object"
+    },
+    "SearchSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "max_committed_candidates": {
+          "exclusiveMinimum": 0,
+          "title": "Max Committed Candidates",
+          "type": "integer"
+        },
+        "method": {
+          "const": "single_lineage_agentic",
+          "default": "single_lineage_agentic",
+          "title": "Method",
+          "type": "string"
+        },
+        "method_version": {
+          "minLength": 1,
+          "title": "Method Version",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "stopping_rules": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Stopping Rules",
+          "type": "array"
+        }
+      },
+      "required": [
+        "method_version",
+        "max_committed_candidates",
+        "stopping_rules"
+      ],
+      "title": "SearchSpec",
+      "type": "object"
+    },
+    "VersionedComponentRef": {
+      "additionalProperties": false,
+      "properties": {
+        "capability_manifest_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Capability Manifest Digest",
+          "type": "string"
+        },
+        "component_id": {
+          "minLength": 1,
+          "title": "Component Id",
+          "type": "string"
+        },
+        "component_version": {
+          "minLength": 1,
+          "title": "Component Version",
+          "type": "string"
+        },
+        "package_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Package Digest",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "component_id",
+        "component_version",
+        "package_digest",
+        "capability_manifest_digest"
+      ],
+      "title": "VersionedComponentRef",
+      "type": "object"
+    },
+    "WorkspaceSpec": {
+      "additionalProperties": false,
+      "properties": {
+        "allowed_paths": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Allowed Paths",
+          "type": "array"
+        },
+        "forbidden_paths": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Forbidden Paths",
+          "type": "array"
+        },
+        "max_file_bytes": {
+          "exclusiveMinimum": 0,
+          "title": "Max File Bytes",
+          "type": "integer"
+        },
+        "max_tree_bytes": {
+          "exclusiveMinimum": 0,
+          "title": "Max Tree Bytes",
+          "type": "integer"
+        },
+        "required_paths": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Required Paths",
+          "type": "array"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "source_revision": {
+          "minLength": 1,
+          "title": "Source Revision",
+          "type": "string"
+        },
+        "source_tree_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Source Tree Digest",
+          "type": "string"
+        },
+        "source_uri": {
+          "minLength": 1,
+          "title": "Source Uri",
+          "type": "string"
+        },
+        "submodules": {
+          "default": "deny",
+          "enum": [
+            "deny",
+            "pinned_only"
+          ],
+          "title": "Submodules",
+          "type": "string"
+        },
+        "symlinks": {
+          "default": "deny",
+          "enum": [
+            "deny",
+            "internal_only"
+          ],
+          "title": "Symlinks",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source_uri",
+        "source_revision",
+        "source_tree_digest",
+        "allowed_paths",
+        "forbidden_paths",
+        "required_paths",
+        "max_file_bytes",
+        "max_tree_bytes"
+      ],
+      "title": "WorkspaceSpec",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "admission_evaluators": {
+      "items": {
+        "$ref": "#/$defs/EvaluatorSpec"
+      },
+      "minItems": 1,
+      "title": "Admission Evaluators",
+      "type": "array"
+    },
+    "audit_evaluators": {
+      "items": {
+        "$ref": "#/$defs/EvaluatorSpec"
+      },
+      "title": "Audit Evaluators",
+      "type": "array"
+    },
+    "budget": {
+      "$ref": "#/$defs/BudgetSpec"
+    },
+    "created_by": {
+      "$ref": "#/$defs/ActorRef"
+    },
+    "development_evaluators": {
+      "items": {
+        "$ref": "#/$defs/EvaluatorSpec"
+      },
+      "minItems": 1,
+      "title": "Development Evaluators",
+      "type": "array"
+    },
+    "experiment_id": {
+      "minLength": 1,
+      "title": "Experiment Id",
+      "type": "string"
+    },
+    "harness": {
+      "$ref": "#/$defs/HarnessSpec"
+    },
+    "objective": {
+      "minLength": 1,
+      "title": "Objective",
+      "type": "string"
+    },
+    "policy_bundle_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Policy Bundle Digest",
+      "type": "string"
+    },
+    "retention_policy_id": {
+      "minLength": 1,
+      "title": "Retention Policy Id",
+      "type": "string"
+    },
+    "review_policy": {
+      "$ref": "#/$defs/ReviewPolicy"
+    },
+    "sandbox_profile_id": {
+      "minLength": 1,
+      "title": "Sandbox Profile Id",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "search": {
+      "$ref": "#/$defs/SearchSpec"
+    },
+    "success_criteria": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Success Criteria",
+      "type": "array"
+    },
+    "title": {
+      "minLength": 1,
+      "title": "Title",
+      "type": "string"
+    },
+    "workspace": {
+      "$ref": "#/$defs/WorkspaceSpec"
+    }
+  },
+  "required": [
+    "experiment_id",
+    "title",
+    "objective",
+    "success_criteria",
+    "workspace",
+    "search",
+    "harness",
+    "development_evaluators",
+    "admission_evaluators",
+    "budget",
+    "sandbox_profile_id",
+    "policy_bundle_digest",
+    "retention_policy_id",
+    "review_policy",
+    "created_by"
+  ],
+  "title": "ExperimentSpec",
+  "type": "object"
+}

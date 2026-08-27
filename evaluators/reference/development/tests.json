@@ -1,0 +1,4 @@
+[
+  {"id": "single-window", "values": [1, 2, 3], "width": 3, "expected": [0, 6]},
+  {"id": "invalid-width-visible", "values": [1], "width": 1, "expected": [0, 1]}
+]

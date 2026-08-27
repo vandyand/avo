@@ -1,0 +1,74 @@
+[build-system]
+requires = ["hatchling>=1.27,<2"]
+build-backend = "hatchling.build"
+
+[project]
+name = "avo-correlate"
+version = "0.1.0"
+description = "Evaluator-grounded agentic variation for sustained software improvement"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+license = { text = "Proprietary" }
+dependencies = [
+  "fastapi>=0.116,<1",
+  "jsonschema>=4.25,<5",
+  "alembic>=1.16,<2",
+  "pydantic>=2.11,<3",
+  "rfc8785>=0.1.4,<0.2",
+  "sqlalchemy>=2.0.43,<3",
+  "typer>=0.16,<1",
+  "uvicorn>=0.35,<1",
+]
+
+[project.optional-dependencies]
+codex = ["openai-codex==0.147.0"]
+
+[project.scripts]
+avoctl = "avo_correlate.cli.app:app"
+
+[dependency-groups]
+dev = [
+  "httpx2>=2,<3",
+  "hypothesis>=6.138,<7",
+  "pyright>=1.1.404,<2",
+  "pytest>=9.0.3,<10",
+  "pytest-cov>=6.2,<7",
+  "ruff>=0.12,<1",
+]
+[tool.hatch.build.targets.wheel]
+packages = ["src/avo_correlate"]
+
+[tool.pytest.ini_options]
+addopts = "-ra --strict-config --strict-markers"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+extend-exclude = [".avo-runtime"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "RUF", "SIM"]
+
+[tool.pyright]
+include = [
+  "src",
+  "tests",
+  "scripts/evaluate_advisory_corpus.py",
+  ".agents/skills/avo-roadmap/scripts/validate_roadmap.py",
+]
+pythonVersion = "3.12"
+typeCheckingMode = "strict"
+
+[tool.coverage.run]
+branch = true
+source = ["avo_correlate"]
+omit = [
+  "src/avo_correlate/adapters/tools/evaluator_socket.py",
+  "src/avo_correlate/adapters/harness/codex_canary.py",
+  "src/avo_correlate/application/ports.py",
+]
+
+[tool.coverage.report]
+fail_under = 85
+show_missing = true

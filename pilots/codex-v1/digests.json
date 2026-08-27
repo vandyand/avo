@@ -1,0 +1,24 @@
+{
+  "manifest_digest": "sha256:a72d06c51fddca0af5956812328169a747f3880aec2a0e3f887c6c6eb6a7d6b6",
+  "pilot_id": "codex-v1",
+  "schema_version": 1,
+  "suite_digest": "sha256:3ef992192adcf47a6bc1ab4021b236c585f2047a13394481c862e12f3ca601c2",
+  "tasks": {
+    "identifier-boundary": {
+      "hidden_tree_digest": "sha256:07fbd5b8dc51b482128e08f327db9cfd2517820c0829158d7a4670d25e7491dc",
+      "seed_tree_digest": "sha256:a5ac28c501440d52caeff78fd585e9e0500efe25700688a8d36c4631fa66e016",
+      "task_spec_digest": "sha256:e59e003618dfe9261e6ea95143e27fad50455a9f624a1b98ec45bd42b968498d"
+    },
+    "integer-allocation": {
+      "hidden_tree_digest": "sha256:8a50d347244ebd331a02c741d9852fc45b2c37b9d7c95a5ac49370a8e8d8ea58",
+      "seed_tree_digest": "sha256:3fcf25a1221b75c1ac187aae1fc7b0542076e579b8c3f14d0ffa601de620f0af",
+      "task_spec_digest": "sha256:02de4d3a3bf7b7c5cc50a83d5c0aa690a63e59f43f373dd5a628a62de870a83d"
+    },
+    "rolling-window": {
+      "hidden_tree_digest": "sha256:7d899b739b989881ccd30a107113c9fb9655f8df04b65830e0af7d6e5cf64ce6",
+      "seed_tree_digest": "sha256:043e77b140937e07994ce4b4af70a1e61d8eb4bef86244e68a41f39ce07af5cf",
+      "task_spec_digest": "sha256:f7826531061f8115ccc563cf66416c53ed022975fcea65ceddfae23393cb0dad"
+    }
+  }
+}
+

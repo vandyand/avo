@@ -1,0 +1,99 @@
+{
+  "$defs": {
+    "AdvisoryEvaluationCaseDigest": {
+      "additionalProperties": false,
+      "description": "Content-addressed references for one case and its scored result.",
+      "properties": {
+        "case_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Case Digest",
+          "type": "string"
+        },
+        "case_id": {
+          "maxLength": 128,
+          "minLength": 1,
+          "title": "Case Id",
+          "type": "string"
+        },
+        "result_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Result Digest",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "case_id",
+        "case_digest",
+        "result_digest"
+      ],
+      "title": "AdvisoryEvaluationCaseDigest",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Schema-exportable linkage among corpus, report, and case result evidence.",
+  "properties": {
+    "case_digests": {
+      "items": {
+        "$ref": "#/$defs/AdvisoryEvaluationCaseDigest"
+      },
+      "maxItems": 10000,
+      "title": "Case Digests",
+      "type": "array"
+    },
+    "corpus_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Corpus Digest",
+      "type": "string"
+    },
+    "manifest_type": {
+      "const": "advisory_evaluation_result",
+      "default": "advisory_evaluation_result",
+      "title": "Manifest Type",
+      "type": "string"
+    },
+    "report_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Report Digest",
+      "type": "string"
+    },
+    "report_size_bytes": {
+      "maximum": 10000000,
+      "minimum": 0,
+      "title": "Report Size Bytes",
+      "type": "integer"
+    },
+    "result_manifest_digest": {
+      "anyOf": [
+        {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Result Manifest Digest"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "corpus_digest",
+    "report_digest",
+    "report_size_bytes"
+  ],
+  "title": "AdvisoryEvaluationResultManifest",
+  "type": "object"
+}

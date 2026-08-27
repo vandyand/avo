@@ -1,0 +1,106 @@
+{
+  "$defs": {
+    "ActorRef": {
+      "additionalProperties": false,
+      "properties": {
+        "actor_id": {
+          "minLength": 1,
+          "title": "Actor Id",
+          "type": "string"
+        },
+        "actor_type": {
+          "enum": [
+            "human",
+            "service",
+            "harness",
+            "evaluator"
+          ],
+          "title": "Actor Type",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "actor_type",
+        "actor_id"
+      ],
+      "title": "ActorRef",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "decided_at": {
+      "format": "date-time",
+      "title": "Decided At",
+      "type": "string"
+    },
+    "decision_id": {
+      "minLength": 1,
+      "title": "Decision Id",
+      "type": "string"
+    },
+    "evidence_digests": {
+      "items": {
+        "pattern": "^sha256:[0-9a-f]{64}$",
+        "type": "string"
+      },
+      "title": "Evidence Digests",
+      "type": "array"
+    },
+    "outcome": {
+      "enum": [
+        "approve",
+        "reject"
+      ],
+      "title": "Outcome",
+      "type": "string"
+    },
+    "rationale": {
+      "minLength": 1,
+      "title": "Rationale",
+      "type": "string"
+    },
+    "review_id": {
+      "minLength": 1,
+      "title": "Review Id",
+      "type": "string"
+    },
+    "reviewer": {
+      "$ref": "#/$defs/ActorRef"
+    },
+    "reviewer_role": {
+      "minLength": 1,
+      "title": "Reviewer Role",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "signature_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Signature Digest",
+      "type": "string"
+    }
+  },
+  "required": [
+    "decision_id",
+    "review_id",
+    "reviewer",
+    "reviewer_role",
+    "outcome",
+    "rationale",
+    "signature_digest",
+    "decided_at"
+  ],
+  "title": "ReviewDecision",
+  "type": "object"
+}

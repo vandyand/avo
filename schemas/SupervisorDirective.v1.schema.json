@@ -1,0 +1,45 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "directive": {
+      "enum": [
+        "continue",
+        "reduce_scope",
+        "request_more_evidence",
+        "revisit_lineage",
+        "change_hypothesis",
+        "pause",
+        "request_review",
+        "terminate"
+      ],
+      "title": "Directive",
+      "type": "string"
+    },
+    "payload": {
+      "additionalProperties": true,
+      "title": "Payload",
+      "type": "object"
+    },
+    "reason_codes": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Reason Codes",
+      "type": "array"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "directive",
+    "reason_codes"
+  ],
+  "title": "SupervisorDirective",
+  "type": "object"
+}

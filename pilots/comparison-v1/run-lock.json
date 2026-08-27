@@ -1,0 +1,82 @@
+{
+  "schema_version": 1,
+  "pilot_id": "comparison-v1",
+  "status": "preregistered",
+  "created_at": "2026-08-25T19:07:34.1627255Z",
+  "suite_digest": "sha256:19e60770f7741ec8dfad5cba7f1caf3bbc552ae0d48a946e0d714d097aceff04",
+  "repetitions_per_task": 3,
+  "task_order": [
+    "rolling-window",
+    "identifier-boundary",
+    "integer-allocation",
+    "bounded-backoff",
+    "interval-union",
+    "dependency-order",
+    "event-reconciliation",
+    "configuration-overlay"
+  ],
+  "paired_execution_order": [
+    {"repetition": 1, "arm": "codex"},
+    {"repetition": 1, "arm": "openrouter-native"},
+    {"repetition": 2, "arm": "openrouter-native"},
+    {"repetition": 2, "arm": "codex"},
+    {"repetition": 3, "arm": "codex"},
+    {"repetition": 3, "arm": "openrouter-native"}
+  ],
+  "common_controls": {
+    "requested_base_model": "gpt-5.6-luna",
+    "reasoning_effort": "high",
+    "max_turns": 20,
+    "max_wall_time_seconds": 900,
+    "evaluator_image": "python:3.12.10-slim-bookworm@sha256:97983fa8cc88343512862c62307159a82261c3528dc025f79e5a3f7af43e50b4",
+    "formal_run_purpose": "comparison",
+    "replacement_runs": "forbidden except paired evaluator-infrastructure voids"
+  },
+  "arms": {
+    "codex": {
+      "interface": "OpenAI Codex coding-agent runtime",
+      "authentication_class": "ChatGPT subscription",
+      "chatgpt_account": "vandyand@gmail.com",
+      "api_tokens_forbidden": true,
+      "requested_model": "gpt-5.6-luna",
+      "codex_cli_version": "0.149.1",
+      "python_sdk_version": "0.147.0",
+      "profile_path": "runtime-profiles/codex-luna-high-v1.json",
+      "profile_file_digest": "sha256:286ca9172ab1e3b08377b8f8b7ee7dd8972302157c0a13251095771a814778fb",
+      "profile_canonical_digest": "sha256:92f2986b759fb9f78e76dea013bad14281ac7c5077bad632ccc1115d8f83eeb6",
+      "completion_prompt_path": "prompts/codex-completion.md",
+      "completion_prompt_digest": "sha256:35d0625ed8bc9a83ce60fa65664fb076f3070ee3ab6d937d6485257e74ccbbd9",
+      "runner_digest": "sha256:0c983d8e2671c3be5752d6e5cac3cc2d938c48cdf9bfb3d07018077b5cc967d7",
+      "validated_canary_run_id": "codex-v1-20260825T185008Z-f1ac8d74"
+    },
+    "openrouter-native": {
+      "interface": "AVO native structured agent over OpenAI-compatible chat completions",
+      "authentication_class": "metered API key",
+      "requested_model": "openai/gpt-5.6-luna",
+      "observed_canonical_model": "openai/gpt-5.6-luna-20260709",
+      "httpx2_version": "2.12.0",
+      "profile_path": "runtime-profiles/openrouter-luna-high-v1.json",
+      "profile_file_digest": "sha256:74539fe3d4fda059d94c7e6b12e08645b0388e72b71a2c6d53943bbbce496927",
+      "profile_canonical_digest": "sha256:1c7d5577f0a1799120f688feb2b0f8a00257436c0c09e4f73e3d6f2196268aa0",
+      "runner_digest": "sha256:53ab68fc71a29d7a3f2e16c4b1890fd2770fa41886f4fd8629d29dbdd44087e9",
+      "input_usd_per_million_tokens": 0.20,
+      "output_usd_per_million_tokens": 1.20,
+      "minimum_credit_balance_usd": 2.00,
+      "credit_snapshot": {
+        "captured_at": "2026-08-25T19:07:34.1627255Z",
+        "total_credits_usd": 665.0,
+        "total_usage_usd": 653.517767372,
+        "remaining_usd": 11.482232628
+      },
+      "validated_canary_run_id": "codex-v1-openrouter-canary-r2-20260825T190456Z-a6f30b93",
+      "validated_canary_cost_microusd": 17103,
+      "calibration_note": "A prior canary exhausted its turns on hand-authored patch syntax; replace_text was added before this lock and the subsequent canary admitted."
+    }
+  },
+  "interpretation": {
+    "primary_outcome": "paired first-attempt hidden-evaluator admission",
+    "interface_effect": "Results compare complete interfaces, not isolated raw model intelligence.",
+    "cost_comparison": "OpenRouter cost is actual provider cost; Codex subscription usage is reported separately and is not assigned a counterfactual dollar cost.",
+    "claim_limit": "Report this frozen task set only; do not generalize superiority from the aggregate alone."
+  }
+}

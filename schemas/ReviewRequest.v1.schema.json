@@ -1,0 +1,87 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "action": {
+      "minLength": 1,
+      "title": "Action",
+      "type": "string"
+    },
+    "approvals_required": {
+      "maximum": 2,
+      "minimum": 1,
+      "title": "Approvals Required",
+      "type": "integer"
+    },
+    "candidate_id": {
+      "minLength": 1,
+      "title": "Candidate Id",
+      "type": "string"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "eligible_roles": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Eligible Roles",
+      "type": "array"
+    },
+    "expires_at": {
+      "format": "date-time",
+      "title": "Expires At",
+      "type": "string"
+    },
+    "proposer_id": {
+      "minLength": 1,
+      "title": "Proposer Id",
+      "type": "string"
+    },
+    "proposer_may_review": {
+      "default": false,
+      "title": "Proposer May Review",
+      "type": "boolean"
+    },
+    "required_evidence_digests": {
+      "items": {
+        "pattern": "^sha256:[0-9a-f]{64}$",
+        "type": "string"
+      },
+      "title": "Required Evidence Digests",
+      "type": "array"
+    },
+    "review_id": {
+      "minLength": 1,
+      "title": "Review Id",
+      "type": "string"
+    },
+    "run_id": {
+      "minLength": 1,
+      "title": "Run Id",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "review_id",
+    "run_id",
+    "candidate_id",
+    "action",
+    "proposer_id",
+    "eligible_roles",
+    "approvals_required",
+    "expires_at",
+    "created_at"
+  ],
+  "title": "ReviewRequest",
+  "type": "object"
+}

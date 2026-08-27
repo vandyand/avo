@@ -1,0 +1,5 @@
+[
+  {"id": "later-window", "values": [-4, 1, 8, 2], "width": 2, "expected": [2, 10]},
+  {"id": "earliest-tie", "values": [2, 2, 2], "width": 2, "expected": [0, 4]},
+  {"id": "negative", "values": [-9, -4, -7], "width": 1, "expected": [1, -4]}
+]

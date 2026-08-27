@@ -1,0 +1,64 @@
+{
+  "schema_version": 1,
+  "pilot_id": "comparison-v1",
+  "purpose": "Preregistered comparison of the Codex coding-agent runtime and the native OpenAI-compatible AVO harness",
+  "repetitions_per_task": 3,
+  "task_order": [
+    "rolling-window",
+    "identifier-boundary",
+    "integer-allocation",
+    "bounded-backoff",
+    "interval-union",
+    "dependency-order",
+    "event-reconciliation",
+    "configuration-overlay"
+  ],
+  "task_sources": {
+    "rolling-window": "../codex-v1/tasks/rolling-window",
+    "identifier-boundary": "../codex-v1/tasks/identifier-boundary",
+    "integer-allocation": "../codex-v1/tasks/integer-allocation"
+  },
+  "methodology": {
+    "candidate_receives": [
+      "byte-identical seed workspace",
+      "stored task prompt",
+      "public tests"
+    ],
+    "candidate_cannot_read": [
+      "hidden evaluator",
+      "other task fixtures",
+      "AVO state and artifacts",
+      "other arm outputs"
+    ],
+    "network": "denied inside candidate and evaluator sandboxes",
+    "admission": "independent hidden evaluator after candidate completion",
+    "pairing": "same task, repetition index, seed, evaluator image, wall limit, and admission rule",
+    "primary_outcome": "first-attempt hidden-evaluator admission rate",
+    "secondary_outcomes": [
+      "public evaluator success",
+      "wall time",
+      "provider input and output tokens",
+      "actual or explicitly labeled counterfactual cost",
+      "changed paths and patch bytes"
+    ],
+    "failure_policy": {
+      "malformed_completion": "failed repetition",
+      "provider_or_transport_failure": "failed repetition; no replacement run",
+      "timeout": "failed repetition",
+      "policy_boundary_violation": "failed repetition",
+      "evaluator_infrastructure_failure": "void both paired repetitions and rerun both with the same index"
+    },
+    "analysis": {
+      "unit": "task repetition",
+      "report": "arm-level counts plus paired per-task outcomes; no superiority claim from aggregate alone",
+      "task_family_strata": [
+        "numeric",
+        "security-boundary",
+        "ordering-and-state",
+        "graph",
+        "data-structure-aliasing"
+      ]
+    },
+    "model_lock": "Freeze exact model IDs, parameters, prices, runtime profiles, and credit sufficiency before the first comparison repetition."
+  }
+}

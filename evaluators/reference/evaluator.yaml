@@ -1,0 +1,40 @@
+schema_version: 1
+package_id: reference-python-repair
+package_version: 1.0.0
+tiers:
+  development:
+    dockerfile: Dockerfile.development
+    input_partition: development/tests.json
+    feedback: detailed
+  admission:
+    dockerfile: Dockerfile.admission
+    input_partition: admission/tests.json
+    feedback: category-only
+command: []
+environment_allowlist:
+  - AVO_CANDIDATE_ID
+  - AVO_EVALUATION_ID
+  - AVO_EVALUATOR_TIER
+  - AVO_HARDWARE_CLASS
+  - AVO_IMAGE_DIGEST
+  - AVO_WORKSPACE_DIGEST
+network: deny
+resources:
+  cpus: "1.0"
+  memory_bytes: 268435456
+  pids: 64
+  timeout_seconds: 30
+warmups: 0
+measured_trials: 3
+aggregation: arithmetic_mean
+outlier_policy: none
+comparison_rule: nonoverlap_confidence_bounds_v1
+minimum_effect: 1.0
+max_report_bytes: 1048576
+max_artifact_bytes: 1048576
+adaptive_feedback:
+  admission_query_budget: 10
+  admission_failure_detail: category-only
+  audit_holdout_rotation: per-experiment-revision
+  evaluator_revision_after_leakage: mandatory
+  promotion_to_development: human-sanitized-new-revision

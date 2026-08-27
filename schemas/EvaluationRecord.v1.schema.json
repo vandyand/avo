@@ -1,0 +1,435 @@
+{
+  "$defs": {
+    "ArtifactRef": {
+      "additionalProperties": false,
+      "properties": {
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Digest",
+          "type": "string"
+        },
+        "media_type": {
+          "minLength": 1,
+          "title": "Media Type",
+          "type": "string"
+        },
+        "role": {
+          "minLength": 1,
+          "title": "Role",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "size_bytes": {
+          "minimum": 0,
+          "title": "Size Bytes",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "digest",
+        "size_bytes",
+        "media_type",
+        "role",
+        "created_at"
+      ],
+      "title": "ArtifactRef",
+      "type": "object"
+    },
+    "ConstraintResult": {
+      "additionalProperties": false,
+      "properties": {
+        "evidence_digest": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Evidence Digest"
+        },
+        "name": {
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "passed": {
+          "title": "Passed",
+          "type": "boolean"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "severity": {
+          "default": "hard",
+          "enum": [
+            "hard",
+            "soft"
+          ],
+          "title": "Severity",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "passed"
+      ],
+      "title": "ConstraintResult",
+      "type": "object"
+    },
+    "TrialRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "host_overhead_time_ms": {
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "type": "string"
+            }
+          ],
+          "title": "Host Overhead Time Ms"
+        },
+        "metrics": {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+                "type": "string"
+              }
+            ]
+          },
+          "title": "Metrics",
+          "type": "object"
+        },
+        "queue_time_ms": {
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "type": "string"
+            }
+          ],
+          "title": "Queue Time Ms"
+        },
+        "sandbox_setup_time_ms": {
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "type": "string"
+            }
+          ],
+          "title": "Sandbox Setup Time Ms"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "seed": {
+          "title": "Seed",
+          "type": "integer"
+        },
+        "trial_index": {
+          "minimum": 0,
+          "title": "Trial Index",
+          "type": "integer"
+        },
+        "workload_time_ms": {
+          "anyOf": [
+            {
+              "minimum": 0.0,
+              "type": "number"
+            },
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "type": "string"
+            }
+          ],
+          "title": "Workload Time Ms"
+        }
+      },
+      "required": [
+        "trial_index",
+        "seed",
+        "metrics",
+        "workload_time_ms",
+        "sandbox_setup_time_ms",
+        "queue_time_ms",
+        "host_overhead_time_ms"
+      ],
+      "title": "TrialRecord",
+      "type": "object"
+    },
+    "UncertaintyRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "confidence_level": {
+          "anyOf": [
+            {
+              "exclusiveMaximum": 1.0,
+              "exclusiveMinimum": 0.0,
+              "type": "number"
+            },
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "type": "string"
+            }
+          ],
+          "title": "Confidence Level"
+        },
+        "lower": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "type": "string"
+            }
+          ],
+          "title": "Lower"
+        },
+        "method": {
+          "minLength": 1,
+          "title": "Method",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "upper": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+              "type": "string"
+            }
+          ],
+          "title": "Upper"
+        }
+      },
+      "required": [
+        "method",
+        "lower",
+        "upper",
+        "confidence_level"
+      ],
+      "title": "UncertaintyRecord",
+      "type": "object"
+    },
+    "VersionedComponentRef": {
+      "additionalProperties": false,
+      "properties": {
+        "capability_manifest_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Capability Manifest Digest",
+          "type": "string"
+        },
+        "component_id": {
+          "minLength": 1,
+          "title": "Component Id",
+          "type": "string"
+        },
+        "component_version": {
+          "minLength": 1,
+          "title": "Component Version",
+          "type": "string"
+        },
+        "package_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Package Digest",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "component_id",
+        "component_version",
+        "package_digest",
+        "capability_manifest_digest"
+      ],
+      "title": "VersionedComponentRef",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "aggregate_metrics": {
+      "additionalProperties": {
+        "anyOf": [
+          {
+            "type": "number"
+          },
+          {
+            "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+            "type": "string"
+          }
+        ]
+      },
+      "title": "Aggregate Metrics",
+      "type": "object"
+    },
+    "candidate_id": {
+      "minLength": 1,
+      "title": "Candidate Id",
+      "type": "string"
+    },
+    "completed_at": {
+      "format": "date-time",
+      "title": "Completed At",
+      "type": "string"
+    },
+    "constraints": {
+      "items": {
+        "$ref": "#/$defs/ConstraintResult"
+      },
+      "title": "Constraints",
+      "type": "array"
+    },
+    "evaluation_id": {
+      "minLength": 1,
+      "title": "Evaluation Id",
+      "type": "string"
+    },
+    "evaluator_profile_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Evaluator Profile Digest",
+      "type": "string"
+    },
+    "evaluator_ref": {
+      "$ref": "#/$defs/VersionedComponentRef"
+    },
+    "evaluator_tier": {
+      "enum": [
+        "development",
+        "admission",
+        "audit"
+      ],
+      "title": "Evaluator Tier",
+      "type": "string"
+    },
+    "evidence_artifacts": {
+      "items": {
+        "$ref": "#/$defs/ArtifactRef"
+      },
+      "title": "Evidence Artifacts",
+      "type": "array"
+    },
+    "execution_image_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Execution Image Digest",
+      "type": "string"
+    },
+    "hardware_class": {
+      "minLength": 1,
+      "title": "Hardware Class",
+      "type": "string"
+    },
+    "input_artifact_digests": {
+      "items": {
+        "pattern": "^sha256:[0-9a-f]{64}$",
+        "type": "string"
+      },
+      "title": "Input Artifact Digests",
+      "type": "array"
+    },
+    "outcome": {
+      "enum": [
+        "passed",
+        "failed",
+        "errored",
+        "timed_out",
+        "policy_blocked",
+        "invalid_report"
+      ],
+      "title": "Outcome",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "started_at": {
+      "format": "date-time",
+      "title": "Started At",
+      "type": "string"
+    },
+    "trial_records": {
+      "items": {
+        "$ref": "#/$defs/TrialRecord"
+      },
+      "title": "Trial Records",
+      "type": "array"
+    },
+    "uncertainty": {
+      "additionalProperties": {
+        "$ref": "#/$defs/UncertaintyRecord"
+      },
+      "title": "Uncertainty",
+      "type": "object"
+    }
+  },
+  "required": [
+    "evaluation_id",
+    "candidate_id",
+    "evaluator_ref",
+    "evaluator_tier",
+    "evaluator_profile_digest",
+    "execution_image_digest",
+    "hardware_class",
+    "input_artifact_digests",
+    "trial_records",
+    "aggregate_metrics",
+    "uncertainty",
+    "constraints",
+    "outcome",
+    "evidence_artifacts",
+    "started_at",
+    "completed_at"
+  ],
+  "title": "EvaluationRecord",
+  "type": "object"
+}

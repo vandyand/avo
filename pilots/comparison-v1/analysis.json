@@ -1,0 +1,89 @@
+{
+  "schema_version": 1,
+  "pilot_id": "comparison-v1",
+  "arms": {
+    "codex": {
+      "attempts": 24,
+      "admitted": 21,
+      "public_succeeded": 24,
+      "runtime_errors": 0,
+      "latency": {
+        "total_seconds": 1888.458891,
+        "mean_seconds": 78.685787,
+        "median_seconds": 69.756596,
+        "p95_nearest_rank_seconds": 118.333308,
+        "maximum_seconds": 170.805324
+      },
+      "input_tokens_observed": 2151807,
+      "output_tokens_observed": 84278,
+      "charged_cost_usd": null
+    },
+    "openrouter-native": {
+      "attempts": 24,
+      "admitted": 15,
+      "public_succeeded": 22,
+      "runtime_errors": 3,
+      "latency": {
+        "total_seconds": 4166.012342,
+        "mean_seconds": 173.583848,
+        "median_seconds": 132.009675,
+        "p95_nearest_rank_seconds": 440.985207,
+        "maximum_seconds": 476.6536
+      },
+      "input_tokens": 351811,
+      "output_tokens": 388463,
+      "provider_cost_microusd": 551825,
+      "provider_cost_usd": 0.551825,
+      "model_invocations": 219,
+      "failed_model_invocations": 3,
+      "tool_calls": 197,
+      "development_evaluator_calls": 19,
+      "session_outcomes": {
+        "proposal_ready": 18,
+        "runtime_error": 3,
+        "exhausted": 2,
+        "failed": 1
+      },
+      "cost_sources": {
+        "provider": 216,
+        "provider_recovered_from_response_artifact": 3
+      }
+    }
+  },
+  "paired_outcomes": {
+    "both_admitted": 15,
+    "codex_only": 6,
+    "openrouter_only": 0,
+    "neither_admitted": 3
+  },
+  "paired_exact_mcnemar_p_value": 0.03125,
+  "task_level_direction": {
+    "codex_better": 2,
+    "openrouter_better": 0,
+    "tied": 6
+  },
+  "task_results": {
+    "rolling-window": {"codex": 3, "openrouter-native": 3, "difference": 0},
+    "identifier-boundary": {"codex": 3, "openrouter-native": 0, "difference": 3},
+    "integer-allocation": {"codex": 3, "openrouter-native": 0, "difference": 3},
+    "bounded-backoff": {"codex": 3, "openrouter-native": 3, "difference": 0},
+    "interval-union": {"codex": 3, "openrouter-native": 3, "difference": 0},
+    "dependency-order": {"codex": 3, "openrouter-native": 3, "difference": 0},
+    "event-reconciliation": {"codex": 3, "openrouter-native": 3, "difference": 0},
+    "configuration-overlay": {"codex": 0, "openrouter-native": 0, "difference": 0}
+  },
+  "credit_audit": {
+    "locked_remaining_usd": 11.482232628,
+    "final_remaining_usd": 10.871723888,
+    "account_usage_delta_usd": 0.61050874,
+    "request_level_provider_cost_usd": 0.551825,
+    "unallocated_account_delta_usd": 0.05868374,
+    "note": "The account-wide delta is a cross-check, not an attribution mechanism; request-level provider usage is the comparison cost source."
+  },
+  "caveats": [
+    "Attempt-level McNemar treats repetitions as independent, while outcomes are clustered by eight tasks.",
+    "The small frozen suite supports interface diagnosis, not a broad model-superiority claim.",
+    "Codex and OpenRouter token fields are provider/runtime observations with different caching and reasoning accounting and are not directly comparable.",
+    "configuration-overlay has an under-specified exception-type assertion in its hidden evaluator."
+  ]
+}

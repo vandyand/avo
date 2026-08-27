@@ -1,0 +1,71 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "budget_fraction_micros": {
+      "maximum": 1000000,
+      "minimum": 0,
+      "title": "Budget Fraction Micros",
+      "type": "integer"
+    },
+    "diversity_fraction_micros": {
+      "maximum": 1000000,
+      "minimum": 0,
+      "title": "Diversity Fraction Micros",
+      "type": "integer"
+    },
+    "duplicate_patch_count": {
+      "minimum": 0,
+      "title": "Duplicate Patch Count",
+      "type": "integer"
+    },
+    "policy_denial_count": {
+      "minimum": 0,
+      "title": "Policy Denial Count",
+      "type": "integer"
+    },
+    "quarantine_count": {
+      "minimum": 0,
+      "title": "Quarantine Count",
+      "type": "integer"
+    },
+    "repeated_failure_count": {
+      "minimum": 0,
+      "title": "Repeated Failure Count",
+      "type": "integer"
+    },
+    "run_id": {
+      "minLength": 1,
+      "title": "Run Id",
+      "type": "string"
+    },
+    "run_state": {
+      "minLength": 1,
+      "title": "Run State",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "sessions_without_admission": {
+      "minimum": 0,
+      "title": "Sessions Without Admission",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "run_id",
+    "run_state",
+    "sessions_without_admission",
+    "repeated_failure_count",
+    "quarantine_count",
+    "duplicate_patch_count",
+    "policy_denial_count",
+    "budget_fraction_micros",
+    "diversity_fraction_micros"
+  ],
+  "title": "SupervisorObservation",
+  "type": "object"
+}

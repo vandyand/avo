@@ -1,0 +1,103 @@
+{
+  "schema_version": 1,
+  "experiment_id": "reference-python-repair-v1",
+  "title": "Repair fixed-width window selection",
+  "objective": "Repair the bounded Python defect without reading private admission cases.",
+  "success_criteria": [
+    "Visible development tests pass",
+    "Private admission constraints pass",
+    "Correctness-score confidence bounds exceed the incumbent by at least 1.0"
+  ],
+  "workspace": {
+    "schema_version": 1,
+    "source_uri": "file:fixtures/reference_project/seed",
+    "source_revision": "fixture-v1",
+    "source_tree_digest": "sha256:2b57ae94b539dacafd4a04afeb1643e1eb42f249c5af0fea4a31631a8a8a0643",
+    "allowed_paths": ["pyproject.toml", "src", "tests"],
+    "forbidden_paths": ["private", "evaluator", ".git"],
+    "required_paths": ["pyproject.toml", "src/reference_target/optimizer.py"],
+    "max_file_bytes": 1048576,
+    "max_tree_bytes": 10485760,
+    "submodules": "deny",
+    "symlinks": "deny"
+  },
+  "search": {
+    "schema_version": 1,
+    "method": "single_lineage_agentic",
+    "method_version": "1.0.0",
+    "max_committed_candidates": 3,
+    "stopping_rules": ["first_admission", "three_sessions_without_improvement"]
+  },
+  "harness": {
+    "schema_version": 1,
+    "component": {
+      "schema_version": 1,
+      "component_id": "native-agent-harness",
+      "component_version": "1.0.0",
+      "package_digest": "sha256:32a8c2c12f144dfa31959bca9c7d196757d2165a362d7cd826cde7bccdf0e6a2",
+      "capability_manifest_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    "model_config_digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "configuration_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "development_evaluators": [
+    {
+      "schema_version": 1,
+      "component": {
+        "schema_version": 1,
+        "component_id": "reference-development",
+        "component_version": "1.0.0",
+        "package_digest": "sha256:816c1f47219d10be33aaaed42756ddb840b787205b584cc43eef46d8ec1e7760",
+        "capability_manifest_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "tier": "development",
+      "profile_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "execution_image_digest": "sha256:586dcc790c714be468b38874eeb8e48fca53b9b85b3d3e30f3f70ee526d401b2"
+    }
+  ],
+  "admission_evaluators": [
+    {
+      "schema_version": 1,
+      "component": {
+        "schema_version": 1,
+        "component_id": "reference-admission",
+        "component_version": "1.0.0",
+        "package_digest": "sha256:816c1f47219d10be33aaaed42756ddb840b787205b584cc43eef46d8ec1e7760",
+        "capability_manifest_digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      },
+      "tier": "admission",
+      "profile_digest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "execution_image_digest": "sha256:972c6afef64519a1f36513d389f62a0d86bb0c7ca10eb53c5eba3103260137c3"
+    }
+  ],
+  "audit_evaluators": [],
+  "budget": {
+    "schema_version": 1,
+    "wall_clock_seconds": 1800,
+    "model_input_tokens": 100000,
+    "model_output_tokens": 30000,
+    "model_cost_microusd": 5000000,
+    "tool_calls": 100,
+    "sandbox_cpu_seconds": 600,
+    "sandbox_gpu_seconds": 0,
+    "authoritative_evaluations": 10,
+    "variation_sessions": 5,
+    "artifact_bytes": 104857600
+  },
+  "sandbox_profile_id": "docker-trusted-team-v1",
+  "policy_bundle_digest": "sha256:e199efa9c0e638360a52725ddbf182194292c7be265a12b0d1fd172096907c1a",
+  "retention_policy_id": "reference-research-v1",
+  "review_policy": {
+    "schema_version": 1,
+    "required": false,
+    "eligible_roles": [],
+    "approvals_required": 0,
+    "proposer_may_review": false,
+    "expires_after_seconds": null
+  },
+  "created_by": {
+    "schema_version": 1,
+    "actor_type": "human",
+    "actor_id": "reference-operator"
+  }
+}

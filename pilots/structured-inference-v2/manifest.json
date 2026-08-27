@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "pilot_id": "structured-inference-v2",
+  "purpose": "Frozen offline corpus for deterministic advisory-review evaluation.",
+  "case_directory": "cases",
+  "task_order": [
+    "correctness-invariant",
+    "missing-positive-tests",
+    "path-traversal-guard",
+    "compatibility-break",
+    "insufficient-evidence",
+    "fabricated-evidence-reference",
+    "omitted-required-strict-fields",
+    "malformed-json",
+    "provider-refusal",
+    "truncated-output"
+  ]
+}

@@ -1,0 +1,132 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "activity_id": {
+      "minLength": 1,
+      "title": "Activity Id",
+      "type": "string"
+    },
+    "budget_reservation_id": {
+      "anyOf": [
+        {
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Budget Reservation Id"
+    },
+    "evidence_digests": {
+      "items": {
+        "pattern": "^sha256:[0-9a-f]{64}$",
+        "type": "string"
+      },
+      "title": "Evidence Digests",
+      "type": "array"
+    },
+    "opened_at": {
+      "format": "date-time",
+      "title": "Opened At",
+      "type": "string"
+    },
+    "reason": {
+      "minLength": 1,
+      "title": "Reason",
+      "type": "string"
+    },
+    "reconciliation_id": {
+      "minLength": 1,
+      "title": "Reconciliation Id",
+      "type": "string"
+    },
+    "resolution": {
+      "anyOf": [
+        {
+          "enum": [
+            "retry",
+            "accept_result",
+            "cancel",
+            "fail"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Resolution"
+    },
+    "resolution_note": {
+      "anyOf": [
+        {
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Resolution Note"
+    },
+    "resolved_at": {
+      "anyOf": [
+        {
+          "format": "date-time",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Resolved At"
+    },
+    "run_id": {
+      "minLength": 1,
+      "title": "Run Id",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "session_id": {
+      "anyOf": [
+        {
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Session Id"
+    },
+    "state": {
+      "enum": [
+        "open",
+        "resolved"
+      ],
+      "title": "State",
+      "type": "string"
+    }
+  },
+  "required": [
+    "reconciliation_id",
+    "run_id",
+    "activity_id",
+    "reason",
+    "state",
+    "opened_at"
+  ],
+  "title": "ReconciliationCaseRecord",
+  "type": "object"
+}

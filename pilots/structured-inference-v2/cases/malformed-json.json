@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "case_id": "malformed-json",
+  "review_input": {
+    "schema_version": 1,
+    "candidate_id": "candidate-malformed-json",
+    "objective": "Review a synthetic bounded lexical change.",
+    "patch": "diff --git a/src/lex.py b/src/lex.py\n+@@\n+ def lex(value):\n+     return value.split()\n+",
+    "changed_paths": ["src/lex.py"],
+    "evaluation_summaries": [],
+    "evidence_catalog": [
+      {"schema_version": 1, "evidence_id": "ev-lex-patch", "content_digest": "sha256:6666666666666666666666666666666666666666666666666666666666666666", "label": "Synthetic lexical patch"}
+    ]
+  },
+  "observation": {
+    "schema_version": 1,
+    "kind": "malformed_json",
+    "payload": "{\"schema_version\":1,\"candidate_id\":\"candidate-malformed-json\",\"recommendation\":\"accept\","
+  },
+  "expected_stage": "parse_rejected",
+  "themes": [],
+  "forbidden_claims": [],
+  "severity_expectations": []
+}

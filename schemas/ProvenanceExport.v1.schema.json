@@ -1,0 +1,39 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "format": {
+      "const": "avo-lineage-json-v1",
+      "default": "avo-lineage-json-v1",
+      "title": "Format",
+      "type": "string"
+    },
+    "manifest": {
+      "additionalProperties": true,
+      "title": "Manifest",
+      "type": "object"
+    },
+    "manifest_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Manifest Digest",
+      "type": "string"
+    },
+    "run_id": {
+      "minLength": 1,
+      "title": "Run Id",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "run_id",
+    "manifest",
+    "manifest_digest"
+  ],
+  "title": "ProvenanceExport",
+  "type": "object"
+}

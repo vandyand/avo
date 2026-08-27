@@ -1,0 +1,62 @@
+{
+  "evaluation_summaries": [
+    {
+      "schema_version": 1,
+      "evaluation_id": "evaluation:repository-gates:fdf17fa5-e0e0-5b79-8d70-6abc6a0db7c7",
+      "outcome": "passed",
+      "summary": "The candidate passed the frozen public repository gates and stayed within the allowed two-file path scope.",
+      "evidence_refs": [
+        "public-evaluation-log",
+        "candidate-contract-tests"
+      ]
+    },
+    {
+      "schema_version": 1,
+      "evaluation_id": "evaluation:runtime-inspection-private:fdf17fa5-e0e0-5b79-8d70-6abc6a0db7c7",
+      "outcome": "passed",
+      "summary": "The private acceptance check confirmed that completed RuntimeInspection values reject a missing completion record.",
+      "evidence_refs": [
+        "private-evaluation-log",
+        "candidate-patch"
+      ]
+    }
+  ],
+  "evidence_catalog": [
+    {
+      "schema_version": 1,
+      "evidence_id": "candidate-patch",
+      "content_digest": "sha256:fc3ad61cf2f72ea37732664586e1c9c03207489a80bceee7d33a8d66cbfe1c73",
+      "label": "The complete 2,146-byte patch under review."
+    },
+    {
+      "schema_version": 1,
+      "evidence_id": "public-evaluation-log",
+      "content_digest": "sha256:d210ac8fbda70609e3e806de8565e2d2773534c93646b5049fc3c1d434009ce5",
+      "label": "Frozen public repository-gate evaluation log; outcome passed."
+    },
+    {
+      "schema_version": 1,
+      "evidence_id": "private-evaluation-log",
+      "content_digest": "sha256:74b4c0b96c0914f62e94eaf7f1bbfd6de72f909caf8e6d023ff6d8c91f3e9c79",
+      "label": "Frozen private completed-state invariant evaluation log; outcome passed."
+    },
+    {
+      "schema_version": 1,
+      "evidence_id": "candidate-contract-tests",
+      "content_digest": "sha256:f5018e24a63e90c7abf3888c8dca18e6c0f547643d6dcdeb91cb2e05e83b35ab",
+      "label": "Candidate test_contracts.py adds the invalid completed-without-completion case, but no direct positive completed-with-completion or representative non-completed-state cases."
+    },
+    {
+      "schema_version": 1,
+      "evidence_id": "existing-campaign-guard",
+      "content_digest": "sha256:b66f15f27b4c235be32e83d389288b08319bb171a5fc7b491b9281ec1eb69274",
+      "label": "Existing campaign.py already raises CampaignRuntimeError if a completed runtime inspection lacks completion data."
+    },
+    {
+      "schema_version": 1,
+      "evidence_id": "runtime-inspection-json-schema",
+      "content_digest": "sha256:3ec14c8cd18a289d8f374dda7e0237fd4fc04b4ecab4c393896ba5e1e1b9cf2c",
+      "label": "Generated RuntimeInspection JSON Schema remains unable to express the Pydantic cross-field completed-state invariant."
+    }
+  ]
+}

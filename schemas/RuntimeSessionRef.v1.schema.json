@@ -1,0 +1,80 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "adapter_id": {
+      "minLength": 1,
+      "title": "Adapter Id",
+      "type": "string"
+    },
+    "checkpoint": {
+      "anyOf": [
+        {
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Checkpoint"
+    },
+    "invocation_id": {
+      "anyOf": [
+        {
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Invocation Id"
+    },
+    "native_operation_id": {
+      "anyOf": [
+        {
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Native Operation Id"
+    },
+    "native_session_id": {
+      "minLength": 1,
+      "title": "Native Session Id",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "storage_class": {
+      "enum": [
+        "memory",
+        "local",
+        "provider"
+      ],
+      "title": "Storage Class",
+      "type": "string"
+    }
+  },
+  "required": [
+    "adapter_id",
+    "native_session_id",
+    "storage_class"
+  ],
+  "title": "RuntimeSessionRef",
+  "type": "object"
+}

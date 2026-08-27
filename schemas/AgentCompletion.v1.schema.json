@@ -1,0 +1,38 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "claimed_tests": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "title": "Claimed Tests",
+      "type": "array"
+    },
+    "outcome": {
+      "enum": [
+        "proposal",
+        "stop"
+      ],
+      "title": "Outcome",
+      "type": "string"
+    },
+    "rationale": {
+      "minLength": 1,
+      "title": "Rationale",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "outcome",
+    "rationale"
+  ],
+  "title": "AgentCompletion",
+  "type": "object"
+}

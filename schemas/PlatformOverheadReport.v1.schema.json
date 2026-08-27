@@ -1,0 +1,81 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "execution_image_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Execution Image Digest",
+      "type": "string"
+    },
+    "hardware_class": {
+      "minLength": 1,
+      "title": "Hardware Class",
+      "type": "string"
+    },
+    "measured_at": {
+      "format": "date-time",
+      "title": "Measured At",
+      "type": "string"
+    },
+    "platform_overhead_ms": {
+      "anyOf": [
+        {
+          "minimum": 0.0,
+          "type": "number"
+        },
+        {
+          "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+          "type": "string"
+        }
+      ],
+      "title": "Platform Overhead Ms"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "trial_count": {
+      "exclusiveMinimum": 0,
+      "title": "Trial Count",
+      "type": "integer"
+    },
+    "wall_clock_ms": {
+      "anyOf": [
+        {
+          "minimum": 0.0,
+          "type": "number"
+        },
+        {
+          "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+          "type": "string"
+        }
+      ],
+      "title": "Wall Clock Ms"
+    },
+    "workload_ms": {
+      "anyOf": [
+        {
+          "minimum": 0.0,
+          "type": "number"
+        },
+        {
+          "pattern": "^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d*$",
+          "type": "string"
+        }
+      ],
+      "title": "Workload Ms"
+    }
+  },
+  "required": [
+    "hardware_class",
+    "execution_image_digest",
+    "trial_count",
+    "wall_clock_ms",
+    "workload_ms",
+    "platform_overhead_ms",
+    "measured_at"
+  ],
+  "title": "PlatformOverheadReport",
+  "type": "object"
+}
