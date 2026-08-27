@@ -34,8 +34,8 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           mkdir -p .avo-runtime
-          docker buildx build --load --provenance=false --build-arg SOURCE_DATE_EPOCH=0 --file evaluators/reference/Dockerfile.development --tag avo-reference-development:1.0.0 --metadata-file "$AVO_REFERENCE_DEVELOPMENT_METADATA_FILE" .
-          docker buildx build --load --provenance=false --build-arg SOURCE_DATE_EPOCH=0 --file evaluators/reference/Dockerfile.admission --tag avo-reference-admission:1.0.0 --metadata-file "$AVO_REFERENCE_ADMISSION_METADATA_FILE" .
+          docker buildx build --output=type=docker --platform=linux/amd64 --provenance=false --build-arg SOURCE_DATE_EPOCH=0 --file evaluators/reference/Dockerfile.development --tag avo-reference-development:1.0.0 --metadata-file "$AVO_REFERENCE_DEVELOPMENT_METADATA_FILE" .
+          docker buildx build --output=type=docker --platform=linux/amd64 --provenance=false --build-arg SOURCE_DATE_EPOCH=0 --file evaluators/reference/Dockerfile.admission --tag avo-reference-admission:1.0.0 --metadata-file "$AVO_REFERENCE_ADMISSION_METADATA_FILE" .
       - name: Measure evaluator platform overhead
         if: runner.os == 'Linux'
         run: uv run avoctl platform benchmark
@@ -71,7 +71,8 @@ jobs:
         shell: pwsh
         run: >-
           wsl.exe --cd $env:AVO_WSL_PROJECT_PATH --exec docker buildx build
-          --load
+          --output=type=docker
+          --platform=linux/amd64
           --provenance=false
           --build-arg SOURCE_DATE_EPOCH=0
           --file evaluators/reference/Dockerfile.development
@@ -81,7 +82,8 @@ jobs:
         shell: pwsh
         run: >-
           wsl.exe --cd $env:AVO_WSL_PROJECT_PATH --exec docker buildx build
-          --load
+          --output=type=docker
+          --platform=linux/amd64
           --provenance=false
           --build-arg SOURCE_DATE_EPOCH=0
           --file evaluators/reference/Dockerfile.admission

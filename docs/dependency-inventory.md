@@ -26,6 +26,8 @@ Status date: 2026-08-27. `uv.lock` is the authority for every direct and transit
 | ripgrep | 15.2.0 | MIT OR Unlicense | Optional search executable | OS package provenance; executable checksum required for release host | Linux/Windows host | Host inventory review monthly |
 | Docker Engine/Desktop | 28.5.1 on reviewed host | Apache-2.0; Desktop terms apply | Trusted-team OCI sandbox | Host package provenance | Linux; Windows 11 via WSL 2 | Host inventory and daemon review monthly |
 | Python evaluator base | `python:3.12.10-slim-bookworm` | PSF plus Debian package licenses | Tier-separated evaluator image | linux/amd64 manifest `sha256:97983fa8cc88343512862c62307159a82261c3528dc025f79e5a3f7af43e50b4` | OCI linux/amd64 | Rebuild and scan monthly and before release |
+| Development evaluator | `avo-reference-development:1.0.0` | Project license plus base-image licenses | Public development evaluation | Reviewed Docker schema-2 manifest `sha256:586dcc790c714be468b38874eeb8e48fca53b9b85b3d3e30f3f70ee526d401b2`, bound config `sha256:25647a31f0af54440a0e9db5ffcf03abec7bda99b41b0b400f5ea056574352c5` | OCI linux/amd64 | Rebuild, verify both digests, and scan before pin changes |
+| Admission evaluator | `avo-reference-admission:1.0.0` | Project license plus base-image licenses | Private admission evaluation | Reviewed Docker schema-2 manifest `sha256:972c6afef64519a1f36513d389f62a0d86bb0c7ca10eb53c5eba3103260137c3`, bound config `sha256:1f4812e4b64baa9e14abb59bb939f15cdd4534d4c61b4c4fac274fc7342a4318` | OCI linux/amd64 | Rebuild, verify both digests, and scan before pin changes |
 
 The audit command is:
 
@@ -33,4 +35,4 @@ The audit command is:
 uvx pip-audit --path .venv/Lib/site-packages --format json --output .avo-pip-audit.json
 ~~~
 
-The 2026-08-27 scan reported no known vulnerabilities across the 47-package all-groups/all-extras environment after adding jsonschema. This is point-in-time evidence, not a guarantee. CI uses `uv sync --all-groups --frozen`; monthly review refreshes the advisory scan and evaluator-image scan. Rollback means restoring the prior reviewed `pyproject.toml`, `uv.lock`, and image digest together, then rerunning schema, contract, security, Docker, and end-to-end gates.
+The 2026-08-27 scan reported no known vulnerabilities across the 47-package all-groups/all-extras environment after adding jsonschema. This is point-in-time evidence, not a guarantee. CI uses `uv sync --all-groups --all-extras --frozen`; monthly review refreshes the advisory scan and evaluator-image scan. Rollback means restoring the prior reviewed `pyproject.toml`, `uv.lock`, and image digest together, then rerunning schema, contract, security, Docker, and end-to-end gates.

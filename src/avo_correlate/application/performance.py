@@ -16,6 +16,9 @@ from avo_correlate.domain.canonical import source_tree_digest
 from avo_correlate.domain.evaluator_reports import parse_evaluation_report
 
 _OUTPUT_DIGEST = "sha256:" + ("c" * 64)
+_DEVELOPMENT_CONFIG_DIGEST = (
+    "sha256:25647a31f0af54440a0e9db5ffcf03abec7bda99b41b0b400f5ea056574352c5"
+)
 
 
 def measure_platform_overhead(
@@ -27,6 +30,7 @@ def measure_platform_overhead(
     verified_image = resolve_verified_image(
         image,
         _development_manifest(),
+        expected_config=_DEVELOPMENT_CONFIG_DIGEST,
         metadata_file=metadata_path or _metadata_path_from_environment(),
     )
     image_digest = verified_image.reviewed_manifest
@@ -81,9 +85,7 @@ def measure_platform_overhead(
     wall_clock = Decimal(
         str((execution.completed_at - execution.started_at).total_seconds() * 1000)
     )
-    workload = sum(
-        (trial.workload_time_ms for trial in evaluated.trial_records), start=Decimal(0)
-    )
+    workload = sum((trial.workload_time_ms for trial in evaluated.trial_records), start=Decimal(0))
     return PlatformOverheadReport(
         hardware_class=f"{platform.system().lower()}-{platform.machine().lower()}",
         execution_image_digest=image_digest,

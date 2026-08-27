@@ -47,6 +47,10 @@ from avo_correlate.domain.canonical import canonical_digest, source_tree_digest
 from avo_correlate.domain.evaluator_reports import parse_evaluation_report
 
 _OUTPUT_DIGEST = "sha256:" + ("c" * 64)
+_DEVELOPMENT_CONFIG_DIGEST = (
+    "sha256:25647a31f0af54440a0e9db5ffcf03abec7bda99b41b0b400f5ea056574352c5"
+)
+_ADMISSION_CONFIG_DIGEST = "sha256:1f4812e4b64baa9e14abb59bb939f15cdd4534d4c61b4c4fac274fc7342a4318"
 
 
 class ReferenceScenarioRunner:
@@ -68,9 +72,7 @@ class ReferenceScenarioRunner:
         self._admission_image = admission_image_digest
         self._development_image_reference = development_image_reference
         self._admission_image_reference = admission_image_reference
-        self._development_metadata_path = development_metadata_path or _metadata_path(
-            "development"
-        )
+        self._development_metadata_path = development_metadata_path or _metadata_path("development")
         self._admission_metadata_path = admission_metadata_path or _metadata_path("admission")
 
     def run(self) -> ReferenceScenarioResult:
@@ -172,6 +174,7 @@ class ReferenceScenarioRunner:
                 evaluation_id="development-candidate-1",
                 tier="development",
                 image_digest=self._development_image,
+                image_config_digest=_DEVELOPMENT_CONFIG_DIGEST,
                 image_reference=self._development_image_reference,
                 metadata_path=self._development_metadata_path,
             )
@@ -258,6 +261,7 @@ class ReferenceScenarioRunner:
             evaluation_id="admission-incumbent",
             tier="admission",
             image_digest=self._admission_image,
+            image_config_digest=_ADMISSION_CONFIG_DIGEST,
             image_reference=self._admission_image_reference,
             metadata_path=self._admission_metadata_path,
         )
@@ -267,6 +271,7 @@ class ReferenceScenarioRunner:
             evaluation_id="admission-candidate-1",
             tier="admission",
             image_digest=self._admission_image,
+            image_config_digest=_ADMISSION_CONFIG_DIGEST,
             image_reference=self._admission_image_reference,
             metadata_path=self._admission_metadata_path,
         )
@@ -284,9 +289,7 @@ class ReferenceScenarioRunner:
         candidate_record = candidate_record.model_copy(
             update={"evidence_artifacts": [admission_ref]}
         )
-        evidence.record_evaluation(
-            candidate_record, evaluator_key="admission:reference-v1"
-        )
+        evidence.record_evaluation(candidate_record, evaluator_key="admission:reference-v1")
         policy = PolicyBundle.model_validate_json(
             (self._project / "examples/reference-policy.json").read_text(encoding="utf-8")
         )
@@ -299,9 +302,7 @@ class ReferenceScenarioRunner:
         )
         if policy_decision.outcome != "allow":
             raise RuntimeError("reference admission policy did not allow the candidate")
-        evidence.record_policy_decision(
-            run_id, policy_decision, candidate_id="candidate-1"
-        )
+        evidence.record_policy_decision(run_id, policy_decision, candidate_id="candidate-1")
         comparison = compare_evaluations(
             incumbent_record,
             candidate_record,
@@ -321,9 +322,7 @@ class ReferenceScenarioRunner:
                 outcome="admit",
                 reason_codes=["constraints_passed", "statistical_improvement"],
                 comparison=comparison,
-                decided_by=ActorRef(
-                    actor_type="service", actor_id="admission-controller"
-                ),
+                decided_by=ActorRef(actor_type="service", actor_id="admission-controller"),
                 decided_at=datetime.now(UTC),
             ),
         )
@@ -333,9 +332,7 @@ class ReferenceScenarioRunner:
                 "artifact_bytes": len(patch_bytes) + len(dev_raw),
             }
         )
-        budgets.complete(
-            session_reservation, actual=actual_session, actor_id="scheduler"
-        )
+        budgets.complete(session_reservation, actual=actual_session, actor_id="scheduler")
         budgets.complete(
             evaluation_reservation,
             actual=_usage(
@@ -369,6 +366,7 @@ class ReferenceScenarioRunner:
         evaluation_id: str,
         tier: str,
         image_digest: str,
+        image_config_digest: str,
         image_reference: str,
         metadata_path: Path | None,
     ) -> tuple[EvaluationRecord, bytes]:
@@ -379,6 +377,7 @@ class ReferenceScenarioRunner:
         verified_image = resolve_verified_image(
             image_reference,
             image_digest,
+            expected_config=image_config_digest,
             metadata_file=metadata_path,
         )
         sandbox = DockerSandbox(
