@@ -76,6 +76,18 @@
       "title": "Evidence Manifest Digest",
       "type": "string"
     },
+    "expected_main_commit": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Expected Main Commit"
+    },
     "merge_method": {
       "const": "squash",
       "title": "Merge Method",

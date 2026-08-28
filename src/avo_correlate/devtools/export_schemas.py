@@ -15,6 +15,7 @@ from avo_correlate.contracts import (
     CandidatePublicationBinding,
     EvaluationRecord,
     ExperimentSpec,
+    FailedSoakAttestation,
     GitRefSnapshot,
     IntegrationCampaignEvidencePackage,
     IntegrationIntentTemplate,
@@ -232,6 +233,7 @@ MODELS: tuple[type[StrictModel], ...] = (
     LiveRollbackPublicationOutcome,
     LiveRollbackPublicationPlan,
     LiveRollbackWorkflowEvidence,
+    FailedSoakAttestation,
 )
 
 

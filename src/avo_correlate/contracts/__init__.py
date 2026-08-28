@@ -36,6 +36,7 @@ from avo_correlate.contracts.integration_promotion import (
     PromotionLeaseEvidence,
     PromotionMutationAuthorization,
 )
+from avo_correlate.contracts.integration_soak import FailedSoakAttestation
 from avo_correlate.contracts.policy import PolicyDecision
 from avo_correlate.contracts.promotion_bundle import (
     GitRefSnapshot,
@@ -87,6 +88,7 @@ __all__ = [
     "EconomicUsageRecord",
     "EvaluationRecord",
     "ExperimentSpec",
+    "FailedSoakAttestation",
     "GitRefSnapshot",
     "HarnessInvocationRecord",
     "HarnessRuntimeProfile",

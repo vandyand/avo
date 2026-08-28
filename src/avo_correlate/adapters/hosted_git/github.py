@@ -28,6 +28,14 @@ from avo_correlate.contracts.integration_promotion import (
     IntegrationProviderObservation,
     IntegrationProviderReconciliation,
 )
+from avo_correlate.contracts.integration_soak import (
+    SOAK_APP_ID,
+    SOAK_CONTEXT,
+    SOAK_MARKER,
+    SOAK_WORKFLOW_PATH,
+    SOAK_WORKFLOW_VARIABLE,
+    FailedSoakAttestation,
+)
 from avo_correlate.contracts.synthetic_validation import SyntheticValidationObservation
 from avo_correlate.domain.canonical import canonical_digest
 
@@ -97,12 +105,17 @@ class GitHubEvidenceSnapshot:
 
     @property
     def raw_evidence(self) -> JsonObject:
-        return cast(JsonObject, _json_value({
-            "synthetic_merge_commit": self.synthetic_merge_commit,
-            "synthetic_merge_tree": self.synthetic_merge_tree,
-            "protection": self.protection_evidence,
-            "check_manifest": self.check_evidence_manifest,
-        }))
+        return cast(
+            JsonObject,
+            _json_value(
+                {
+                    "synthetic_merge_commit": self.synthetic_merge_commit,
+                    "synthetic_merge_tree": self.synthetic_merge_tree,
+                    "protection": self.protection_evidence,
+                    "check_manifest": self.check_evidence_manifest,
+                }
+            ),
+        )
 
 
 @dataclass(frozen=True)
@@ -292,9 +305,7 @@ class GitHubIntegrationProvider:
             raise ValueError("freshness cutoff must be timezone-aware")
 
     @staticmethod
-    def _validate_checks(
-        checks: tuple[tuple[str, int], ...], label: str
-    ) -> None:
+    def _validate_checks(checks: tuple[tuple[str, int], ...], label: str) -> None:
         candidate: object = checks
         if not isinstance(candidate, tuple) or not candidate:  # pyright: ignore[reportUnnecessaryIsInstance]
             raise ValueError(f"{label} checks must be non-empty")
@@ -403,9 +414,11 @@ class GitHubIntegrationProvider:
         self._require_authenticated()
         self.verify_repository_binding()
         observation = self.read_authority_ref(self.target_ref)
-        expected = (_git_object(expected_commit, "expected target commit"),
-                    _git_object(expected_tree, "expected target tree"),
-                    tuple(_git_object(item, "expected target parent") for item in expected_parents))
+        expected = (
+            _git_object(expected_commit, "expected target commit"),
+            _git_object(expected_tree, "expected target tree"),
+            tuple(_git_object(item, "expected target parent") for item in expected_parents),
+        )
         if (observation.commit, observation.tree, observation.parents) != expected:
             raise ValueError("current target topology mismatch")
         return observation
@@ -460,8 +473,9 @@ class GitHubIntegrationProvider:
         candidate = historical(
             rollback_candidate_commit, rollback_candidate_tree, "rollback candidate"
         )
-        if candidate.parents != (_git_object(rollback_candidate_parent_commit,
-                                               "rollback candidate parent"),):
+        if candidate.parents != (
+            _git_object(rollback_candidate_parent_commit, "rollback candidate parent"),
+        ):
             raise ValueError("rollback candidate parent topology mismatch")
         return GitHubRollbackTopology(
             self.repository_digest, self.target_ref, main, target, failed, restore, candidate
@@ -534,6 +548,214 @@ class GitHubIntegrationProvider:
 
     observe_workflow_evidence = observe_workflow_authority
 
+    def observe_failed_soak(
+        self,
+        integration_ref: str = "refs/heads/integration",
+        *,
+        now: datetime | None = None,
+    ) -> FailedSoakAttestation:
+        """Observe the one deterministic failed soak from GitHub authority.
+
+        The integration ref, its exact parent/tree, main ref, check run, workflow
+        run, and workflow blob are all read here.  Restore identity is deliberately
+        derived from the integration commit's sole parent and is never accepted
+        from a caller.
+        """
+        self._require_authenticated()
+        if integration_ref != "refs/heads/integration" or integration_ref != self.target_ref:
+            raise ValueError("failed soak must target refs/heads/integration")
+        integration = self.read_authority_ref(integration_ref)
+        if len(integration.parents) != 1:
+            raise ValueError("failed soak integration commit must have exactly one parent")
+        restore_commit = integration.parents[0]
+        restore_actual, restore_tree, _restore_parents = self._read_authority_commit(
+            restore_commit, "failed soak restore commit"
+        )
+        if restore_actual != restore_commit:
+            raise ValueError("failed soak restore commit identity mismatch")
+        main = self.read_authority_ref("refs/heads/main")
+        commit_payload = self._commit(integration.commit)
+        message = _required_string(commit_payload, "message", "integration commit")
+        if SOAK_MARKER not in {line.strip() for line in message.splitlines()}:
+            raise ValueError("integration commit lacks the exact AVO live-rollback marker")
+
+        # The workflow and repository variable are pinned independently from the
+        # candidate. Hash the exact bytes returned by GitHub without normalization.
+        workflow_raw = _object(
+            self._call(
+                "GET",
+                self._path(
+                    "contents/"
+                    f"{quote(SOAK_WORKFLOW_PATH, safe='/')}?ref="
+                    f"{quote(integration.commit, safe='')}"
+                ),
+            ),
+            "integration soak workflow content",
+        )
+        if (
+            _required_string(workflow_raw, "type", "integration soak workflow content") != "file"
+            or _required_string(workflow_raw, "path", "integration soak workflow content")
+            != SOAK_WORKFLOW_PATH
+            or _required_string(workflow_raw, "encoding", "integration soak workflow content")
+            != "base64"
+        ):
+            raise ValueError("integration soak workflow identity or encoding mismatch")
+        try:
+            encoded = "".join(
+                _required_string(
+                    workflow_raw, "content", "integration soak workflow content"
+                ).split()
+            )
+            blob = base64.b64decode(encoded.encode("ascii"), validate=True)
+        except (UnicodeEncodeError, ValueError) as exc:
+            raise ValueError("integration soak workflow content is not valid base64") from exc
+        workflow_digest = "sha256:" + hashlib.sha256(blob).hexdigest()
+        variable = _object(
+            self._call("GET", self._path(f"actions/variables/{SOAK_WORKFLOW_VARIABLE}")),
+            "integration soak repository variable",
+        )
+        if (
+            _required_string(variable, "name", "integration soak repository variable")
+            != SOAK_WORKFLOW_VARIABLE
+        ):
+            raise ValueError("integration soak trusted variable identity mismatch")
+        variable_value = _required_string(variable, "value", "integration soak repository variable")
+        if _SHA256.fullmatch(variable_value) is None:
+            raise ValueError("integration soak trusted variable is not lowercase SHA-256")
+        variable_digest = "sha256:" + variable_value
+        if workflow_digest != variable_digest:
+            raise ValueError("integration soak workflow blob does not match trusted variable")
+
+        runs_payload = _object(
+            self._call(
+                "GET",
+                self._path(
+                    "actions/workflows/"
+                    f"{quote(SOAK_WORKFLOW_PATH, safe='/')}/runs?head_sha="
+                    f"{quote(integration.commit, safe='')}&event=push&per_page=100"
+                ),
+            ),
+            "integration soak workflow runs",
+        )
+        runs = runs_payload.get("workflow_runs")
+        if not isinstance(runs, list):
+            raise ValueError("integration soak workflow runs are malformed")
+        candidates: list[JsonObject] = []
+        for raw_run in runs:
+            run = _object(raw_run, "integration soak workflow run")
+            if (
+                _required_string(run, "path", "integration soak workflow run") == SOAK_WORKFLOW_PATH
+                and _required_string(run, "head_sha", "integration soak workflow run")
+                == integration.commit
+            ):
+                candidates.append(run)
+        if len(candidates) != 1:
+            raise ValueError("integration soak must have exactly one matching workflow run")
+        workflow_run = candidates[0]
+        workflow_run_id = _required_int(workflow_run, "id", "integration soak workflow run")
+        workflow_id = _required_int(workflow_run, "workflow_id", "integration soak workflow run")
+        if workflow_run_id <= 0 or workflow_id <= 0:
+            raise ValueError("integration soak workflow IDs must be positive")
+        if (
+            _required_string(workflow_run, "status", "integration soak workflow run") != "completed"
+            or _required_string(workflow_run, "conclusion", "integration soak workflow run")
+            != "failure"
+            or _required_string(workflow_run, "event", "integration soak workflow run") != "push"
+        ):
+            raise ValueError("integration soak workflow did not deterministically fail")
+        completed_value = workflow_run.get("completed_at") or workflow_run.get("updated_at")
+        if not isinstance(completed_value, str):
+            raise ValueError("integration soak workflow run completed_at is required")
+        try:
+            completed_at = datetime.fromisoformat(completed_value.replace("Z", "+00:00"))
+        except ValueError as exc:
+            raise ValueError("integration soak completed_at is malformed") from exc
+        if completed_at.tzinfo is None:
+            raise ValueError("integration soak completed_at must be timezone-aware")
+        current = (now or datetime.now(UTC)).astimezone(UTC)
+        if completed_at > current or completed_at < self.freshness_cutoff:
+            raise ValueError("integration soak workflow run is stale or future-dated")
+
+        checks_payload = _object(
+            self._call(
+                "GET",
+                self._path(f"commits/{integration.commit}/check-runs?per_page=100&page=1"),
+            ),
+            "integration soak check runs",
+        )
+        check_runs = checks_payload.get("check_runs")
+        if not isinstance(check_runs, list):
+            raise ValueError("integration soak check runs are malformed")
+        matches: list[JsonObject] = []
+        for raw_check in check_runs:
+            check = _object(raw_check, "integration soak check run")
+            app = _nested_object(check, "app", "integration soak check run")
+            if (
+                _required_string(check, "name", "integration soak check run") == SOAK_CONTEXT
+                and _required_int(app, "id", "integration soak check app") == SOAK_APP_ID
+                and _required_string(check, "head_sha", "integration soak check run")
+                == integration.commit
+            ):
+                matches.append(check)
+        if len(matches) != 1:
+            raise ValueError("integration soak must have exactly one matching check run")
+        check = matches[0]
+        if (
+            _required_string(check, "status", "integration soak check run") != "completed"
+            or _required_string(check, "conclusion", "integration soak check run") != "failure"
+        ):
+            raise ValueError("integration soak check is not a completed failure")
+        check_id = _required_int(check, "id", "integration soak check run")
+        if check_id <= 0:
+            raise ValueError("integration soak check run ID must be positive")
+        check_completed_value = _required_string(
+            check, "completed_at", "integration soak check run"
+        )
+        try:
+            check_completed_at = datetime.fromisoformat(
+                check_completed_value.replace("Z", "+00:00")
+            )
+        except ValueError as exc:
+            raise ValueError("integration soak check completed_at is malformed") from exc
+        if check_completed_at.tzinfo is None:
+            raise ValueError("integration soak check completed_at must be timezone-aware")
+        if check_completed_at > current or check_completed_at < self.freshness_cutoff:
+            raise ValueError("integration soak check is stale or future-dated")
+
+        completed_stamp = check_completed_at.astimezone(UTC).isoformat()
+        completed_stamp = completed_stamp.replace("+00:00", "Z")
+        values = {
+            "schema_version": 1,
+            "repository_digest": self.repository_digest,
+            "integration_ref": "refs/heads/integration",
+            "integration_commit": integration.commit,
+            "integration_tree": integration.tree,
+            "integration_parent_commit": restore_commit,
+            "restore_commit": restore_commit,
+            "restore_tree": restore_tree,
+            "main_commit": main.commit,
+            "main_ref": "refs/heads/main",
+            "check_run_id": check_id,
+            "workflow_id": workflow_id,
+            "workflow_run_id": workflow_run_id,
+            "completed_at": completed_stamp,
+            "freshness_cutoff": self.freshness_cutoff.astimezone(UTC)
+            .isoformat()
+            .replace("+00:00", "Z"),
+            "workflow_blob_digest": workflow_digest,
+            "repository_variables_digest": variable_digest,
+            "context": SOAK_CONTEXT,
+            "app_id": SOAK_APP_ID,
+            "status": "completed",
+            "conclusion": "failure",
+            "workflow_path": SOAK_WORKFLOW_PATH,
+        }
+        values["attestation_id"] = canonical_digest(values)
+        return FailedSoakAttestation.model_validate(values)
+
+    observe_failed_integration_soak = observe_failed_soak
+    observe_failed_soak_attestation = observe_failed_soak
+
     def live_rollback_manifests(
         self,
         snapshot: GitHubEvidenceSnapshot,
@@ -579,8 +801,7 @@ class GitHubIntegrationProvider:
         }
         if (
             snapshot.protection_evidence != expected_protection_payload
-            or canonical_digest(snapshot.protection_evidence)
-            != snapshot.protection_evidence_digest
+            or canonical_digest(snapshot.protection_evidence) != snapshot.protection_evidence_digest
         ):
             raise ValueError("branch protection evidence is not canonical or semantic")
         trusted = manifest.get("trusted_checks")
@@ -697,9 +918,7 @@ class GitHubIntegrationProvider:
                 "provider_identity": self.provider_identity,
                 "provider_api_version": self.provider_api_version,
                 "entries": [item.context for item in protection_entries],
-                "protection_entries": [
-                    item.model_dump(mode="json") for item in protection_entries
-                ],
+                "protection_entries": [item.model_dump(mode="json") for item in protection_entries],
                 "freshness_cutoff": self.freshness_cutoff,
                 "observed_at": datetime.now(UTC),
                 "source_pinned": True,
@@ -919,9 +1138,7 @@ class GitHubIntegrationProvider:
                 body=body,
             )
         except (GitHubTransportError, GitHubRejected):
-            recovered = self._find_open_pull_request(
-                candidate_ref, candidate_commit, base_commit
-            )
+            recovered = self._find_open_pull_request(candidate_ref, candidate_commit, base_commit)
             if recovered is None:
                 raise
             return recovered
@@ -1114,9 +1331,10 @@ class GitHubIntegrationProvider:
         """
         protection = _object(raw, "branch protection")
         status = _nested_object(protection, "required_status_checks", "branch protection")
-        if _required_bool(
-            status, "strict", "required status checks"
-        ) is not self.protection_policy.required_status_checks_strict:
+        if (
+            _required_bool(status, "strict", "required status checks") is not True
+            or self.protection_policy.required_status_checks_strict is not True
+        ):
             raise ValueError("branch protection strictness is not trusted")
         raw_checks = status.get("checks")
         if not isinstance(raw_checks, list):
@@ -1142,13 +1360,15 @@ class GitHubIntegrationProvider:
             != self.protection_policy.required_approving_review_count
         ):
             raise ValueError("branch protection approval count is not trusted")
-        if _required_bool(
-            reviews, "dismiss_stale_reviews", "pull request reviews"
-        ) is not self.protection_policy.dismiss_stale_reviews:
+        if (
+            _required_bool(reviews, "dismiss_stale_reviews", "pull request reviews")
+            is not self.protection_policy.dismiss_stale_reviews
+        ):
             raise ValueError("branch protection stale-review policy is not trusted")
-        if _required_bool(
-            reviews, "require_last_push_approval", "pull request reviews"
-        ) is not self.protection_policy.require_last_push_approval:
+        if (
+            _required_bool(reviews, "require_last_push_approval", "pull request reviews")
+            is not self.protection_policy.require_last_push_approval
+        ):
             raise ValueError("branch protection last-push approval policy is not trusted")
 
         def enabled(key: str) -> bool:
@@ -1232,9 +1452,7 @@ class GitHubIntegrationProvider:
             self._call("GET", self._path("branches/main/protection")),
             "main branch protection",
         )
-        reviews = _nested_object(
-            raw, "required_pull_request_reviews", "main branch protection"
-        )
+        reviews = _nested_object(raw, "required_pull_request_reviews", "main branch protection")
         approvals = _required_int(
             reviews, "required_approving_review_count", "main pull request reviews"
         )
@@ -1297,9 +1515,7 @@ class GitHubIntegrationProvider:
             expected_pages = max(1, ceil(page_total / 100))
             if page > expected_pages or page > max_pages:
                 raise ValueError("check run pagination exceeded declared bounds")
-            expected_page_items = (
-                page_total - ((page - 1) * 100) if page == expected_pages else 100
-            )
+            expected_page_items = page_total - ((page - 1) * 100) if page == expected_pages else 100
             if len(items) != expected_page_items:
                 raise ValueError("check run page is inconsistent with total_count")
             if page == expected_pages:
@@ -1366,8 +1582,7 @@ class GitHubIntegrationProvider:
             "provider_identity": self.provider_identity,
             "provider_api_version": self.provider_api_version,
             "trusted_checks": [
-                {"context": name, "app_id": app_id}
-                for name, app_id in sorted(expected)
+                {"context": name, "app_id": app_id} for name, app_id in sorted(expected)
             ],
             "freshness_cutoff": self._utc_stamp(self.freshness_cutoff),
             "total_count": total_count,
@@ -1494,6 +1709,12 @@ class GitHubIntegrationProvider:
             # controller lease guard and the single mutating PUT.  It contains the
             # pinned main-branch race containment evidence.
             main_protection_digest = self._main_protection_evidence()
+            if intent.expected_main_commit is not None:
+                # The main ref SHA is intentionally the final provider read
+                # before lease authorization and the one mutating PUT.
+                main = self.read_authority_ref("refs/heads/main")
+                if main.commit != intent.expected_main_commit:
+                    raise ValueError("current main commit differs from expected main commit")
         except (ValueError, GitHubRejected, GitHubTransportError) as exc:
             # These checks all precede the lease guard and PUT.  Preserve their
             # fail-closed meaning for the promotion service; do not let a generic
@@ -1682,9 +1903,7 @@ class GitHubIntegrationProvider:
         obj = _nested_object(raw, "object", "Git ref")
         if _required_string(obj, "type", "Git ref object") != "commit":
             raise ValueError("Git ref does not point to a commit")
-        ref_commit = _git_object(
-            _required_string(obj, "sha", "Git ref object"), "Git ref commit"
-        )
+        ref_commit = _git_object(_required_string(obj, "sha", "Git ref object"), "Git ref commit")
         commit, tree, _ = self._commit_topology(self._commit(ref_commit))
         _git_object(commit, "Git commit")
         _git_object(tree, "Git tree")
@@ -1692,9 +1911,7 @@ class GitHubIntegrationProvider:
             raise ValueError("Git ref commit response mismatch")
         return {"commit": commit, "tree": tree}
 
-    def create_validation_ref(
-        self, repository_digest: str, ref: str, commit: str
-    ) -> JsonObject:
+    def create_validation_ref(self, repository_digest: str, ref: str, commit: str) -> JsonObject:
         """Create exactly one immutable validation ref; never update or retry."""
         self._validation_ref_path(repository_digest, ref)
         expected = _git_object(commit, "validation commit")

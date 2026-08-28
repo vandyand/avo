@@ -243,25 +243,28 @@ class GitHubCampaignProvider:
             "provider_api_version": observation.provider_api_version,
             "merge_method": "squash",
         }
-        template_values["operation_id"] = canonical_digest(
-            {
-                "repository_digest": str(template_values["repository_digest"]),
-                "pull_request_number": str(template_values["pull_request_number"]),
-                "candidate_ref": str(template_values["candidate_ref"]),
-                "target_ref": str(template_values["target_ref"]),
-                "base_commit": str(template_values["base_commit"]),
-                "candidate_commit": str(template_values["candidate_commit"]),
-                "candidate_head_commit": str(template_values["candidate_head_commit"]),
-                "target_base_commit": str(template_values["target_base_commit"]),
-                "synthetic_merge_commit": str(template_values["synthetic_merge_commit"]),
-                "bundle_digest": str(template_values["bundle_digest"]),
-                "candidate_digest": str(template_values["candidate_digest"]),
-                "publication_evidence_digest": str(template_values["publication_evidence_digest"]),
-                "provider_identity": str(template_values["provider_identity"]),
-                "provider_api_version": str(template_values["provider_api_version"]),
-                "merge_method": str(template_values["merge_method"]),
-            }
-        )
+        operation_identity = {
+            "repository_digest": str(template_values["repository_digest"]),
+            "pull_request_number": str(template_values["pull_request_number"]),
+            "candidate_ref": str(template_values["candidate_ref"]),
+            "target_ref": str(template_values["target_ref"]),
+            "base_commit": str(template_values["base_commit"]),
+            "candidate_commit": str(template_values["candidate_commit"]),
+            "candidate_head_commit": str(template_values["candidate_head_commit"]),
+            "target_base_commit": str(template_values["target_base_commit"]),
+            "synthetic_merge_commit": str(template_values["synthetic_merge_commit"]),
+            "bundle_digest": str(template_values["bundle_digest"]),
+            "candidate_digest": str(template_values["candidate_digest"]),
+            "publication_evidence_digest": str(template_values["publication_evidence_digest"]),
+            "provider_identity": str(template_values["provider_identity"]),
+            "provider_api_version": str(template_values["provider_api_version"]),
+            "merge_method": str(template_values["merge_method"]),
+        }
+        if template_values.get("expected_main_commit") is not None:
+            operation_identity["expected_main_commit"] = str(
+                template_values["expected_main_commit"]
+            )
+        template_values["operation_id"] = canonical_digest(operation_identity)
         template = IntegrationIntentTemplate.model_validate(template_values)
         # The marker is intentionally derived from the lease-independent
         # operation identity.  A template bind is only a local validation
