@@ -21,6 +21,7 @@ from avo_correlate.contracts.integration_promotion import (
     IntegrationProviderObservation,
     IntegrationProviderReconciliation,
 )
+from avo_correlate.contracts.synthetic_validation import SyntheticValidationObservation
 from avo_correlate.domain.canonical import canonical_digest
 
 type JsonPrimitive = str | int | float | bool | None
@@ -37,6 +38,10 @@ class GitHubTransportError(RuntimeError):
 
 class GitHubRejected(RuntimeError):
     """Authoritative, non-success response from GitHub."""
+
+    def __init__(self, message: str, *, status: int | None = None) -> None:
+        super().__init__(message)
+        self.status = status
 
 
 @dataclass(frozen=True)
@@ -173,7 +178,7 @@ def _default_transport(
     except Exception as exc:  # urllib's HTTPError may carry an authoritative status
         status = getattr(exc, "code", None)
         if isinstance(status, int) and 400 <= status < 500:
-            raise GitHubRejected(f"GitHub request rejected ({status})") from exc
+            raise GitHubRejected(f"GitHub request rejected ({status})", status=status) from exc
         raise GitHubTransportError("GitHub transport failure") from exc
 
 
@@ -209,6 +214,7 @@ def _nested_object(value: JsonObject, key: str, context: str) -> JsonObject:
 
 
 _GIT_OBJECT = re.compile(r"^[0-9a-f]{40}(?:[0-9a-f]{24})?$")
+_VALIDATION_REF = re.compile(r"^refs/heads/avo/validation/[0-9a-f]{64}$")
 
 
 def _git_object(value: str, context: str) -> str:
@@ -268,7 +274,7 @@ class GitHubIntegrationProvider:
         if status >= 500:
             raise GitHubTransportError(f"GitHub server failure ({status})")
         if status >= 400:
-            raise GitHubRejected(f"GitHub rejected request ({status})")
+            raise GitHubRejected(f"GitHub rejected request ({status})", status=status)
         if status < 200 or status >= 300:
             raise GitHubTransportError(f"GitHub returned unexpected status ({status})")
         return payload
@@ -608,6 +614,61 @@ class GitHubIntegrationProvider:
         )
 
     discover_campaign_evidence = discover_pull_request_evidence
+
+    def observe_synthetic_validation(
+        self,
+        pull_request_number: int,
+        *,
+        candidate_ref: str,
+        candidate_commit: str,
+        base_commit: str,
+    ) -> SyntheticValidationObservation:
+        """Read the exact PR/synthetic merge binding without reading checks.
+
+        This is deliberately separate from ``discover_pull_request_evidence``:
+        creating the validation ref is what causes the trusted workflow to run,
+        so check discovery must happen only after this observation and trigger.
+        """
+        if pull_request_number <= 0:
+            raise ValueError("pull request number must be positive")
+        raw = self._pr(pull_request_number)
+        binding = self._pull_binding(
+            raw,
+            number=pull_request_number,
+            candidate_ref=candidate_ref,
+            candidate_commit=candidate_commit,
+            base_commit=base_commit,
+        )
+        actual_base_commit, base_tree, _ = self._commit_parts(self._commit(binding.base_commit))
+        actual_head_commit, head_tree, _ = self._commit_parts(self._commit(binding.head_commit))
+        if actual_base_commit != binding.base_commit or actual_head_commit != binding.head_commit:
+            raise ValueError("pull request commit response mismatch")
+        synthetic_value = raw.get("merge_commit_sha")
+        if not isinstance(synthetic_value, str) or not synthetic_value:
+            synthetic_value = raw.get("mergeable_commit_sha")
+        synthetic = _git_object(
+            synthetic_value if isinstance(synthetic_value, str) else "",
+            "synthetic merge commit",
+        )
+        synthetic_commit, synthetic_tree, _ = self._commit_parts(self._commit(synthetic))
+        if synthetic_commit != synthetic:
+            raise ValueError("synthetic merge commit response mismatch")
+        return SyntheticValidationObservation(
+            repository_digest=self.repository_digest,
+            base_ref=binding.base_ref,
+            base_commit=actual_base_commit,
+            base_tree=base_tree,
+            head_ref=binding.head_ref,
+            head_commit=actual_head_commit,
+            head_tree=head_tree,
+            synthetic_commit=synthetic_commit,
+            synthetic_tree=synthetic_tree,
+        )
+
+    # Keep the adapter discoverable under the concise names used by provider
+    # integrations while retaining one implementation and one read sequence.
+    observe_validation = observe_synthetic_validation
+    observe_campaign_validation = observe_synthetic_validation
 
     @staticmethod
     def _utc_stamp(value: datetime) -> str:
@@ -1162,6 +1223,67 @@ class GitHubIntegrationProvider:
             provider_api_version=self.provider_api_version,
             parent_commits=parents,
         )
+
+    def _validation_ref_path(self, repository_digest: str, ref: str) -> str:
+        """Validate the complete synthetic-validation binding before I/O."""
+        if repository_digest != self.repository_digest:
+            raise ValueError("repository digest does not match configured GitHub repository")
+        if _VALIDATION_REF.fullmatch(ref) is None:
+            raise ValueError("validation ref is outside the synthetic validation scope")
+        branch = ref.removeprefix("refs/heads/")
+        return f"git/ref/heads/{quote(branch, safe='')}"
+
+    def read_validation_ref(self, repository_digest: str, ref: str) -> JsonObject | None:
+        """Read one exact validation ref and resolve its commit tree."""
+        path = self._validation_ref_path(repository_digest, ref)
+        try:
+            response = self._call("GET", self._path(path))
+        except GitHubRejected as exc:
+            if exc.status == 404:
+                return None
+            raise
+        raw = _object(response, "Git ref")
+        if _required_string(raw, "ref", "Git ref") != ref:
+            raise ValueError("Git ref identity mismatch")
+        obj = _nested_object(raw, "object", "Git ref")
+        if _required_string(obj, "type", "Git ref object") != "commit":
+            raise ValueError("Git ref does not point to a commit")
+        ref_commit = _git_object(
+            _required_string(obj, "sha", "Git ref object"), "Git ref commit"
+        )
+        commit, tree, _ = self._commit_topology(self._commit(ref_commit))
+        _git_object(commit, "Git commit")
+        _git_object(tree, "Git tree")
+        if commit != ref_commit:
+            raise ValueError("Git ref commit response mismatch")
+        return {"commit": commit, "tree": tree}
+
+    def create_validation_ref(
+        self, repository_digest: str, ref: str, commit: str
+    ) -> JsonObject:
+        """Create exactly one immutable validation ref; never update or retry."""
+        self._validation_ref_path(repository_digest, ref)
+        expected = _git_object(commit, "validation commit")
+        response = _object(
+            self._call("POST", self._path("git/refs"), {"ref": ref, "sha": expected}),
+            "Git ref",
+        )
+        if _required_string(response, "ref", "Git ref") != ref:
+            raise ValueError("Git ref identity mismatch")
+        obj = _nested_object(response, "object", "Git ref")
+        if _required_string(obj, "type", "Git ref object") != "commit":
+            raise ValueError("Git ref does not point to a commit")
+        if (
+            _git_object(_required_string(obj, "sha", "Git ref object"), "Git ref commit")
+            != expected
+        ):
+            raise ValueError("Git ref commit response mismatch")
+        return {"commit": expected}
+
+    def delete_validation_ref(self, repository_digest: str, ref: str) -> JsonValue:
+        """Delete exactly one validation ref."""
+        path = self._validation_ref_path(repository_digest, ref)
+        return self._call("DELETE", self._path(path))
 
 
 GitHubProvider = GitHubIntegrationProvider

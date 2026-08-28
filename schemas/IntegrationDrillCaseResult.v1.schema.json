@@ -104,7 +104,8 @@
         "failed",
         "rejected",
         "applied",
-        "already_applied"
+        "already_applied",
+        "reconciliation_required"
       ],
       "title": "Outcome",
       "type": "string"

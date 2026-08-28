@@ -62,6 +62,7 @@ from avo_correlate.contracts.integration_drill import (
     DrillEvidenceBinding,
     IntegrationDrillCaseResult,
     IntegrationDrillPlan,
+    IntegrationDrillPromotionEvidenceManifest,
     IntegrationDrillResult,
     IntegrationDrillRollbackAuthorization,
     IntegrationDrillRollbackIntent,
@@ -206,6 +207,7 @@ MODELS: tuple[type[StrictModel], ...] = (
     IntegrationDrillRollbackReceipt,
     IntegrationDrillCaseResult,
     IntegrationDrillPlan,
+    IntegrationDrillPromotionEvidenceManifest,
     IntegrationDrillResult,
     IntegrationRollbackRequest,
 )

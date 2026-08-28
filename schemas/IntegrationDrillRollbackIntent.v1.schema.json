@@ -47,6 +47,11 @@
       "title": "Operation Id",
       "type": "string"
     },
+    "promotion_operation_id": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Promotion Operation Id",
+      "type": "string"
+    },
     "reason": {
       "minLength": 1,
       "title": "Reason",
@@ -111,6 +116,7 @@
     "target_head_tree",
     "target_parents",
     "operation_id",
+    "promotion_operation_id",
     "intent_digest",
     "authorization_id",
     "attester_identity",

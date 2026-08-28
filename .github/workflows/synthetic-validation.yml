@@ -1,0 +1,88 @@
+name: synthetic-validation
+
+on:
+  push:
+    branches:
+      - "avo/validation/**"
+
+permissions:
+  contents: read
+
+jobs:
+  synthetic-validate:
+    name: avo synthetic validate (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - windows-latest
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    env:
+      AVO_REFERENCE_DEVELOPMENT_METADATA_FILE: .avo-runtime/ci-development-metadata.json
+      AVO_REFERENCE_ADMISSION_METADATA_FILE: .avo-runtime/ci-admission-metadata.json
+      # Repository administrators must set this to the lowercase SHA-256 of the
+      # base-controlled workflow blob.  A missing or malformed value fails closed.
+      # This external pin complements (and does not replace) the runner's pinned
+      # controller configuration and candidate-authority checks.
+      AVO_TRUSTED_WORKFLOW_SHA256: ${{ vars.AVO_TRUSTED_WORKFLOW_SHA256 }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Verify exact synthetic commit identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! "$GITHUB_REF" =~ ^refs/heads/avo/validation/[0-9a-f]{64}$ ]]; then
+            echo "unexpected validation ref: $GITHUB_REF" >&2
+            exit 1
+          fi
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+      - name: Verify externally pinned trusted workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected="${AVO_TRUSTED_WORKFLOW_SHA256:-}"
+          if [[ ! "$expected" =~ ^[0-9a-f]{64}$ ]]; then
+            echo "AVO_TRUSTED_WORKFLOW_SHA256 must be a lowercase 64-hex repository variable" >&2
+            exit 1
+          fi
+          actual="$(git show "$GITHUB_SHA:.github/workflows/synthetic-validation.yml" | sha256sum | awk '{print $1}')"
+          test "$actual" = "$expected"
+          echo "trusted workflow blob verified: $actual"
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6
+        with:
+          enable-cache: false
+      - run: uv sync --all-groups --all-extras --frozen
+      - name: Validate authoritative roadmap
+        run: >-
+          uv run python .agents/skills/avo-roadmap/scripts/validate_roadmap.py
+          docs/roadmap.md --max-review-age-days 45
+      - run: uv run ruff check .
+      - run: uv run pyright
+      - name: Build tier-separated evaluator images
+        if: runner.os == 'Linux'
+        run: |
+          mkdir -p .avo-runtime
+          docker buildx build --output=type=docker --platform=linux/amd64 --provenance=false --build-arg SOURCE_DATE_EPOCH=0 --file evaluators/reference/Dockerfile.development --tag avo-reference-development:1.0.0 --metadata-file "$AVO_REFERENCE_DEVELOPMENT_METADATA_FILE" .
+          docker buildx build --output=type=docker --platform=linux/amd64 --provenance=false --build-arg SOURCE_DATE_EPOCH=0 --file evaluators/reference/Dockerfile.admission --tag avo-reference-admission:1.0.0 --metadata-file "$AVO_REFERENCE_ADMISSION_METADATA_FILE" .
+      - name: Measure evaluator platform overhead
+        if: runner.os == 'Linux'
+        run: uv run avoctl platform benchmark
+      - name: Run complete canonical suite with coverage
+        if: runner.os == 'Linux'
+        run: uv run pytest --cov=avo_correlate --cov-report=term
+      - name: Run native Windows portability suite
+        if: runner.os == 'Windows'
+        run: >-
+          uv run pytest
+          --ignore tests/e2e/test_reference_scenario.py
+          --ignore tests/integration/test_docker_evaluator.py
+          --ignore tests/performance/test_platform_overhead.py
+      - run: uv run python -m avo_correlate.devtools.export_schemas
+      - name: Verify generated schemas are committed
+        run: git diff --exit-code -- schemas

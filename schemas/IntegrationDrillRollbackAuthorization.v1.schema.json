@@ -61,6 +61,14 @@
       "title": "Restore To Tree",
       "type": "string"
     },
+    "rollback_candidate_commit": {
+      "title": "Rollback Candidate Commit",
+      "type": "string"
+    },
+    "rollback_candidate_parent_commit": {
+      "title": "Rollback Candidate Parent Commit",
+      "type": "string"
+    },
     "schema_version": {
       "const": 1,
       "default": 1,
@@ -104,6 +112,8 @@
     "failed_integration_head_tree",
     "restore_to_commit",
     "restore_to_tree",
+    "rollback_candidate_commit",
+    "rollback_candidate_parent_commit",
     "issuer",
     "reason"
   ],

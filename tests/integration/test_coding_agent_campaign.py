@@ -849,6 +849,98 @@ def test_stop_completion_finishes_without_freezing_partial_workspace(
         )
 
 
+@pytest.mark.parametrize(
+    "authority_path",
+    [
+        ".github/workflows/ci.yml",
+        ".GITHUB/workflows/ci.yml",
+        "schemas/config.json",
+        "evaluators/private/check.py",
+        "src/avo_correlate/application/controller.py",
+        "src/avo_correlate/application/policy.py",
+        "uv.lock",
+    ],
+)
+def test_authority_path_rejected_before_candidate_staging_or_evaluation(
+    tmp_path: Path, authority_path: str
+) -> None:
+    baseline = tmp_path / "baseline"
+    candidate = tmp_path / "candidate"
+    baseline.mkdir()
+    candidate.mkdir()
+    (baseline / "changed.py").write_text("before\n", encoding="utf-8")
+    (candidate / "changed.py").write_text("after\n", encoding="utf-8")
+    added = candidate / authority_path
+    added.parent.mkdir(parents=True, exist_ok=True)
+    added.write_text("authority\n", encoding="utf-8")
+
+    class RefusingSessions:
+        def record_attempt(self, record: object) -> int:
+            del record
+            raise AssertionError("authority path must be rejected before attempt recording")
+
+        def finish(self, result: VariationSessionResult) -> None:
+            del result
+            raise AssertionError("authority path must be rejected before session finish")
+
+    class RefusingArtifacts:
+        def put_bytes(self, *args: object, **kwargs: object) -> None:
+            del args, kwargs
+            raise AssertionError("authority path must be rejected before artifact staging")
+
+    class RefusingBudget:
+        def reserve(self, *args: object, **kwargs: object) -> None:
+            del args, kwargs
+            raise AssertionError("authority path must be rejected before evaluation reserve")
+
+    class RefusingActivities:
+        def enqueue(self, *args: object, **kwargs: object) -> None:
+            del args, kwargs
+            raise AssertionError("authority path must be rejected before evaluation enqueue")
+
+    before_digest = source_tree_digest(baseline)
+    after_digest = source_tree_digest(candidate)
+    request = VariationSessionRequest(
+        session_id="session-authority",
+        run_id="run-authority",
+        champion=CandidateRef(
+            candidate_id="seed-authority",
+            source_tree_digest=before_digest,
+            lineage_sequence=0,
+        ),
+        lineage_index_digest=DIGEST_A,
+        initial_context_digest=DIGEST_B,
+        tool_capability_token="token",
+        development_evaluator_refs=[component("development")],
+        budget_reservation_id="reservation-authority",
+        random_seed=1,
+    )
+    handler = cast(Any, object.__new__(CodingVariationActivityHandler))
+    handler._sessions = RefusingSessions()
+    handler._artifacts = RefusingArtifacts()
+    handler._budgets = RefusingBudget()
+    handler._activities = RefusingActivities()
+    workspace = CampaignWorkspace(
+        baseline=baseline,
+        candidate=candidate,
+        git_metadata=tmp_path / "external-git",
+    )
+
+    with pytest.raises(CampaignRuntimeError, match="trusted authority paths"):
+        asyncio.run(
+            handler._finalize_completion(
+                request=request,
+                activity=ActivityRow(activity_id="activity-authority"),
+                workspace=workspace,
+                completion=AgentCompletion(outcome="proposal", rationale="change"),
+                usage=UsageRecord.zero(),
+                event_stream_digest=DIGEST_B,
+                before_digest=before_digest,
+                after_digest=after_digest,
+            )
+        )
+
+
 def test_campaign_workspace_control_roots_must_be_disjoint(tmp_path: Path) -> None:
     baseline = tmp_path / "base"
     candidate = tmp_path / "candidate"

@@ -19,6 +19,11 @@
       "title": "Operation Id",
       "type": "string"
     },
+    "promotion_operation_id": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Promotion Operation Id",
+      "type": "string"
+    },
     "repository_digest": {
       "pattern": "^sha256:[0-9a-f]{64}$",
       "title": "Repository Digest",
@@ -47,6 +52,7 @@
   },
   "required": [
     "operation_id",
+    "promotion_operation_id",
     "repository_digest",
     "target_ref",
     "main_before_commit",

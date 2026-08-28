@@ -1528,6 +1528,116 @@ def test_open_or_reconcile_does_not_repeat_post_when_recovery_is_absent() -> Non
     assert calls == ["GET", "POST", "GET"]
 
 
+VALIDATION_REF = "refs/heads/avo/validation/" + "d" * 64
+
+
+def test_validation_ref_read_resolves_exact_commit_and_tree() -> None:
+    calls: list[tuple[str, str, JsonBody | None]] = []
+
+    def transport(
+        method: str, url: str, body: JsonBody | None, headers: Mapping[str, str]
+    ) -> tuple[int, JsonValue]:
+        del headers
+        calls.append((method, url, body))
+        if method == "GET" and url.endswith(
+            "/git/ref/heads/avo%2Fvalidation%2F" + "d" * 64
+        ):
+            return 200, cast(
+                JsonValue, {"ref": VALIDATION_REF, "object": {"type": "commit", "sha": C}}
+            )
+        if method == "GET" and url.endswith("/git/commits/" + C):
+            return 200, cast(JsonValue, {"sha": C, "tree": {"sha": H}, "parents": []})
+        raise AssertionError(url)
+
+    assert provider(transport=transport).read_validation_ref(D, VALIDATION_REF) == {
+        "commit": C,
+        "tree": H,
+    }
+    assert [item[0] for item in calls] == ["GET", "GET"]
+
+
+def test_synthetic_validation_observation_never_reads_checks() -> None:
+    intent = valid_intent()
+    responses = observation_responses(intent)
+    calls: list[str] = []
+
+    def transport(
+        method: str, url: str, body: JsonBody | None, headers: Mapping[str, str]
+    ) -> tuple[int, JsonValue]:
+        del body, headers
+        calls.append(url)
+        if method != "GET":
+            raise AssertionError("validation observation must be read-only")
+        if url.endswith("/pulls/7"):
+            return 200, responses["pull"]
+        for name, key in (
+            (G, "base_commit"),
+            (H, "head_commit"),
+            (C, "synthetic_commit"),
+        ):
+            if url.endswith("/git/commits/" + name):
+                return 200, responses[key]
+        raise AssertionError(url)
+
+    observation = provider_for_intent(intent, transport).observe_synthetic_validation(
+        7,
+        candidate_ref=intent.candidate_ref,
+        candidate_commit=H,
+        base_commit=G,
+    )
+    assert observation.base_tree == G
+    assert observation.head_tree == H
+    assert observation.synthetic_commit == C
+    assert observation.synthetic_tree == H
+    assert not any("check-runs" in url or "protection" in url for url in calls)
+
+
+def test_validation_ref_create_delete_have_exact_shape_and_scope() -> None:
+    calls: list[tuple[str, str, JsonBody | None]] = []
+
+    def transport(
+        method: str, url: str, body: JsonBody | None, headers: Mapping[str, str]
+    ) -> tuple[int, JsonValue]:
+        del headers
+        calls.append((method, url, body))
+        if method == "POST":
+            return 201, cast(
+                JsonValue, {"ref": VALIDATION_REF, "object": {"type": "commit", "sha": C}}
+            )
+        return 204, cast(JsonValue, {})
+
+    configured = provider(transport=transport)
+    configured.create_validation_ref(D, VALIDATION_REF, C)
+    configured.delete_validation_ref(D, VALIDATION_REF)
+    assert calls[0] == (
+        "POST",
+        configured.api_base + "/repos/acme/widget/git/refs",
+        {"ref": VALIDATION_REF, "sha": C},
+    )
+    assert calls[1][0] == "DELETE"
+    assert calls[1][1].endswith("/git/ref/heads/avo%2Fvalidation%2F" + "d" * 64)
+
+
+@pytest.mark.parametrize("method", ["read", "create", "delete"])
+def test_validation_ref_rejects_wrong_binding_before_transport(method: str) -> None:
+    calls = 0
+
+    def transport(*args: object, **kwargs: object) -> tuple[int, JsonValue]:
+        nonlocal calls
+        calls += 1
+        raise AssertionError("transport must not be called")
+
+    configured = provider(transport=transport)  # type: ignore[arg-type]
+    with pytest.raises(ValueError):
+        if method == "read":
+            configured.read_validation_ref("sha256:" + "e" * 64, VALIDATION_REF)
+        elif method == "create":
+            configured.create_validation_ref(D, "refs/heads/main", C)
+        else:
+            configured.delete_validation_ref(D, "refs/heads/deploy")
+    assert calls == 0
+
+
 def test_merge_lease_guard_failure_happens_before_mutating_put() -> None:
     intent, responses = _bound_intent_and_responses()
     transport, calls = _observation_transport(intent, responses)
