@@ -11,6 +11,8 @@ from avo_correlate.adapters.artifacts.live_rollback_journal import (
 )
 from avo_correlate.application.integration_live_rollback_service import (
     LiveIntegrationRollbackService,
+    LiveRollbackEvidenceError,
+    LiveRollbackTargetObservation,
 )
 from avo_correlate.contracts.base import ArtifactRef
 from avo_correlate.contracts.integration_drill import (
@@ -404,6 +406,13 @@ def test_live_package_rejects_stale_canary_topology() -> None:
         package.model_copy(update={"request": stale_request}).validate_package()  # pyright: ignore[reportCallIssue]
 
 
+def test_live_package_schema_declares_pydantic_semantic_authority() -> None:
+    description = LiveRollbackEvidencePackage.model_json_schema()["description"]
+    assert isinstance(description, str)
+    assert "Pydantic validation" in description
+    assert "not the complete hosted-live completion package" in description
+
+
 def test_live_package_journal_replays_and_rejects_tamper(tmp_path: Path) -> None:
     package = _package_fixture()
     journal = LiveRollbackJournal(tmp_path)
@@ -507,6 +516,7 @@ def test_live_service_completed_package_is_read_only_replay(tmp_path: Path) -> N
         journal,
         cast(Any, SimpleNamespace()),
         main_head_reader=lambda: package.request.main_before_commit,
+        target_observation_reader=lambda: _target_observation(package),
     )
     result = service.run(
         package.request,
@@ -531,6 +541,7 @@ def test_live_service_assembles_package_after_successful_rollback() -> None:
         _RecordingJournal(),
         cast(Any, _PromotionEvidence(package)),
         main_head_reader=lambda: package.request.main_before_commit,
+        target_observation_reader=lambda: _target_observation(package),
     )
     result = service.run(
         package.request,
@@ -548,7 +559,99 @@ def test_live_service_assembles_package_after_successful_rollback() -> None:
     assert rollback.calls == 1
 
 
+def test_live_service_replay_rejects_advanced_target_without_mutation() -> None:
+    package = _package_fixture()
+    journal = _ReplayJournal(package)
+    rollback = _FailIfCalledRollback()
+    service = LiveIntegrationRollbackService(
+        cast(Any, rollback),
+        cast(Any, SimpleNamespace()),
+        journal,
+        cast(Any, SimpleNamespace()),
+        main_head_reader=lambda: package.request.main_before_commit,
+        target_observation_reader=lambda: _target_observation(package, commit="2" * 40),
+    )
+    with pytest.raises(LiveRollbackEvidenceError, match=r"stale|topology"):
+        service.run(
+            package.request,
+            canary_package=package.canary_package,
+            canary_package_artifact=package.canary_package_artifact,
+            authorization=package.authorization,
+            bundle=package.bundle,
+            publication=package.publication,
+            bundle_digest=package.bundle_digest,
+            intent_factory=lambda _lease: cast(Any, object()),
+        )
+
+
+def test_live_service_main_race_after_rollback_does_not_index_package() -> None:
+    package = _package_fixture()
+    rollback = _SuccessfulRollback(package)
+    package_journal = _RecordingJournal()
+    heads = iter((package.request.main_before_commit, package.request.main_before_commit, "2" * 40))
+    service = LiveIntegrationRollbackService(
+        cast(Any, rollback),
+        cast(Any, _CaseJournal(package)),
+        package_journal,
+        cast(Any, _PromotionEvidence(package)),
+        main_head_reader=lambda: next(heads),
+        target_observation_reader=lambda: _target_observation(package),
+    )
+    with pytest.raises(LiveRollbackEvidenceError, match="main"):
+        service.run(
+            package.request,
+            canary_package=package.canary_package,
+            canary_package_artifact=package.canary_package_artifact,
+            authorization=package.authorization,
+            bundle=package.bundle,
+            publication=package.publication,
+            bundle_digest=package.bundle_digest,
+            intent_factory=lambda _lease: cast(Any, object()),
+        )
+    assert package_journal.package is None
+    assert rollback.calls == 1
+
+
+def test_live_service_recovers_crash_after_case_before_package_index() -> None:
+    package = _package_fixture()
+    rollback = _MissingReportRollback(package)
+    package_journal = _RecordingJournal()
+    service = LiveIntegrationRollbackService(
+        cast(Any, rollback),
+        cast(Any, _CaseJournal(package)),
+        package_journal,
+        cast(Any, _PromotionEvidence(package)),
+        main_head_reader=lambda: package.request.main_before_commit,
+        target_observation_reader=lambda: _target_observation(package),
+    )
+    result = service.run(
+        package.request,
+        canary_package=package.canary_package,
+        canary_package_artifact=package.canary_package_artifact,
+        authorization=package.authorization,
+        bundle=package.bundle,
+        publication=package.publication,
+        bundle_digest=package.bundle_digest,
+        intent_factory=lambda _lease: cast(Any, object()),
+    )
+    assert result.package is not None
+    assert result.package.promotion_report.intent_digest == canonical_digest(
+        package.promotion_intent
+    )
+    assert result.package.promotion_report.receipt_digest == canonical_digest(
+        package.promotion_receipt
+    )
+    assert rollback.calls == 1
+
+
 class _FailIfCalledRollback:
+    def verify_replay(
+        self,
+        _request: IntegrationRollbackRequest,
+        _authorization: IntegrationDrillRollbackAuthorization,
+    ) -> None:
+        return None
+
     def run(self, *_args: object, **_kwargs: object) -> object:
         raise AssertionError("completed live rollback replay must not call provider")
 
@@ -563,6 +666,50 @@ class _SuccessfulRollback:
     def run(self, *_args: object, **_kwargs: object) -> object:
         self.calls += 1
         return self.execution
+
+    def verify_replay(
+        self,
+        _request: IntegrationRollbackRequest,
+        _authorization: IntegrationDrillRollbackAuthorization,
+    ) -> None:
+        return None
+
+
+class _MissingReportRollback(_SuccessfulRollback):
+    def run(self, *_args: object, **_kwargs: object) -> object:
+        self.calls += 1
+        return self.execution.__class__(
+            request=self.execution.request,
+            soak=self.execution.soak,
+            authorization=self.execution.authorization,
+            intent=self.execution.intent,
+            receipt=self.execution.receipt,
+            case=self.execution.case,
+            report=IntegrationPromotionReport.model_construct(
+                operation_id=self.execution.request.promotion_operation_id,
+                outcome="already_applied",
+                intent_digest=None,
+                receipt_digest=None,
+                checks=["recovered_case"],
+                errors=[],
+            ),
+            evidence_artifacts=self.execution.evidence_artifacts,
+            replayed=False,
+        )
+
+
+def _target_observation(
+    package: LiveRollbackEvidencePackage,
+    *,
+    commit: str | None = None,
+) -> LiveRollbackTargetObservation:
+    return LiveRollbackTargetObservation(
+        repository_digest=package.request.repository_digest,
+        target_ref=package.request.target_ref,
+        commit=commit or package.rollback_receipt.result_commit or "",
+        tree=package.rollback_receipt.result_tree or "",
+        parent_commits=(package.request.failed_integration_head_commit,),
+    )
 
 
 class _RecordingJournal:

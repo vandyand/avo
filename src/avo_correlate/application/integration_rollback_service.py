@@ -231,6 +231,17 @@ class IntegrationDrillRollbackService:
             tuple(evidence_artifacts),
         )
 
+    def verify_replay(
+        self,
+        request: IntegrationRollbackRequest,
+        authorization: IntegrationDrillRollbackAuthorization,
+    ) -> None:
+        """Run the trusted, read-only fences required before replaying case 7."""
+        self._validate_request(request)
+        self._repository_verifier.verify(request)
+        self._assert_main(request.main_before_commit)
+        self._validate_authorization(request, authorization)
+
     def _replay(
         self,
         request: IntegrationRollbackRequest,

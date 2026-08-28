@@ -23,6 +23,7 @@ from avo_correlate.contracts.integration_promotion import (
     CandidatePublicationBinding,
     IntegrationPromotionIntent,
     IntegrationPromotionReceipt,
+    IntegrationPromotionReport,
     PromotionLeaseEvidence,
     PromotionMutationAuthorization,
 )
@@ -32,6 +33,17 @@ from avo_correlate.domain.canonical import canonical_digest
 
 class LiveRollbackEvidenceError(RuntimeError):
     """Live rollback evidence is incomplete, stale, or conflicts with history."""
+
+
+@dataclass(frozen=True, slots=True)
+class LiveRollbackTargetObservation:
+    """Trusted read-only observation of the protected integration ref."""
+
+    repository_digest: str
+    target_ref: str
+    commit: str
+    tree: str
+    parent_commits: tuple[str, ...]
 
 
 class PromotionEvidenceReader(Protocol):
@@ -69,7 +81,11 @@ class LiveRollbackExecution:
 
 
 class LiveIntegrationRollbackService:
-    """Wrap case-7 rollback with canary binding and durable package assembly."""
+    """Wrap case-7 rollback with canary binding and durable package assembly.
+
+    ``target_observation_reader`` must be backed by the authenticated provider
+    read path; callers must not adapt arbitrary request JSON into an observation.
+    """
 
     def __init__(
         self,
@@ -79,12 +95,14 @@ class LiveIntegrationRollbackService:
         promotion_evidence: PromotionEvidenceReader,
         *,
         main_head_reader: Callable[[], str],
+        target_observation_reader: Callable[[], LiveRollbackTargetObservation],
     ) -> None:
         self._rollback = rollback
         self._rollback_journal = rollback_journal
         self._package_journal = package_journal
         self._promotion_evidence = promotion_evidence
         self._main_head_reader = main_head_reader
+        self._target_observation_reader = target_observation_reader
 
     def run(
         self,
@@ -99,13 +117,19 @@ class LiveIntegrationRollbackService:
         intent_factory: Callable[[Any], IntegrationPromotionIntent],
     ) -> LiveRollbackExecution:
         self._validate_canary(request, canary_package, canary_package_artifact)
-        if self._main_head_reader() != request.main_before_commit:
-            raise LiveRollbackEvidenceError("main head is stale before live rollback")
+        self._assert_main(request.main_before_commit)
 
         existing = self._package_journal.read_package(request.operation_id)
         if existing is not None:
             package, package_ref = existing
+            self._rollback.verify_replay(request, authorization)
             self._validate_replay(package, request, canary_package_artifact, authorization)
+            self._validate_target_observation(
+                request,
+                self._target_observation_reader(),
+                package.rollback_receipt.result_commit,
+                package.rollback_receipt.result_tree,
+            )
             return LiveRollbackExecution(
                 rollback=self._execution_from_package(package),
                 package=package,
@@ -121,8 +145,15 @@ class LiveIntegrationRollbackService:
             bundle_digest=bundle_digest,
             intent_factory=intent_factory,
         )
+        self._assert_main(request.main_before_commit)
         if execution.receipt.outcome not in {"applied", "already_applied"}:
             return LiveRollbackExecution(execution, None, None)
+        self._validate_target_observation(
+            request,
+            self._target_observation_reader(),
+            execution.receipt.result_commit,
+            execution.receipt.result_tree,
+        )
         package = self._package(
             execution,
             canary_package,
@@ -131,6 +162,13 @@ class LiveIntegrationRollbackService:
             publication,
             bundle_digest,
         )
+        self._validate_target_observation(
+            request,
+            self._target_observation_reader(),
+            package.rollback_receipt.result_commit,
+            package.rollback_receipt.result_tree,
+        )
+        self._assert_main(request.main_before_commit)
         package_ref = self._package_journal.record_package(package)
         return LiveRollbackExecution(execution, package, package_ref)
 
@@ -189,6 +227,24 @@ class LiveIntegrationRollbackService:
             mutation_authorization_ref,
             promotion_receipt_ref,
         ]
+        report = execution.report
+        expected_intent_digest = canonical_digest(promotion_intent)
+        expected_receipt_digest = canonical_digest(promotion_receipt)
+        if report.intent_digest is None and report.receipt_digest is None:
+            report = IntegrationPromotionReport(
+                operation_id=request.promotion_operation_id,
+                outcome=promotion_receipt.outcome,
+                intent_digest=expected_intent_digest,
+                receipt_digest=expected_receipt_digest,
+                checks=["case_7_recovery"],
+                errors=[],
+            )
+        elif (
+            report.intent_digest != expected_intent_digest
+            or report.receipt_digest != expected_receipt_digest
+        ):
+            raise LiveRollbackEvidenceError("promotion report is not bound to durable records")
+        observed_main = self._assert_main(request.main_before_commit)
         return LiveRollbackEvidencePackage(
             operation_id=request.operation_id,
             canary_operation_id=canary.intent.operation_id,
@@ -207,10 +263,10 @@ class LiveIntegrationRollbackService:
             promotion_lease_evidence=lease,
             promotion_mutation_authorization=mutation_authorization,
             promotion_receipt=promotion_receipt,
-            promotion_report=execution.report,
+            promotion_report=report,
             artifacts=artifacts,
-            main_before_commit=request.main_before_commit,
-            main_after_commit=request.main_before_commit,
+            main_before_commit=observed_main,
+            main_after_commit=observed_main,
         )
 
     @staticmethod
@@ -243,12 +299,44 @@ class LiveIntegrationRollbackService:
         canary_ref: ArtifactRef,
         authorization: IntegrationDrillRollbackAuthorization,
     ) -> None:
+        try:
+            cast(Any, package).validate_package()
+        except ValueError as exc:
+            raise LiveRollbackEvidenceError(
+                "live rollback replay package is semantically invalid"
+            ) from exc
         if (
             package.request != request
             or package.canary_package_artifact != canary_ref
             or package.authorization != authorization
         ):
             raise LiveRollbackEvidenceError("live rollback replay binding differs")
+
+    @staticmethod
+    def _validate_target_observation(
+        request: IntegrationRollbackRequest,
+        observation: LiveRollbackTargetObservation,
+        expected_commit: str | None,
+        expected_tree: str | None,
+    ) -> None:
+        if (
+            expected_commit is None
+            or expected_tree is None
+            or observation.repository_digest != request.repository_digest
+            or observation.target_ref != request.target_ref
+            or observation.commit != expected_commit
+            or observation.tree != expected_tree
+            or observation.parent_commits != (request.failed_integration_head_commit,)
+        ):
+            raise LiveRollbackEvidenceError(
+                "current integration target is stale or has unexpected topology"
+            )
+
+    def _assert_main(self, expected: str) -> str:
+        observed = self._main_head_reader()
+        if observed != expected:
+            raise LiveRollbackEvidenceError("main head changed during live rollback")
+        return observed
 
     @staticmethod
     def _execution_from_package(
@@ -279,5 +367,6 @@ __all__ = [
     "LiveRollbackEvidenceError",
     "LiveRollbackExecution",
     "LiveRollbackPackageJournal",
+    "LiveRollbackTargetObservation",
     "PromotionEvidenceReader",
 ]

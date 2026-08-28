@@ -2685,7 +2685,7 @@
     }
   },
   "additionalProperties": false,
-  "description": "The durable join between a successful canary and its protected rollback.",
+  "description": "Core durable join between a canary and its protected rollback.\n\nThis is the semantic core, not the complete hosted-live completion package.\nJSON Schema describes wire shape only; callers must use Pydantic validation\nbecause the cross-record topology, authorization, and content-addressing\ninvariants below are not delegated to JSON Schema.",
   "properties": {
     "artifacts": {
       "items": {

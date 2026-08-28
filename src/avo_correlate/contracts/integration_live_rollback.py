@@ -32,7 +32,13 @@ _GIT = re.compile(r"^[0-9a-f]{40}(?:[0-9a-f]{24})?$")
 
 
 class LiveRollbackEvidencePackage(StrictModel):
-    """The durable join between a successful canary and its protected rollback."""
+    """Core durable join between a canary and its protected rollback.
+
+    This is the semantic core, not the complete hosted-live completion package.
+    JSON Schema describes wire shape only; callers must use Pydantic validation
+    because the cross-record topology, authorization, and content-addressing
+    invariants below are not delegated to JSON Schema.
+    """
 
     schema_version: Literal[1] = 1
     operation_id: Sha256Digest
