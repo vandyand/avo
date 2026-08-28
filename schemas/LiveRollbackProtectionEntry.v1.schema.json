@@ -1,0 +1,28 @@
+{
+  "additionalProperties": false,
+  "description": "Reconstructable required branch-protection context.",
+  "properties": {
+    "context": {
+      "minLength": 1,
+      "title": "Context",
+      "type": "string"
+    },
+    "enforced": {
+      "const": true,
+      "default": true,
+      "title": "Enforced",
+      "type": "boolean"
+    },
+    "required": {
+      "const": true,
+      "default": true,
+      "title": "Required",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "context"
+  ],
+  "title": "LiveRollbackProtectionEntry",
+  "type": "object"
+}

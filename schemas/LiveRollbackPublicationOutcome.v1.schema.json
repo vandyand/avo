@@ -1,0 +1,75 @@
+{
+  "additionalProperties": false,
+  "description": "Provider-independent verified result of candidate publication.",
+  "properties": {
+    "base_commit": {
+      "title": "Base Commit",
+      "type": "string"
+    },
+    "base_tree": {
+      "title": "Base Tree",
+      "type": "string"
+    },
+    "candidate_commit": {
+      "title": "Candidate Commit",
+      "type": "string"
+    },
+    "candidate_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Candidate Digest",
+      "type": "string"
+    },
+    "candidate_ref": {
+      "minLength": 1,
+      "title": "Candidate Ref",
+      "type": "string"
+    },
+    "candidate_tree": {
+      "title": "Candidate Tree",
+      "type": "string"
+    },
+    "evidence_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Evidence Digest",
+      "type": "string"
+    },
+    "outcome": {
+      "enum": [
+        "verified",
+        "reconciled"
+      ],
+      "title": "Outcome",
+      "type": "string"
+    },
+    "publication_id": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Publication Id",
+      "type": "string"
+    },
+    "repository_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Repository Digest",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "publication_id",
+    "repository_digest",
+    "base_commit",
+    "base_tree",
+    "candidate_ref",
+    "candidate_commit",
+    "candidate_tree",
+    "candidate_digest",
+    "outcome",
+    "evidence_digest"
+  ],
+  "title": "LiveRollbackPublicationOutcome",
+  "type": "object"
+}

@@ -1,0 +1,165 @@
+{
+  "$defs": {
+    "LiveRollbackCheckEntry": {
+      "additionalProperties": false,
+      "description": "Reconstructable trusted check identity and successful result.",
+      "properties": {
+        "app_id": {
+          "exclusiveMinimum": 0,
+          "title": "App Id",
+          "type": "integer"
+        },
+        "conclusion": {
+          "const": "success",
+          "title": "Conclusion",
+          "type": "string"
+        },
+        "context": {
+          "minLength": 1,
+          "title": "Context",
+          "type": "string"
+        },
+        "name": {
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "sha": {
+          "title": "Sha",
+          "type": "string"
+        },
+        "status": {
+          "const": "completed",
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "app_id",
+        "context",
+        "sha",
+        "status",
+        "conclusion"
+      ],
+      "title": "LiveRollbackCheckEntry",
+      "type": "object"
+    },
+    "LiveRollbackProtectionEntry": {
+      "additionalProperties": false,
+      "description": "Reconstructable required branch-protection context.",
+      "properties": {
+        "context": {
+          "minLength": 1,
+          "title": "Context",
+          "type": "string"
+        },
+        "enforced": {
+          "const": true,
+          "default": true,
+          "title": "Enforced",
+          "type": "boolean"
+        },
+        "required": {
+          "const": true,
+          "default": true,
+          "title": "Required",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "context"
+      ],
+      "title": "LiveRollbackProtectionEntry",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Source-pinned trusted check or protection manifest.",
+  "properties": {
+    "check_entries": {
+      "items": {
+        "$ref": "#/$defs/LiveRollbackCheckEntry"
+      },
+      "title": "Check Entries",
+      "type": "array"
+    },
+    "entries": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Entries",
+      "type": "array"
+    },
+    "kind": {
+      "enum": [
+        "trusted-check-manifest",
+        "protection-manifest"
+      ],
+      "title": "Kind",
+      "type": "string"
+    },
+    "manifest_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Manifest Digest",
+      "type": "string"
+    },
+    "protection_entries": {
+      "items": {
+        "$ref": "#/$defs/LiveRollbackProtectionEntry"
+      },
+      "title": "Protection Entries",
+      "type": "array"
+    },
+    "provider_api_version": {
+      "minLength": 1,
+      "title": "Provider Api Version",
+      "type": "string"
+    },
+    "provider_identity": {
+      "minLength": 1,
+      "title": "Provider Identity",
+      "type": "string"
+    },
+    "repository_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Repository Digest",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "source_commit": {
+      "title": "Source Commit",
+      "type": "string"
+    },
+    "source_pinned": {
+      "const": true,
+      "default": true,
+      "title": "Source Pinned",
+      "type": "boolean"
+    },
+    "target_ref": {
+      "minLength": 1,
+      "title": "Target Ref",
+      "type": "string"
+    }
+  },
+  "required": [
+    "kind",
+    "repository_digest",
+    "target_ref",
+    "source_commit",
+    "manifest_digest",
+    "provider_identity",
+    "provider_api_version",
+    "entries"
+  ],
+  "title": "LiveRollbackManifestEvidence",
+  "type": "object"
+}

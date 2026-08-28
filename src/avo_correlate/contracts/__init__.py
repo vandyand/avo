@@ -15,6 +15,16 @@ from avo_correlate.contracts.integration_campaign import (
 )
 from avo_correlate.contracts.integration_drill import IntegrationRollbackRequest
 from avo_correlate.contracts.integration_live_rollback import LiveRollbackEvidencePackage
+from avo_correlate.contracts.integration_live_rollback_completion import (
+    LiveRollbackCheckEntry,
+    LiveRollbackCompletionPackage,
+    LiveRollbackManifestEvidence,
+    LiveRollbackProtectionEntry,
+    LiveRollbackPublicationEvidence,
+    LiveRollbackPublicationOutcome,
+    LiveRollbackPublicationPlan,
+    LiveRollbackWorkflowEvidence,
+)
 from avo_correlate.contracts.integration_promotion import (
     CandidatePublicationBinding,
     IntegrationMergeResult,
@@ -88,7 +98,15 @@ __all__ = [
     "IntegrationProviderObservation",
     "IntegrationProviderReconciliation",
     "IntegrationRollbackRequest",
+    "LiveRollbackCompletionPackage",
+    "LiveRollbackCheckEntry",
     "LiveRollbackEvidencePackage",
+    "LiveRollbackManifestEvidence",
+    "LiveRollbackProtectionEntry",
+    "LiveRollbackPublicationEvidence",
+    "LiveRollbackPublicationOutcome",
+    "LiveRollbackPublicationPlan",
+    "LiveRollbackWorkflowEvidence",
     "PolicyDecision",
     "PromotionBundle",
     "PromotionConfig",

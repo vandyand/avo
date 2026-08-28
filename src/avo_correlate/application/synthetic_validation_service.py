@@ -309,6 +309,33 @@ class SyntheticValidationService:
     run = trigger
     ensure = trigger
 
+    def read_durable_outcome(
+        self, plan: SyntheticValidationPlan
+    ) -> SyntheticValidationOutcome | None:
+        """Read an outcome without preparing, creating, or reconciling a ref."""
+        outcome = _unwrap(self._journal.read_outcome(plan.operation_id))
+        if outcome is not None:
+            _check_outcome_binding(outcome, plan)
+        return outcome
+
+    def read_durable_plan(
+        self, plan: SyntheticValidationPlan
+    ) -> SyntheticValidationPlan | None:
+        """Read the immutable plan and reject an identity collision."""
+        loaded = _unwrap(self._journal.read_plan(plan.operation_id))
+        if loaded is not None and loaded != plan:
+            raise SyntheticValidationConflictError("durable validation plan differs")
+        return loaded
+
+    def read_durable_authorization(
+        self, authorization: SyntheticValidationCreateAuthorization
+    ) -> SyntheticValidationCreateAuthorization | None:
+        """Read the create authorization without touching the provider."""
+        loaded = _unwrap(self._journal.read_create_authorization(authorization.operation_id))
+        if loaded is not None and loaded != authorization:
+            raise SyntheticValidationConflictError("durable validation authorization differs")
+        return loaded
+
     def cleanup(
         self,
         plan_or_operation: SyntheticValidationPlan | str,

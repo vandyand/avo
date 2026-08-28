@@ -70,6 +70,16 @@ from avo_correlate.contracts.integration_drill import (
     IntegrationRollbackRequest,
 )
 from avo_correlate.contracts.integration_live_rollback import LiveRollbackEvidencePackage
+from avo_correlate.contracts.integration_live_rollback_completion import (
+    LiveRollbackCheckEntry,
+    LiveRollbackCompletionPackage,
+    LiveRollbackManifestEvidence,
+    LiveRollbackProtectionEntry,
+    LiveRollbackPublicationEvidence,
+    LiveRollbackPublicationOutcome,
+    LiveRollbackPublicationPlan,
+    LiveRollbackWorkflowEvidence,
+)
 from avo_correlate.contracts.model import ModelInvocationRecord, ModelRequest, ModelResponse
 from avo_correlate.contracts.operations import (
     DryRunReport,
@@ -212,6 +222,14 @@ MODELS: tuple[type[StrictModel], ...] = (
     IntegrationDrillResult,
     IntegrationRollbackRequest,
     LiveRollbackEvidencePackage,
+    LiveRollbackCompletionPackage,
+    LiveRollbackCheckEntry,
+    LiveRollbackManifestEvidence,
+    LiveRollbackProtectionEntry,
+    LiveRollbackPublicationEvidence,
+    LiveRollbackPublicationOutcome,
+    LiveRollbackPublicationPlan,
+    LiveRollbackWorkflowEvidence,
 )
 
 
