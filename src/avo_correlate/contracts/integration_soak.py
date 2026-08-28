@@ -21,7 +21,7 @@ SOAK_WORKFLOW_VARIABLE = "AVO_TRUSTED_SOAK_WORKFLOW_SHA256"
 SOAK_CONTEXT = "avo integration soak"
 SOAK_APP_ID = 15368
 SOAK_MARKER = "AVO-Live-Rollback-Marker: fail-soak"
-SOAK_MARKER_PATH = "docs/avo-0046-live-rollback-canary.txt"
+SOAK_MARKER_PATH = "src/avo_correlate/live_rollback_marker.txt"
 # GitHub stores the candidate file as one UTF-8 marker line terminated by LF.
 # Keep the exact bytes and digest in the contract so the workflow and provider
 # have one authority-safe trigger definition.
@@ -62,7 +62,7 @@ class FailedSoakAttestation(StrictModel):
     conclusion: Literal["failure"] = "failure"
     completed_at: datetime
     freshness_cutoff: datetime
-    marker_path: Literal["docs/avo-0046-live-rollback-canary.txt"] = SOAK_MARKER_PATH
+    marker_path: Literal["src/avo_correlate/live_rollback_marker.txt"] = SOAK_MARKER_PATH
     marker_blob_digest: Sha256Digest = SOAK_MARKER_BLOB_DIGEST
     workflow_path: Literal[".github/workflows/integration-soak.yml"] = SOAK_WORKFLOW_PATH
     workflow_blob_digest: Sha256Digest

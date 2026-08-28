@@ -75,8 +75,8 @@
       "type": "string"
     },
     "marker_path": {
-      "const": "docs/avo-0046-live-rollback-canary.txt",
-      "default": "docs/avo-0046-live-rollback-canary.txt",
+      "const": "src/avo_correlate/live_rollback_marker.txt",
+      "default": "src/avo_correlate/live_rollback_marker.txt",
       "title": "Marker Path",
       "type": "string"
     },
