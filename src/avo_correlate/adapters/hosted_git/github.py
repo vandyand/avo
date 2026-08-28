@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
 import re
@@ -14,6 +15,12 @@ from urllib.parse import quote, urlparse
 from urllib.request import Request, urlopen
 
 from avo_correlate.contracts.integration_campaign import campaign_marker_digest
+from avo_correlate.contracts.integration_live_rollback_completion import (
+    LiveRollbackCheckEntry,
+    LiveRollbackManifestEvidence,
+    LiveRollbackProtectionEntry,
+    LiveRollbackWorkflowEvidence,
+)
 from avo_correlate.contracts.integration_promotion import (
     IntegrationMergeResult,
     IntegrationPromotionIntent,
@@ -106,6 +113,30 @@ class GitHubPullRequestDiscovery:
     synthetic_merge_commit: str
     synthetic_merge_tree: str
     evidence: GitHubEvidenceSnapshot
+
+
+@dataclass(frozen=True)
+class GitHubRefObservation:
+    """Authenticated, exact ref and complete commit topology."""
+
+    repository_digest: str
+    ref: str
+    commit: str
+    tree: str
+    parents: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class GitHubRollbackTopology:
+    """All immutable Git identities required to attest a live rollback."""
+
+    repository_digest: str
+    target_ref: str
+    main: GitHubRefObservation
+    target: GitHubRefObservation
+    failed_head: GitHubRefObservation
+    restore: GitHubRefObservation
+    rollback_candidate: GitHubRefObservation
 
 
 class JsonTransport(Protocol):
@@ -215,6 +246,9 @@ def _nested_object(value: JsonObject, key: str, context: str) -> JsonObject:
 
 _GIT_OBJECT = re.compile(r"^[0-9a-f]{40}(?:[0-9a-f]{24})?$")
 _VALIDATION_REF = re.compile(r"^refs/heads/avo/validation/[0-9a-f]{64}$")
+_WORKFLOW_PATH = ".github/workflows/synthetic-validation.yml"
+_WORKFLOW_VARIABLE = "AVO_TRUSTED_WORKFLOW_SHA256"
+_SHA256 = re.compile(r"^[0-9a-f]{64}$")
 
 
 def _git_object(value: str, context: str) -> str:
@@ -299,6 +333,365 @@ class GitHubIntegrationProvider:
         if status < 200 or status >= 300:
             raise GitHubTransportError(f"GitHub returned unexpected status ({status})")
         return payload
+
+    def _require_authenticated(self) -> None:
+        """Live authority reads must never silently use anonymous GitHub API."""
+        if not self.token:
+            raise GitHubRejected("authenticated GitHub token is required")
+
+    @staticmethod
+    def _authority_ref(value: str, context: str) -> str:
+        if not value.startswith("refs/heads/") or value == "refs/heads/":
+            raise ValueError(f"{context} must be a full heads ref")
+        branch = value.removeprefix("refs/heads/")
+        if any(char in branch for char in "\x00\r\n~^:?*[\\") or ".." in branch:
+            raise ValueError(f"malformed {context}")
+        return value
+
+    def verify_repository_binding(self) -> str:
+        """Authenticate and verify the exact configured GitHub repository."""
+        self._require_authenticated()
+        raw = _object(self._call("GET", self._path("").rstrip("/")), "repository")
+        full_name = _required_string(raw, "full_name", "repository")
+        name = _required_string(raw, "name", "repository")
+        owner = _nested_object(raw, "owner", "repository")
+        login = _required_string(owner, "login", "repository owner")
+        if full_name != f"{self.owner}/{self.repo}" or name != self.repo or login != self.owner:
+            raise ValueError("GitHub repository identity mismatch")
+        return self.repository_digest
+
+    def _read_authority_commit(self, sha: str, context: str) -> tuple[str, str, tuple[str, ...]]:
+        expected = _git_object(sha, context)
+        actual, tree, parents = self._commit_topology(self._commit(expected))
+        if actual != expected:
+            raise ValueError(f"{context} response mismatch")
+        _git_object(tree, f"{context} tree")
+        for parent in parents:
+            _git_object(parent, f"{context} parent")
+        return actual, tree, parents
+
+    def read_authority_ref(self, ref: str) -> GitHubRefObservation:
+        """Read one authenticated heads ref and its complete commit topology."""
+        self._require_authenticated()
+        exact_ref = self._authority_ref(ref, "authority ref")
+        branch = exact_ref.removeprefix("refs/heads/")
+        raw = _object(
+            self._call("GET", self._path(f"git/ref/heads/{quote(branch, safe='')}")),
+            "Git ref",
+        )
+        if _required_string(raw, "ref", "Git ref") != exact_ref:
+            raise ValueError("Git ref identity mismatch")
+        obj = _nested_object(raw, "object", "Git ref")
+        if _required_string(obj, "type", "Git ref object") != "commit":
+            raise ValueError("Git ref does not point to a commit")
+        commit = _git_object(_required_string(obj, "sha", "Git ref object"), "Git ref commit")
+        actual, tree, parents = self._read_authority_commit(commit, "Git ref commit")
+        return GitHubRefObservation(self.repository_digest, exact_ref, actual, tree, parents)
+
+    # Short aliases keep application wiring readable while the explicit name
+    # documents that this read is an authority boundary.
+    observe_authority_ref = read_authority_ref
+
+    def verify_current_target(
+        self,
+        *,
+        expected_commit: str,
+        expected_tree: str,
+        expected_parents: tuple[str, ...] | list[str],
+    ) -> GitHubRefObservation:
+        """Verify current target ref against an exact commit/tree/parent tuple."""
+        self._require_authenticated()
+        self.verify_repository_binding()
+        observation = self.read_authority_ref(self.target_ref)
+        expected = (_git_object(expected_commit, "expected target commit"),
+                    _git_object(expected_tree, "expected target tree"),
+                    tuple(_git_object(item, "expected target parent") for item in expected_parents))
+        if (observation.commit, observation.tree, observation.parents) != expected:
+            raise ValueError("current target topology mismatch")
+        return observation
+
+    def verify_live_rollback_topology(
+        self,
+        *,
+        failed_integration_head_commit: str,
+        failed_integration_head_tree: str,
+        restore_to_commit: str,
+        restore_to_tree: str,
+        rollback_candidate_commit: str,
+        rollback_candidate_tree: str,
+        rollback_candidate_parent_commit: str,
+        current_target_commit: str,
+        current_target_tree: str,
+        current_target_parents: tuple[str, ...] | list[str],
+        main_commit: str,
+    ) -> GitHubRollbackTopology:
+        """Verify all rollback identities plus current target and main heads.
+
+        This performs only authenticated GETs. Every supplied identity is checked
+        against GitHub's commit and tree response, including the candidate's
+        single-parent topology and the exact post-merge target topology.
+        """
+        self._require_authenticated()
+        self.verify_repository_binding()
+        target = self.read_authority_ref(self.target_ref)
+        main = self.read_authority_ref("refs/heads/main")
+        if main.commit != _git_object(main_commit, "expected main commit"):
+            raise ValueError("current main topology mismatch")
+        expected_target = (
+            _git_object(current_target_commit, "expected target commit"),
+            _git_object(current_target_tree, "expected target tree"),
+            tuple(_git_object(item, "expected target parent") for item in current_target_parents),
+        )
+        if (target.commit, target.tree, target.parents) != expected_target:
+            raise ValueError("current target topology mismatch")
+
+        def historical(sha: str, tree: str, label: str) -> GitHubRefObservation:
+            actual, actual_tree, parents = self._read_authority_commit(sha, label)
+            if actual_tree != _git_object(tree, f"expected {label} tree"):
+                raise ValueError(f"{label} tree mismatch")
+            return GitHubRefObservation(
+                self.repository_digest, self.target_ref, actual, actual_tree, parents
+            )
+
+        failed = historical(
+            failed_integration_head_commit, failed_integration_head_tree, "failed integration head"
+        )
+        restore = historical(restore_to_commit, restore_to_tree, "restore commit")
+        candidate = historical(
+            rollback_candidate_commit, rollback_candidate_tree, "rollback candidate"
+        )
+        if candidate.parents != (_git_object(rollback_candidate_parent_commit,
+                                               "rollback candidate parent"),):
+            raise ValueError("rollback candidate parent topology mismatch")
+        return GitHubRollbackTopology(
+            self.repository_digest, self.target_ref, main, target, failed, restore, candidate
+        )
+
+    def observe_workflow_authority(
+        self, source_commit: str, *, workflow_path: str = _WORKFLOW_PATH
+    ) -> LiveRollbackWorkflowEvidence:
+        """Read and verify the base-pinned validation workflow and repository pin.
+
+        GitHub's contents endpoint is queried with the full source commit, so a
+        branch or moving tag cannot silently select the workflow. The response's
+        base64 bytes are hashed exactly as returned by GitHub; no text decoding or
+        newline normalization occurs before hashing.
+        """
+        self._require_authenticated()
+        self.verify_repository_binding()
+        source = _git_object(source_commit, "workflow source commit")
+        if workflow_path != _WORKFLOW_PATH:
+            raise ValueError("workflow path is outside the trusted validation scope")
+        content_path = quote(workflow_path, safe="/")
+        raw = _object(
+            self._call(
+                "GET",
+                self._path(f"contents/{content_path}?ref={quote(source, safe='')}"),
+            ),
+            "workflow content",
+        )
+        if (
+            _required_string(raw, "type", "workflow content") != "file"
+            or _required_string(raw, "path", "workflow content") != workflow_path
+            or _required_string(raw, "encoding", "workflow content") != "base64"
+        ):
+            raise ValueError("workflow content identity or encoding mismatch")
+        encoded = _required_string(raw, "content", "workflow content")
+        try:
+            # GitHub wraps base64 content in newlines. Whitespace is transport
+            # formatting, while every non-whitespace byte remains significant.
+            compact = "".join(encoded.split())
+            blob = base64.b64decode(compact.encode("ascii"), validate=True)
+        except (UnicodeEncodeError, ValueError) as exc:
+            raise ValueError("workflow content is not valid base64") from exc
+        workflow_hash = "sha256:" + hashlib.sha256(blob).hexdigest()
+
+        variable = _object(
+            self._call("GET", self._path(f"actions/variables/{_WORKFLOW_VARIABLE}")),
+            "repository variable",
+        )
+        if _required_string(variable, "name", "repository variable") != _WORKFLOW_VARIABLE:
+            raise ValueError("trusted workflow variable identity mismatch")
+        expected = _required_string(variable, "value", "repository variable")
+        if _SHA256.fullmatch(expected) is None:
+            raise ValueError("trusted workflow variable is not lowercase SHA-256")
+        variable_digest = "sha256:" + expected
+        if workflow_hash != variable_digest:
+            raise ValueError("workflow blob does not match trusted repository variable")
+        return LiveRollbackWorkflowEvidence.model_validate(
+            {
+                "repository_digest": self.repository_digest,
+                "target_ref": self.target_ref,
+                "source_commit": source,
+                "workflow_path": workflow_path,
+                "workflow_blob_digest": workflow_hash,
+                "repository_variables_digest": variable_digest,
+                "repository_variables_match": True,
+                "provider_identity": self.provider_identity,
+                "provider_api_version": self.provider_api_version,
+            }
+        )
+
+    observe_workflow_evidence = observe_workflow_authority
+
+    def live_rollback_manifests(
+        self,
+        snapshot: GitHubEvidenceSnapshot,
+        *,
+        protection_source_commit: str,
+        target_ref: str | None = None,
+    ) -> tuple[LiveRollbackManifestEvidence, LiveRollbackManifestEvidence]:
+        """Convert sanitized provider evidence into canonical Phase B records."""
+        self._require_authenticated()
+        target = self.target_ref if target_ref is None else target_ref
+        if target != self.target_ref:
+            raise ValueError("manifest target ref is not configured integration ref")
+        synthetic = _git_object(snapshot.synthetic_merge_commit, "synthetic merge commit")
+        _git_object(snapshot.synthetic_merge_tree, "synthetic merge tree")
+        protection_source = _git_object(protection_source_commit, "protection source commit")
+
+        manifest = snapshot.check_evidence_manifest
+        if canonical_digest(manifest) != snapshot.check_evidence_manifest_digest:
+            raise ValueError("trusted check manifest digest is not canonical")
+        expected_protection_payload: JsonObject = {
+            "required_status_checks": {
+                "strict": self.protection_policy.required_status_checks_strict,
+                "checks": [
+                    {"context": context, "app_id": app_id}
+                    for context, app_id in sorted(self.protection_checks)
+                ],
+            },
+            "required_pull_request_reviews": {
+                "required_approving_review_count": (
+                    self.protection_policy.required_approving_review_count
+                ),
+                "dismiss_stale_reviews": self.protection_policy.dismiss_stale_reviews,
+                "require_last_push_approval": self.protection_policy.require_last_push_approval,
+            },
+            "enforce_admins": self.protection_policy.enforce_admins,
+            "required_linear_history": self.protection_policy.required_linear_history,
+            "required_conversation_resolution": (
+                self.protection_policy.required_conversation_resolution
+            ),
+            "allow_force_pushes": self.protection_policy.allow_force_pushes,
+            "allow_deletions": self.protection_policy.allow_deletions,
+            "lock_branch": self.protection_policy.lock_branch,
+        }
+        if (
+            snapshot.protection_evidence != expected_protection_payload
+            or canonical_digest(snapshot.protection_evidence)
+            != snapshot.protection_evidence_digest
+        ):
+            raise ValueError("branch protection evidence is not canonical or semantic")
+        trusted = manifest.get("trusted_checks")
+        runs = manifest.get("runs")
+        if not isinstance(trusted, list) or not isinstance(runs, list):
+            raise ValueError("malformed trusted check manifest")
+        expected_checks: set[tuple[str, int]] = set()
+        for item in trusted:
+            check = _object(item, "trusted check declaration")
+            context = _required_string(check, "context", "trusted check declaration")
+            app_id = _required_int(check, "app_id", "trusted check declaration")
+            expected_checks.add((context, app_id))
+        if expected_checks != set(self.trusted_checks):
+            raise ValueError("trusted check declarations differ from configured checks")
+
+        check_entries: list[LiveRollbackCheckEntry] = []
+        seen: set[tuple[str, int]] = set()
+        for item in runs:
+            run = _object(item, "trusted check run")
+            name = _required_string(run, "name", "trusted check run")
+            app_id = _required_int(run, "app_id", "trusted check run")
+            key = (name, app_id)
+            if key not in expected_checks or key in seen:
+                if key in seen:
+                    raise ValueError("duplicate trusted check entry")
+                continue
+            if (
+                _required_string(run, "head_sha", "trusted check run") != synthetic
+                or _required_string(run, "status", "trusted check run") != "completed"
+                or _required_string(run, "conclusion", "trusted check run") != "success"
+            ):
+                raise ValueError("trusted check entry is not completed successfully")
+            completed_at = _required_string(run, "completed_at", "trusted check run")
+            try:
+                completed = datetime.fromisoformat(completed_at.replace("Z", "+00:00"))
+            except ValueError as exc:
+                raise ValueError("trusted check timestamp is malformed") from exc
+            if completed.tzinfo is None or completed < self.freshness_cutoff:
+                raise ValueError("trusted check entry is stale")
+            seen.add(key)
+            check_entries.append(
+                LiveRollbackCheckEntry.model_validate(
+                    {
+                        "name": name,
+                        "app_id": app_id,
+                        "context": name,
+                        "sha": synthetic,
+                        "status": "completed",
+                        "conclusion": "success",
+                    }
+                )
+            )
+        if seen != expected_checks:
+            raise ValueError("trusted check entries are missing or substituted")
+        check_entries.sort(key=lambda item: (item.context, item.app_id))
+        check_manifest = LiveRollbackManifestEvidence.model_validate(
+            {
+                "kind": "trusted-check-manifest",
+                "repository_digest": self.repository_digest,
+                "target_ref": target,
+                "source_commit": synthetic,
+                "manifest_digest": snapshot.check_evidence_manifest_digest,
+                "provider_identity": self.provider_identity,
+                "provider_api_version": self.provider_api_version,
+                "entries": [item.context for item in check_entries],
+                "check_entries": [item.model_dump(mode="json") for item in check_entries],
+                "source_pinned": True,
+            }
+        )
+
+        protection = snapshot.protection_evidence
+        status = _nested_object(protection, "required_status_checks", "branch protection")
+        raw_checks = status.get("checks")
+        if not isinstance(raw_checks, list):
+            raise ValueError("branch protection checks are malformed")
+        protection_entries: list[LiveRollbackProtectionEntry] = []
+        protection_set: set[tuple[str, int]] = set()
+        for item in raw_checks:
+            check = _object(item, "required status check")
+            context = _required_string(check, "context", "required status check")
+            app_id = _required_int(check, "app_id", "required status check")
+            protection_set.add((context, app_id))
+            protection_entries.append(
+                LiveRollbackProtectionEntry.model_validate(
+                    {"context": context, "required": True, "enforced": True}
+                )
+            )
+        if protection_set != set(self.protection_checks) or len(protection_entries) != len(
+            protection_set
+        ):
+            raise ValueError("branch protection checks are not exact")
+        protection_entries.sort(key=lambda item: item.context)
+        protection_manifest = LiveRollbackManifestEvidence.model_validate(
+            {
+                "kind": "protection-manifest",
+                "repository_digest": self.repository_digest,
+                "target_ref": target,
+                "source_commit": protection_source,
+                "manifest_digest": snapshot.protection_evidence_digest,
+                "provider_identity": self.provider_identity,
+                "provider_api_version": self.provider_api_version,
+                "entries": [item.context for item in protection_entries],
+                "protection_entries": [
+                    item.model_dump(mode="json") for item in protection_entries
+                ],
+                "source_pinned": True,
+            }
+        )
+        return check_manifest, protection_manifest
+
+    build_live_rollback_manifests = live_rollback_manifests
 
     def _path(self, suffix: str) -> str:
         return f"repos/{quote(self.owner, safe='')}/{quote(self.repo, safe='')}/{suffix}"
@@ -1324,7 +1717,9 @@ __all__ = [
     "GitHubPullRequestBinding",
     "GitHubPullRequestDiscovery",
     "GitHubRESTProvider",
+    "GitHubRefObservation",
     "GitHubRejected",
+    "GitHubRollbackTopology",
     "GitHubTransportError",
     "JsonBody",
     "JsonObject",
