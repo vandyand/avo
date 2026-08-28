@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 from collections.abc import Callable
@@ -10,6 +11,7 @@ from typing import Any, Protocol
 
 from avo_correlate.adapters.artifacts.filesystem import FilesystemArtifactStore
 from avo_correlate.contracts.base import ArtifactRef
+from avo_correlate.contracts.integration_promotion import CandidatePublicationBinding
 from avo_correlate.contracts.promotion_bundle import (
     GitRefSnapshot,
     PromotionBundle,
@@ -71,7 +73,13 @@ class RollbackPromotionAuthorizationJournal:
         self._store = artifact_store
         self._root = artifact_store.root / "rollback-promotion-authorizations"
 
-    def record(self, authorization: RollbackPromotionBundleAuthorization) -> ArtifactRef:
+    def record(
+        self,
+        authorization: RollbackPromotionBundleAuthorization,
+        *,
+        canary_package_artifact: ArtifactRef | None = None,
+        publication: CandidatePublicationBinding | None = None,
+    ) -> ArtifactRef:
         payload = canonical_bytes(authorization)
         reference = self._store.put_bytes(
             payload,
@@ -81,12 +89,17 @@ class RollbackPromotionAuthorizationJournal:
         )
         index = self._root / authorization.operation_id.removeprefix("sha256:")
         self._root.mkdir(parents=True, exist_ok=True)
-        value = canonical_bytes(
-            {
-                "authorization": authorization.model_dump(mode="json"),
-                "artifact": reference.model_dump(mode="json"),
-            }
-        )
+        index_payload: dict[str, object] = {
+            "authorization": authorization.model_dump(mode="json"),
+            "artifact": reference.model_dump(mode="json"),
+        }
+        if canary_package_artifact is not None:
+            index_payload["canary_package_artifact"] = canary_package_artifact.model_dump(
+                mode="json"
+            )
+        if publication is not None:
+            index_payload["publication"] = publication.model_dump(mode="json")
+        value = canonical_bytes(index_payload)
         try:
             with index.open("xb") as handle:
                 handle.write(value)
@@ -111,10 +124,27 @@ class RollbackPromotionAuthorizationJournal:
                 raise ValueError("rollback authorization artifact metadata is malformed") from None
             if self._store.read_bytes(existing_reference) != payload:
                 raise ValueError("rollback authorization artifact is missing or corrupt") from None
+            if canary_package_artifact is not None:
+                existing_canary = ArtifactRef.model_validate(
+                    existing.get("canary_package_artifact")
+                )
+                if existing_canary != canary_package_artifact:
+                    raise ValueError("conflicting durable canary package binding") from None
+            if publication is not None:
+                existing_publication = CandidatePublicationBinding.model_validate(
+                    existing.get("publication")
+                )
+                if existing_publication != publication:
+                    raise ValueError("conflicting durable publication binding") from None
             return existing_reference
         return reference
 
-    def require(self, authorization: RollbackPromotionBundleAuthorization) -> None:
+    def require(
+        self,
+        authorization: RollbackPromotionBundleAuthorization,
+        *,
+        require_children: bool = False,
+    ) -> None:
         index = self._root / authorization.operation_id.removeprefix("sha256:")
         try:
             raw = index.read_bytes()
@@ -135,6 +165,53 @@ class RollbackPromotionAuthorizationJournal:
             data = self._store.read_bytes(reference)
             if data != canonical_bytes(authorization):
                 raise ValueError("rollback authorization artifact differs from durable authority")
+            if require_children:
+                canary_reference = ArtifactRef.model_validate(value["canary_package_artifact"])
+                if (
+                    canary_reference.digest != authorization.canary_package_digest
+                    or canary_reference.role != "integration-campaign-package"
+                    or canary_reference.media_type
+                    != "application/vnd.avo.integration-campaign+json"
+                ):
+                    raise ValueError("durable canary package binding is malformed")
+                canary_data = self._store.read_bytes(canary_reference)
+                canary_raw = json.loads(
+                    canary_data,
+                    object_pairs_hook=_strict_object_pairs,
+                )
+                if canonical_bytes(canary_raw) != canary_data:
+                    raise ValueError("durable canary package is not canonical JSON")
+                from avo_correlate.contracts.integration_campaign import (
+                    IntegrationCampaignEvidencePackage,
+                )
+
+                canary = IntegrationCampaignEvidencePackage.model_validate(
+                    canary_raw
+                )
+                if canonical_digest(canary) != authorization.canary_package_digest:
+                    raise ValueError("durable canary package differs from authorization")
+                publication = CandidatePublicationBinding.model_validate(value["publication"])
+                if (
+                    publication.repository_digest != authorization.repository_digest
+                    or publication.base_commit != authorization.failed_integration_head_commit
+                    or publication.base_tree != authorization.failed_integration_head_tree
+                    or publication.candidate_commit != authorization.rollback_candidate_commit
+                    or publication.candidate_tree != authorization.rollback_candidate_tree
+                    or publication.candidate_digest != authorization.candidate_digest
+                    or publication.publication_evidence_digest
+                    != authorization.publication_evidence_digest
+                ):
+                    raise ValueError("durable publication differs from authorization")
+                if not self._store.exists(authorization.publication_evidence_digest):
+                    raise ValueError("publication evidence is missing from durable store")
+                publication_data = self._store.path_for_digest(
+                    authorization.publication_evidence_digest
+                ).read_bytes()
+                if (
+                    f"sha256:{hashlib.sha256(publication_data).hexdigest()}"
+                    != authorization.publication_evidence_digest
+                ):
+                    raise ValueError("publication evidence digest is corrupt")
         except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
             raise ValueError("rollback authorization is not durably recorded") from exc
 
@@ -507,6 +584,8 @@ class PromotionController:
             snapshot.source_tree_digest,
         ):
             raise PromotionEvidenceError("rollback base evidence verification failed")
+        if not self._artifact_store.exists(candidate_publication.publication_evidence_digest):
+            raise PromotionEvidenceError("rollback publication evidence is not durably stored")
 
         authorization_values = {
             "schema_version": 1,
@@ -538,7 +617,11 @@ class PromotionController:
                 "authorization_id": canonical_digest(authorization_values),
             }
         )
-        self._rollback_authorizations.record(authorization)
+        self._rollback_authorizations.record(
+            authorization,
+            canary_package_artifact=canary_package_artifact,
+            publication=candidate_publication,
+        )
 
         base_evidence_digest = _base_evidence_digest(snapshot, comparison.candidate_digest)
         path_digest = path_manifest_digest(comparison.changed_paths)
@@ -619,6 +702,7 @@ class PromotionController:
             decision_digest=decision_digest,
             provenance=provenance,
             evidence_digests=evidence,
+            rollback_operation_id=authorization.operation_id,
             rollback_authorization=authorization,
         )
         payload = bundle_bytes(bundle)
@@ -732,7 +816,11 @@ class PromotionController:
                     raise ValueError("bundle is not canonical JSON")
                 parsed = PromotionBundle.model_validate(raw)
             else:
-                parsed = bundle
+                # Re-validate model instances as well.  ``model_copy`` and
+                # ``model_construct`` can otherwise hand us a partially
+                # trusted nested object that bypassed PromotionBundle's
+                # cross-record validators.
+                parsed = PromotionBundle.model_validate(bundle.model_dump(mode="json"))
             if (
                 parsed.rollback_authorization is None
                 and parsed.snapshot.target_ref == "refs/heads/integration"
@@ -861,7 +949,7 @@ class PromotionController:
                     )
                 ):
                     raise ValueError("rollback authorization issuer or digest is invalid")
-                self._rollback_authorizations.require(authorization)
+                self._rollback_authorizations.require(authorization, require_children=True)
                 checks.append("rollback_authorization")
                 active_repository = repository or self._repository
                 if active_repository.snapshot() != parsed.snapshot:

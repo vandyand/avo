@@ -65,5 +65,7 @@ def test_authorization_journal_is_create_once_and_rejects_conflicts(tmp_path: Pa
     reference = journal.record(authorization)
     assert journal.record(authorization) == reference
     journal.require(authorization)
+    with pytest.raises(ValueError, match="not durably recorded"):
+        journal.require(authorization, require_children=True)
     with pytest.raises(ValueError, match="conflicting"):
         journal.record(_authorization("different reason"))

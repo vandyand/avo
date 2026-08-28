@@ -172,8 +172,14 @@ class RollbackPromotionBundleAuthorization(StrictModel):
     def validate_authorization(self) -> "RollbackPromotionBundleAuthorization":
         if not self.authorized:
             raise ValueError("rollback promotion authorization must be authorized")
+        if self.canary_operation_id == self.operation_id:
+            raise ValueError("rollback canary operation must differ from rollback operation")
         if self.rollback_candidate_parent_commit != self.failed_integration_head_commit:
             raise ValueError("rollback candidate parent differs from failed integration head")
+        if self.rollback_candidate_tree != self.restore_to_tree:
+            raise ValueError("rollback candidate tree differs from restore tree")
+        if self.restore_tree_digest != self.candidate_digest:
+            raise ValueError("restore tree digest differs from candidate digest")
         if self.rollback_candidate_commit in {
             self.failed_integration_head_commit,
             self.restore_to_commit,
@@ -200,6 +206,7 @@ class PromotionBundle(StrictModel):
     decision_digest: Sha256Digest
     provenance: PromotionProvenanceBinding
     evidence_digests: list[Sha256Digest] = Field(min_length=1)
+    rollback_operation_id: Sha256Digest | None = None
     rollback_authorization: RollbackPromotionBundleAuthorization | None = None
 
     @field_validator("evidence_digests")
@@ -242,18 +249,21 @@ class PromotionBundle(StrictModel):
             raise ValueError("path manifest digest does not match changed paths")
         authorization = self.rollback_authorization
         if authorization is not None and (
-                authorization.repository_digest != self.snapshot.repository_digest
+                self.rollback_operation_id != authorization.operation_id
+                or authorization.canary_operation_id == authorization.operation_id
+                or authorization.repository_digest != self.snapshot.repository_digest
                 or authorization.target_ref != self.snapshot.target_ref
                 or authorization.failed_integration_head_commit != self.snapshot.commit
                 or authorization.failed_integration_head_tree != self.snapshot.tree
                 or authorization.source_tree_digest != self.snapshot.source_tree_digest
+                or authorization.source_tree_digest != self.request.base_digest
                 or authorization.candidate_digest != self.request.candidate_digest
                 or authorization.restore_tree_digest != self.request.candidate_digest
-                or authorization.rollback_candidate_tree != authorization.restore_to_tree
                 or authorization.publication_evidence_digest
                 != self.provenance.source_provenance_digest
                 or authorization.authorization_id not in self.evidence_digests
                 or authorization.canary_package_digest not in self.evidence_digests
+                or authorization.publication_evidence_digest not in self.evidence_digests
                 or self.request.gate_attestations
                 or self.request.reviewer_attestations
                 or self.request.rollback_attestation is not None
@@ -315,6 +325,8 @@ def promotion_bundle_payload(bundle: PromotionBundle) -> dict[str, object]:
     )
     payload["controller_config"] = promotion_policy_payload(bundle.controller_config)
     payload["evidence_digests"] = sorted(cast(list[str], payload["evidence_digests"]))
+    if payload.get("rollback_operation_id") is None:
+        payload.pop("rollback_operation_id", None)
     if payload.get("rollback_authorization") is None:
         # Keep ordinary v1 bundles byte-for-byte compatible with the pre-
         # authorization shape; the new field is truly optional on the wire.
