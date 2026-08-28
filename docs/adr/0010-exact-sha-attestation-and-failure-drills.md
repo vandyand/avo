@@ -27,23 +27,36 @@ The attester validates one immutable observation assembled from the provider:
 * the pinned repository identity and target `refs/heads/integration`;
 * the exact base ref/commit/tree, PR head ref/commit/tree, and synthetic merge
   commit/tree;
-* every required check context, including its exact check-run `head_sha`, App ID,
-  completion status, successful conclusion, and controller-derived freshness; and
+* every observed check context in both check sets, including its exact check-run
+  `head_sha`, App ID, completion status, successful conclusion, and
+  controller-derived freshness; and
 * the semantic target-branch protection manifest, including strict required checks,
   review and administrator rules, linear history, and disabled force-push/delete
   capabilities.
 
-The check allowlist is controller-owned and currently pins the two required contexts
-to App 15368:
+Two distinct check sets are required; neither substitutes for the other:
 
-* `avo synthetic validate (ubuntu-latest)` / App 15368
-* `avo synthetic validate (windows-latest)` / App 15368
+* **Provider/GitHub protection checks (PR-head gate):** the target branch's
+  protection manifest requires the normal App 15368 contexts
+  `validate (ubuntu-latest)` and `validate (windows-latest)`. GitHub evaluates
+  these required contexts on the pull request head, as part of its ordinary
+  protected-PR gate.
+* **AVO exact trusted checks (synthetic-merge attestation):** the base-controlled
+  attester posts and the controller validates the following App 15368 contexts on
+  the provider's exact synthetic merge SHA:
 
-The names, App ID, repository, target ref, and one-hour freshness window are not
-request-selectable. A check attached only to the PR head, a different synthetic SHA,
-an unexpected App, a stale or incomplete run, a duplicate context, or a protection
-drift is rejected or quarantined for reconciliation. The attester never substitutes
-head-SHA evidence for synthetic-SHA evidence.
+  * `avo synthetic validate (ubuntu-latest)` / App 15368
+  * `avo synthetic validate (windows-latest)` / App 15368
+
+The protection-required names and the trusted exact names are intentionally different.
+The exact synthetic contexts must not be added as branch-protection-required
+contexts: GitHub evaluates required contexts on the PR head, while AVO's controller
+strictly validates the trusted set against the exact synthetic SHA. The controller's
+allowlist, App ID, repository, target ref, and one-hour freshness window are not
+request-selectable. A trusted check attached only to the PR head, a different
+synthetic SHA, an unexpected App, a stale or incomplete run, a duplicate context, or
+a protection drift is rejected or quarantined for reconciliation. The attester never
+substitutes head-SHA evidence for synthetic-SHA evidence.
 
 ### Base-controlled workflow and immutable external pin
 
