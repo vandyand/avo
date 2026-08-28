@@ -192,12 +192,14 @@ def test_reference_parser_and_sync_error_paths(
     def fail_open(*args: Any, **kwargs: Any) -> Any:
         raise OSError(errno.EINVAL, "directory fsync unsupported")
 
+    monkeypatch.setattr(journal_module.os, "name", "nt")
     monkeypatch.setattr(journal_module.os, "open", fail_open)
     journal_module._sync_directory(tmp_path)
 
     def unsupported_error(*args: Any, **kwargs: Any) -> Any:
         raise OSError(errno.EIO, "directory fsync failed")
 
+    monkeypatch.setattr(journal_module.os, "name", "posix")
     monkeypatch.setattr(journal_module.os, "open", unsupported_error)
     with pytest.raises(OSError, match="directory fsync failed"):
         journal_module._sync_directory(tmp_path)
