@@ -207,7 +207,7 @@ def _sync_directory(path: Path) -> None:
 
 
 def _check_operation_id(operation_id: str) -> None:
-    if not isinstance(operation_id, str) or _SHA256_ID.fullmatch(operation_id) is None:
+    if _SHA256_ID.fullmatch(operation_id) is None:
         raise ValueError("operation_id must be a SHA-256 digest")
 
 

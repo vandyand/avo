@@ -27,12 +27,12 @@ from scripts.run_avo0046_live_rollback import (
     ROLLBACK_PUBLISHER_ID,
     LiveRollbackHostedRunner,
     LiveRollbackOperator,
-    _assert_safe_roots,
-    _authority_config,
-    _check_operation_id,
-    _main_head,
-    _rollback_controller_config,
-    _validate_completed_canary,
+    _assert_safe_roots,  # pyright: ignore[reportPrivateUsage]
+    _authority_config,  # pyright: ignore[reportPrivateUsage]
+    _check_operation_id,  # pyright: ignore[reportPrivateUsage]
+    _main_head,  # pyright: ignore[reportPrivateUsage]
+    _rollback_controller_config,  # pyright: ignore[reportPrivateUsage]
+    _validate_completed_canary,  # pyright: ignore[reportPrivateUsage]
     build_parser,
     redact_secret,
 )

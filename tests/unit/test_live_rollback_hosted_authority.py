@@ -160,7 +160,7 @@ def _snapshot_with_runs(runs: list[JsonObject]) -> GitHubEvidenceSnapshot:
     manifest: JsonObject = {
         "schema_version": 1,
         "trusted_checks": [{"context": "ci", "app_id": 15368}],
-        "runs": runs,
+        "runs": cast(JsonValue, runs),
     }
     protection: JsonObject = {
         "required_status_checks": {
@@ -222,11 +222,14 @@ def test_live_rollback_manifests_rejects_unexpected_and_duplicate_runs() -> None
 
 def test_live_rollback_manifests_rejects_duplicate_declarations() -> None:
     snapshot = _snapshot_with_runs([_run("ci")])
-    manifest = cast(JsonObject, snapshot.check_evidence_manifest)
-    manifest["trusted_checks"] = [
-        {"context": "ci", "app_id": 15368},
-        {"context": "ci", "app_id": 15368},
-    ]
+    manifest = snapshot.check_evidence_manifest
+    manifest["trusted_checks"] = cast(
+        JsonValue,
+        [
+            {"context": "ci", "app_id": 15368},
+            {"context": "ci", "app_id": 15368},
+        ],
+    )
     snapshot = replace(
         snapshot,
         check_evidence_manifest_digest=canonical_digest(manifest),
