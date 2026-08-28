@@ -888,6 +888,12 @@ class GitCandidatePublisher:
         if self.credential_helper is not None:
             environment["GIT_ASKPASS"] = str(self.credential_helper)
             environment["SSH_ASKPASS"] = str(self.credential_helper)
+            # An explicitly configured controller-owned askpass helper may
+            # read the token at execution time.  Keep the allowlist narrow:
+            # do not expose GITHUB_TOKEN to Git unless such a helper is in use.
+            token = os.environ.get("GITHUB_TOKEN")
+            if token:
+                environment["GITHUB_TOKEN"] = token
         return environment
 
     @staticmethod
@@ -954,6 +960,9 @@ class GitCandidatePublisher:
 
     @staticmethod
     def _safe_error(value: str) -> str:
+        token = os.environ.get("GITHUB_TOKEN")
+        if token:
+            value = value.replace(token, "[REDACTED]")
         return re.sub(r"([A-Za-z][A-Za-z0-9+.-]*://)[^\s/@]+@", r"\1", value)[:1024 * 1024]
 
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import os
 import subprocess
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import replace
 from pathlib import Path
 from typing import Any, cast
@@ -189,6 +189,41 @@ def test_constructor_binds_repository_digest(
             controller_publisher_identity="avo-controller",
             allow_local_remote_for_tests=True,
         )
+
+
+def test_credential_helper_receives_process_token_only_when_configured(
+    git_fixture: tuple[Path, Path, Path, str, str, str],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    remote, _seed, _candidate, _base_commit, _base_tree, _digest = git_fixture
+    token = "ghp-regression-token"
+    helper = tmp_path / "askpass"
+    helper.write_text("#!/bin/sh\n", encoding="utf-8")
+    monkeypatch.setenv("GITHUB_TOKEN", token)
+
+    configured = publisher(remote, "sha256:" + "1" * 64)
+    configured = GitCandidatePublisher(
+        expected_remote=remote.as_uri(),
+        repository_digest=GitCandidatePublisher._remote_digest(remote.as_uri()),
+        controller_publisher_identity="avo-controller",
+        publication_journal=configured.publication_journal,
+        credential_helper=helper,
+        allow_local_remote_for_tests=True,
+    )
+    assert configured._environment()["GITHUB_TOKEN"] == token
+    assert "GITHUB_TOKEN" not in publisher(remote, "sha256:" + "1" * 64)._environment()
+
+    def failed_runner(
+        arguments: list[str], cwd: Path, environment: Mapping[str, str], timeout: float
+    ) -> subprocess.CompletedProcess[str]:
+        del arguments, cwd, environment, timeout
+        return subprocess.CompletedProcess(["git"], 1, "", f"authentication failed: {token}")
+
+    configured._runner = failed_runner
+    with pytest.raises(GitRepositoryError) as error:
+        configured._run(["status"])
+    assert token not in str(error.value)
 
 
 def test_evidence_is_exactly_content_addressed(
