@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import os
+import subprocess
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
@@ -172,6 +174,7 @@ def test_askpass_contains_no_token(tmp_path: Path, monkeypatch: pytest.MonkeyPat
     secret = "ghp-test-secret-that-must-not-be-written"
     monkeypatch.setenv("GITHUB_TOKEN", secret)
     helper = runner.askpass_path(tmp_path / "state")
+    assert secret not in helper.read_text(encoding="utf-8")
     content = helper.read_text(encoding="utf-8")
     assert secret not in content
     assert "GITHUB_TOKEN" in content
@@ -179,6 +182,29 @@ def test_askpass_contains_no_token(tmp_path: Path, monkeypatch: pytest.MonkeyPat
     lowered = content.lower()
     assert "username" in lowered or "[uu]sername" in lowered
     assert "password" in lowered or "[pp]assword" in lowered
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows batch helper requires cmd.exe")
+@pytest.mark.parametrize("secret", ["ghp-fake-token-for-regression", "a&b|c<d>e^f%g!h"])
+def test_windows_askpass_returns_exact_values(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, secret: str
+) -> None:
+    monkeypatch.setenv("GITHUB_TOKEN", secret)
+    helper = runner.askpass_path(tmp_path / "state")
+
+    def run_helper(prompt: str) -> subprocess.CompletedProcess[bytes]:
+        return subprocess.run(
+            ["cmd.exe", "/d", "/c", str(helper), prompt],
+            capture_output=True,
+            check=False,
+        )
+
+    username = run_helper("Username for github.com")
+    password = run_helper("Password for github.com")
+    unrelated = run_helper("Unrelated prompt")
+    assert (username.returncode, username.stdout) == (0, b"x-access-token\r\n")
+    assert (password.returncode, password.stdout) == (0, secret.encode() + b"\r\n")
+    assert (unrelated.returncode, unrelated.stdout) == (1, b"")
 
 
 def test_redact_secret_is_used_for_diagnostics() -> None:
