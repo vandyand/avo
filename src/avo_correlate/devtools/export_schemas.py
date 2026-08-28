@@ -4,7 +4,6 @@ import json
 from pathlib import Path
 from typing import Any
 
-from avo_correlate.application.integration_rollback_service import IntegrationRollbackRequest
 from avo_correlate.contracts import (
     AdmissionDecision,
     CampaignCompletionPlan,
@@ -68,7 +67,9 @@ from avo_correlate.contracts.integration_drill import (
     IntegrationDrillRollbackIntent,
     IntegrationDrillRollbackReceipt,
     IntegrationDrillSoakObservation,
+    IntegrationRollbackRequest,
 )
+from avo_correlate.contracts.integration_live_rollback import LiveRollbackEvidencePackage
 from avo_correlate.contracts.model import ModelInvocationRecord, ModelRequest, ModelResponse
 from avo_correlate.contracts.operations import (
     DryRunReport,
@@ -210,6 +211,7 @@ MODELS: tuple[type[StrictModel], ...] = (
     IntegrationDrillPromotionEvidenceManifest,
     IntegrationDrillResult,
     IntegrationRollbackRequest,
+    LiveRollbackEvidencePackage,
 )
 
 

@@ -84,6 +84,28 @@ class IntegrationDrillSoakObservation(DrillEvidenceBinding):
         return self
 
 
+class IntegrationRollbackRequest(StrictModel):
+    """Exact topology and identities for one case-7 rollback attempt."""
+
+    operation_id: Sha256Digest
+    promotion_operation_id: Sha256Digest
+    repository_digest: Sha256Digest
+    target_ref: str
+    main_before_commit: str
+    failed_integration_head_commit: str
+    failed_integration_head_tree: str
+    restore_to_commit: str
+    restore_to_tree: str
+    rollback_candidate_commit: str = Field(
+        validation_alias=AliasChoices("rollback_candidate_commit", "candidate_commit")
+    )
+    rollback_candidate_parent_commit: str = Field(
+        validation_alias=AliasChoices(
+            "rollback_candidate_parent_commit", "candidate_parent_commit"
+        )
+    )
+
+
 class IntegrationDrillRollbackAuthorization(DrillEvidenceBinding):
     operation_id: Sha256Digest
     authorization_id: Sha256Digest
@@ -437,6 +459,7 @@ __all__ = [
     "IntegrationDrillRollbackIntent",
     "IntegrationDrillRollbackReceipt",
     "IntegrationDrillSoakObservation",
+    "IntegrationRollbackRequest",
     "RollbackAuthorization",
     "RollbackIntent",
     "RollbackReceipt",
