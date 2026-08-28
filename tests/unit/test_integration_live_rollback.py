@@ -32,7 +32,7 @@ from avo_correlate.contracts.integration_promotion import (
     integration_operation_id,
 )
 from avo_correlate.contracts.promotion_bundle import promotion_bundle_digest
-from avo_correlate.domain.canonical import canonical_digest
+from avo_correlate.domain.canonical import canonical_bytes, canonical_digest
 from tests.unit.test_integration_campaign_contracts import (
     _package,  # pyright: ignore[reportPrivateUsage]
 )
@@ -45,7 +45,7 @@ CANDIDATE = "d" * 40
 def _ref(value: object, role: str, media_type: str) -> ArtifactRef:
     return ArtifactRef(
         digest=canonical_digest(value),
-        size_bytes=1,
+        size_bytes=len(canonical_bytes(value)),
         media_type=media_type,
         role=role,
         created_at=datetime(2026, 1, 1, tzinfo=UTC),
@@ -312,7 +312,7 @@ def _package_fixture() -> LiveRollbackEvidencePackage:
         operation_id=request.promotion_operation_id,
         intent_digest=canonical_digest(promotion_intent),
         lease_identity="lease",
-        lease_digest=D,
+        lease_digest=lease.digest,
         authorized_at=datetime(2026, 1, 1, tzinfo=UTC),
     )
     report = IntegrationPromotionReport.model_construct(
@@ -358,6 +358,29 @@ def _package_fixture() -> LiveRollbackEvidencePackage:
         "promotion-mutation-authorization": mutation,
         "promotion-receipt": promotion_receipt,
     }
+    case = case.model_copy(
+        update={
+            "soak_observation": soak.observation_id,
+            "rollback_intent": rollback_intent.intent_digest,
+            "rollback_receipt": rollback_receipt.receipt_digest,
+            "evidence_artifacts": [
+                _ref(
+                    records[role],
+                    role,
+                    f"application/vnd.avo.integration-drill-"
+                    f"{role.removeprefix('integration-drill-')}+json",
+                )
+                for role in (
+                    "integration-drill-soak",
+                    "integration-drill-rollback-authorization",
+                    "integration-drill-rollback-intent",
+                    "integration-drill-rollback-receipt",
+                )
+            ]
+        }
+    )
+    records["integration-drill-case"] = case
+    values["rollback_case"] = case
     values["artifacts"] = [values["canary_package_artifact"]] + [
             _ref(
                 record,
@@ -397,6 +420,80 @@ def test_live_package_journal_replays_and_rejects_tamper(tmp_path: Path) -> None
     )
     with pytest.raises(LiveRollbackJournalError):
         journal.read_package(package.operation_id)
+
+
+@pytest.mark.parametrize(
+    ("field", "update"),
+    [
+        ("soak", {"repository_digest": "sha256:" + "b" * 64}),
+        ("authorization", {"target_ref": "refs/heads/other"}),
+        ("rollback_intent", {"main_after_commit": "2" * 40}),
+        ("rollback_receipt", {"target_head_commit": "2" * 40}),
+        ("rollback_case", {"case_id": 6}),
+        ("rollback_case", {"rollback_receipt": D}),
+        ("promotion_mutation_authorization", {"lease_identity": "other-lease"}),
+        ("promotion_receipt", {"expected_provider_identity": "other-provider"}),
+    ],
+)
+def test_live_package_rejects_tampered_nested_binding(
+    field: str, update: dict[str, object]
+) -> None:
+    package = _package_fixture()
+    nested = getattr(package, field).model_copy(update=update)
+    with pytest.raises(ValueError, match="live "):
+        package.model_copy(update={field: nested}).validate_package()  # pyright: ignore[reportCallIssue]
+
+
+@pytest.mark.parametrize(
+    "update",
+    [
+        {"digest": "sha256:" + "f" * 64},
+        {"role": "wrong-role"},
+        {"media_type": "application/octet-stream"},
+        {"size_bytes": 1},
+    ],
+)
+def test_live_package_rejects_tampered_child_artifact_metadata(
+    update: dict[str, object],
+) -> None:
+    package = _package_fixture()
+    artifact = package.artifacts[0].model_copy(update=update)
+    with pytest.raises(ValueError, match=r"artifact|roles"):
+        tampered = package.model_copy(
+            update={"artifacts": [artifact, *package.artifacts[1:]]}
+        )
+        tampered.validate_package()  # pyright: ignore[reportCallIssue]
+
+
+def test_live_package_rejects_tampered_case_evidence_pointer() -> None:
+    package = _package_fixture()
+    evidence = package.rollback_case.evidence_artifacts[0].model_copy(
+        update={"media_type": "application/octet-stream"}
+    )
+    case = package.rollback_case.model_copy(
+        update={"evidence_artifacts": [evidence, *package.rollback_case.evidence_artifacts[1:]]}
+    )
+    artifacts = [
+        _ref(case, item.role, item.media_type)
+        if item.role == "integration-drill-case"
+        else item
+        for item in package.artifacts
+    ]
+    with pytest.raises(ValueError, match="live rollback case evidence"):
+        tampered = package.model_copy(update={"rollback_case": case, "artifacts": artifacts})
+        tampered.validate_package()  # pyright: ignore[reportCallIssue]
+
+
+def test_live_journal_conflict_retains_unreachable_object(tmp_path: Path) -> None:
+    package = _package_fixture()
+    journal = LiveRollbackJournal(tmp_path)
+    journal.record_package(package)
+    conflicting = package.model_copy(update={"main_after_commit": "2" * 40})
+    conflicting_digest = canonical_digest(conflicting)
+    with pytest.raises(LiveRollbackJournalError, match="unreachable"):
+        journal.record_package(conflicting)
+    assert (tmp_path / "artifacts").is_dir()
+    assert journal._store.exists(conflicting_digest)  # pyright: ignore[reportPrivateUsage]
 
 
 def test_live_service_completed_package_is_read_only_replay(tmp_path: Path) -> None:

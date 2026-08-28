@@ -63,7 +63,8 @@ class LiveRollbackJournal:
                 raise LiveRollbackJournalError("live rollback package is unreadable") from exc
             if old.digest != reference.digest or old_data != data:
                 raise LiveRollbackJournalError(
-                    f"conflicting live rollback package for {package.operation_id}"
+                    f"conflicting live rollback package for {package.operation_id}; "
+                    "unreachable content-addressed object retained for forensic reconciliation"
                 ) from None
             return old
         except OSError as exc:

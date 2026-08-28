@@ -26,7 +26,7 @@ from avo_correlate.contracts.integration_promotion import (
     PromotionMutationAuthorization,
 )
 from avo_correlate.contracts.promotion_bundle import PromotionBundle, promotion_bundle_digest
-from avo_correlate.domain.canonical import canonical_digest
+from avo_correlate.domain.canonical import canonical_bytes, canonical_digest
 
 _GIT = re.compile(r"^[0-9a-f]{40}(?:[0-9a-f]{24})?$")
 
@@ -94,9 +94,12 @@ class LiveRollbackEvidencePackage(StrictModel):
             or self.canary_package_artifact.role != "integration-campaign-package"
             or self.canary_package_artifact.media_type
             != "application/vnd.avo.integration-campaign+json"
+            or self.canary_package_artifact.size_bytes != len(canonical_bytes(canary))
             or canary.report.outcome not in {"applied", "already_applied"}
+            or canary.intent.target_ref != request.target_ref
             or canary.main_before_commit != request.main_before_commit
             or canary.main_after_commit != request.main_before_commit
+            or canary.deploy_performed
             or canary.receipt.applied_result_commit != request.failed_integration_head_commit
             or canary.receipt.applied_result_tree != request.failed_integration_head_tree
             or canary.reconciliation.target_parents != [canary.intent.base_commit]
@@ -107,6 +110,8 @@ class LiveRollbackEvidencePackage(StrictModel):
 
         if (
             self.soak.operation_id != self.operation_id
+            or self.soak.repository_digest != request.repository_digest
+            or self.soak.target_ref != request.target_ref
             or self.soak.outcome != "failed"
             or self.soak.error is None
             or self.soak.target_head_commit != request.failed_integration_head_commit
@@ -114,12 +119,19 @@ class LiveRollbackEvidencePackage(StrictModel):
             or self.soak.main_before_commit != request.main_before_commit
             or self.soak.main_after_commit != request.main_before_commit
             or self.soak.target_parents
+            or self.soak.deploy_performed
         ):
             raise ValueError("live rollback package has invalid failed-soak evidence")
 
         auth = self.authorization
         if (
             auth.operation_id != self.operation_id
+            or auth.repository_digest != request.repository_digest
+            or auth.target_ref != request.target_ref
+            or auth.main_before_commit != request.main_before_commit
+            or auth.main_after_commit != request.main_before_commit
+            or auth.deploy_performed
+            or not auth.authorized
             or auth.authorization_id != self.rollback_intent.authorization_id
             or auth.failed_integration_head_commit != request.failed_integration_head_commit
             or auth.failed_integration_head_tree != request.failed_integration_head_tree
@@ -134,6 +146,12 @@ class LiveRollbackEvidencePackage(StrictModel):
         receipt = self.rollback_receipt
         if (
             intent.operation_id != self.operation_id
+            or intent.repository_digest != request.repository_digest
+            or intent.target_ref != request.target_ref
+            or intent.main_before_commit != request.main_before_commit
+            or intent.main_after_commit != request.main_before_commit
+            or intent.deploy_performed
+            or not intent.authorized
             or intent.promotion_operation_id != request.promotion_operation_id
             or intent.authorization_id != auth.authorization_id
             or intent.failed_integration_head_commit != request.failed_integration_head_commit
@@ -143,17 +161,24 @@ class LiveRollbackEvidencePackage(StrictModel):
             or intent.rollback_candidate_commit != request.rollback_candidate_commit
             or intent.rollback_candidate_parent_commit != request.rollback_candidate_parent_commit
             or receipt.operation_id != self.operation_id
+            or receipt.repository_digest != request.repository_digest
+            or receipt.target_ref != request.target_ref
+            or receipt.main_before_commit != request.main_before_commit
+            or receipt.main_after_commit != request.main_before_commit
+            or receipt.deploy_performed
             or receipt.promotion_operation_id != request.promotion_operation_id
             or receipt.intent_digest != intent.intent_digest
             or receipt.outcome not in {"applied", "already_applied"}
             or receipt.result_tree != request.restore_to_tree
+            or receipt.target_head_commit != receipt.result_commit
             or receipt.target_head_tree != request.restore_to_tree
             or receipt.target_parents != [request.failed_integration_head_commit]
         ):
             raise ValueError("live rollback records are not mutually bound")
 
         if (
-            self.publication.repository_digest != request.repository_digest
+            self.rollback_case.case_id != 7
+            or self.publication.repository_digest != request.repository_digest
             or self.publication.base_commit != request.failed_integration_head_commit
             or self.publication.base_tree != request.failed_integration_head_tree
             or self.publication.candidate_commit != request.rollback_candidate_commit
@@ -163,6 +188,19 @@ class LiveRollbackEvidencePackage(StrictModel):
             or self.bundle.snapshot.target_ref != request.target_ref
             or self.bundle.snapshot.commit != request.failed_integration_head_commit
             or self.bundle.snapshot.tree != request.failed_integration_head_tree
+            or self.rollback_case.repository_digest != request.repository_digest
+            or self.rollback_case.target_ref != request.target_ref
+            or self.rollback_case.main_before_commit != request.main_before_commit
+            or self.rollback_case.main_after_commit != request.main_before_commit
+            or self.rollback_case.target_head_commit != receipt.result_commit
+            or self.rollback_case.target_head_tree != request.restore_to_tree
+            or self.rollback_case.target_parents != [request.failed_integration_head_commit]
+            or self.rollback_case.deploy_performed
+            or self.rollback_case.outcome != receipt.outcome
+            or self.rollback_case.attester_identity != receipt.attester_identity
+            or self.rollback_case.soak_observation != self.soak.observation_id
+            or self.rollback_case.rollback_intent != intent.intent_digest
+            or self.rollback_case.rollback_receipt != receipt.receipt_digest
         ):
             raise ValueError("live rollback publication or bundle is stale")
 
@@ -179,6 +217,10 @@ class LiveRollbackEvidencePackage(StrictModel):
             or not promotion_lease_binding(self.promotion_lease_evidence, promotion)
             or self.promotion_mutation_authorization.operation_id != promotion.operation_id
             or self.promotion_mutation_authorization.intent_digest != canonical_digest(promotion)
+            or self.promotion_mutation_authorization.lease_identity
+            != promotion.controller_lease_identity
+            or self.promotion_mutation_authorization.lease_digest
+            != promotion.controller_lease_digest
             or self.promotion_receipt.operation_id != promotion.operation_id
             or self.promotion_receipt.intent_digest != canonical_digest(promotion)
             or self.promotion_receipt.bundle_digest != self.bundle_digest
@@ -188,6 +230,12 @@ class LiveRollbackEvidencePackage(StrictModel):
             or self.promotion_receipt.expected_candidate_tree != request.restore_to_tree
             or self.promotion_receipt.expected_base_commit
             != request.failed_integration_head_commit
+            or self.promotion_receipt.expected_protection_evidence_digest
+            != promotion.protection_evidence_digest
+            or self.promotion_receipt.expected_provider_identity != promotion.provider_identity
+            or self.promotion_receipt.expected_provider_api_version
+            != promotion.provider_api_version
+            or self.promotion_receipt.merge_method != promotion.merge_method
             or self.promotion_receipt.outcome not in {"applied", "already_applied"}
             or self.promotion_receipt.applied_result_commit != receipt.result_commit
             or self.promotion_receipt.applied_result_tree != receipt.result_tree
@@ -229,8 +277,89 @@ class LiveRollbackEvidencePackage(StrictModel):
             ),
             "promotion-receipt": canonical_digest(self.promotion_receipt),
         }
-        if any(item.digest != expected_digests[item.role] for item in self.artifacts):
+        expected_children = {
+            "integration-campaign-package": (
+                canary,
+                "application/vnd.avo.integration-campaign+json",
+            ),
+            "integration-drill-soak": (
+                self.soak,
+                "application/vnd.avo.integration-drill-soak+json",
+            ),
+            "integration-drill-rollback-authorization": (
+                auth,
+                "application/vnd.avo.integration-drill-rollback-authorization+json",
+            ),
+            "integration-drill-rollback-intent": (
+                intent,
+                "application/vnd.avo.integration-drill-rollback-intent+json",
+            ),
+            "integration-drill-rollback-receipt": (
+                receipt,
+                "application/vnd.avo.integration-drill-rollback-receipt+json",
+            ),
+            "integration-drill-case": (
+                self.rollback_case,
+                "application/vnd.avo.integration-drill-case+json",
+            ),
+            "promotion-intent": (
+                promotion,
+                "application/vnd.avo.integration-promotion+json",
+            ),
+            "promotion-lease-evidence": (
+                self.promotion_lease_evidence,
+                "application/vnd.avo.integration-promotion+json",
+            ),
+            "promotion-mutation-authorization": (
+                self.promotion_mutation_authorization,
+                "application/vnd.avo.integration-promotion+json",
+            ),
+            "promotion-receipt": (
+                self.promotion_receipt,
+                "application/vnd.avo.integration-promotion+json",
+            ),
+        }
+        if any(
+            item.digest != expected_digests[item.role]
+            or item.media_type != expected_children[item.role][1]
+            or item.size_bytes != len(canonical_bytes(expected_children[item.role][0]))
+            for item in self.artifacts
+        ):
             raise ValueError("live rollback package artifact digest is incorrect")
+        artifact_digests = {item.digest for item in self.artifacts}
+        expected_case_evidence = {
+            "integration-drill-soak": (
+                self.soak,
+                "application/vnd.avo.integration-drill-soak+json",
+            ),
+            "integration-drill-rollback-authorization": (
+                auth,
+                "application/vnd.avo.integration-drill-rollback-authorization+json",
+            ),
+            "integration-drill-rollback-intent": (
+                intent,
+                "application/vnd.avo.integration-drill-rollback-intent+json",
+            ),
+            "integration-drill-rollback-receipt": (
+                receipt,
+                "application/vnd.avo.integration-drill-rollback-receipt+json",
+            ),
+        }
+        if (
+            len(self.rollback_case.evidence_artifacts) != len(expected_case_evidence)
+            or {reference.role for reference in self.rollback_case.evidence_artifacts}
+            != set(expected_case_evidence)
+        ):
+            raise ValueError("live rollback case evidence is not included in package artifacts")
+        if any(
+            reference.digest != canonical_digest(expected_case_evidence[reference.role][0])
+            or reference.digest not in artifact_digests
+            or reference.media_type != expected_case_evidence[reference.role][1]
+            or reference.size_bytes
+            != len(canonical_bytes(expected_case_evidence[reference.role][0]))
+            for reference in self.rollback_case.evidence_artifacts
+        ):
+            raise ValueError("live rollback case evidence metadata is incorrect")
         return self
 
 
