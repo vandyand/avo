@@ -6,7 +6,9 @@
 import json
 from pathlib import Path
 
-from avo_correlate.domain.canonical import canonical_digest
+import pytest
+
+from avo_correlate.domain.canonical import canonical_bytes, canonical_digest
 from tests.unit.test_promotion_rollback_service_edges import (
     _evidence,
     _inputs,
@@ -60,6 +62,23 @@ def test_legacy_rollback_shape_without_controller_authorization_is_rejected(
     assert report.errors == ["bundle operation kind is missing"]
 
 
+def test_wire_legacy_bundle_omitting_kind_fails_before_repository_read(tmp_path: Path) -> None:
+    repository = FakeRepository()
+    repository.state = repository.state.model_copy(update={"target_ref": "refs/heads/integration"})
+    controller = _controller(tmp_path, repository)
+    result = controller.dry_run(
+        _input(), candidate_root=tmp_path / "candidate", config=_config()
+    )
+    before_replay = repository.snapshot_count
+    wire = json.loads(bundle_bytes(result.bundle))
+    del wire["operation_kind"]
+    digest = canonical_digest(wire)
+    report = controller.replay(canonical_bytes(wire), bundle_digest=digest)
+    assert report.outcome == "invalid_bundle"
+    assert report.errors == ["bundle operation kind is missing"]
+    assert repository.snapshot_count == before_replay
+
+
 def test_authorized_rollback_bundle_remains_replayable(tmp_path: Path) -> None:
     fixture, preauth, drill, publication, package_ref = _inputs(tmp_path)
     controller, store, candidate = rollback_controller(tmp_path)
@@ -89,3 +108,20 @@ def test_authorized_rollback_bundle_remains_replayable(tmp_path: Path) -> None:
     assert controller.replay(result.bundle, bundle_digest=result.bundle_digest).outcome == (
         "would_apply"
     )
+    forged_decision = result.bundle.decision.model_copy(
+        update={"reason_codes": ["requirements_satisfied"]}
+    )
+    forged = result.bundle.model_copy(update={"decision": forged_decision})
+    with pytest.raises(ValueError, match="authorized rollback kind"):
+        type(result.bundle).model_validate(forged.model_dump(mode="json"))
+
+
+def test_bundle_reason_code_must_match_explicit_operation_kind(tmp_path: Path) -> None:
+    controller = _integration_controller(tmp_path)
+    result = controller.dry_run(
+        _input(), candidate_root=tmp_path / "candidate", config=_config()
+    )
+    decision = result.bundle.decision.model_copy(update={"reason_codes": ["authorized_rollback"]})
+    forged = result.bundle.model_copy(update={"decision": decision})
+    with pytest.raises(ValueError, match="ordinary campaign"):
+        type(result.bundle).model_validate(forged.model_dump(mode="json"))

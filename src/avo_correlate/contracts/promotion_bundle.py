@@ -254,11 +254,15 @@ class PromotionBundle(StrictModel):
             raise ValueError("path manifest digest does not match changed paths")
         authorization = self.rollback_authorization
         if self.operation_kind == "ordinary_campaign" and (
-            self.rollback_operation_id is not None or authorization is not None
+            self.rollback_operation_id is not None
+            or authorization is not None
+            or "authorized_rollback" in self.decision.reason_codes
         ):
             raise ValueError("ordinary campaign cannot carry rollback authority")
         if self.operation_kind == "authorized_rollback" and (
-            authorization is None or self.rollback_operation_id != authorization.operation_id
+            authorization is None
+            or self.rollback_operation_id != authorization.operation_id
+            or "authorized_rollback" not in self.decision.reason_codes
         ):
             raise ValueError("authorized rollback kind is not bound to controller authority")
         if self.operation_kind is None and authorization is not None:
