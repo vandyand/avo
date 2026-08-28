@@ -21,6 +21,11 @@ SOAK_WORKFLOW_VARIABLE = "AVO_TRUSTED_SOAK_WORKFLOW_SHA256"
 SOAK_CONTEXT = "avo integration soak"
 SOAK_APP_ID = 15368
 SOAK_MARKER = "AVO-Live-Rollback-Marker: fail-soak"
+SOAK_MARKER_PATH = "docs/avo-0046-live-rollback-canary.txt"
+# GitHub stores the candidate file as one UTF-8 marker line terminated by LF.
+# Keep the exact bytes and digest in the contract so the workflow and provider
+# have one authority-safe trigger definition.
+SOAK_MARKER_BLOB_DIGEST = "sha256:84e940a02be358b4d7abc4d6fb1b83b723adce8fbd0feaa8c193919a0e28a318"
 
 
 def _git(value: str, label: str) -> str:
@@ -57,6 +62,8 @@ class FailedSoakAttestation(StrictModel):
     conclusion: Literal["failure"] = "failure"
     completed_at: datetime
     freshness_cutoff: datetime
+    marker_path: Literal["docs/avo-0046-live-rollback-canary.txt"] = SOAK_MARKER_PATH
+    marker_blob_digest: Sha256Digest = SOAK_MARKER_BLOB_DIGEST
     workflow_path: Literal[".github/workflows/integration-soak.yml"] = SOAK_WORKFLOW_PATH
     workflow_blob_digest: Sha256Digest
     repository_variables_digest: Sha256Digest
@@ -108,6 +115,10 @@ class FailedSoakAttestation(StrictModel):
             raise ValueError("failed soak check is future-dated")
         if self.workflow_blob_digest != self.repository_variables_digest:
             raise ValueError("soak workflow and repository-variable evidence differ")
+        if self.marker_path != SOAK_MARKER_PATH:
+            raise ValueError("soak marker path is not trusted")
+        if self.marker_blob_digest != SOAK_MARKER_BLOB_DIGEST:
+            raise ValueError("soak marker content is not trusted")
         expected = canonical_digest(self.model_dump(exclude={"attestation_id"}, mode="json"))
         if self.attestation_id != expected:
             raise ValueError("failed soak attestation ID mismatch")
@@ -118,6 +129,8 @@ __all__ = [
     "SOAK_APP_ID",
     "SOAK_CONTEXT",
     "SOAK_MARKER",
+    "SOAK_MARKER_BLOB_DIGEST",
+    "SOAK_MARKER_PATH",
     "SOAK_WORKFLOW_PATH",
     "SOAK_WORKFLOW_VARIABLE",
     "FailedSoakAttestation",

@@ -28,7 +28,12 @@ from avo_correlate.contracts.integration_promotion import (
     IntegrationPromotionPreconditionError,
     integration_operation_id,
 )
-from avo_correlate.contracts.integration_soak import SOAK_MARKER, SOAK_WORKFLOW_PATH
+from avo_correlate.contracts.integration_soak import (
+    SOAK_MARKER,
+    SOAK_MARKER_BLOB_DIGEST,
+    SOAK_MARKER_PATH,
+    SOAK_WORKFLOW_PATH,
+)
 from avo_correlate.domain.canonical import canonical_digest
 
 D = github_repository_digest("acme", "widget")
@@ -1153,6 +1158,7 @@ def _failed_soak_transport(
 ) -> tuple[JsonTransport, list[str]]:
     integration, restore, main = "1" * 40, "2" * 40, "3" * 40
     completed = "2026-08-28T10:00:00Z"
+    marker_blob = (SOAK_MARKER + "\n").encode()
     blob = b"name: integration-soak\n"
     digest = hashlib.sha256(blob).hexdigest()
     calls: list[str] = []
@@ -1193,6 +1199,16 @@ def _failed_soak_transport(
             return 200, cast(
                 JsonValue,
                 {"sha": main, "tree": {"sha": main}, "parents": []},
+            )
+        if f"/contents/{SOAK_MARKER_PATH}" in url:
+            return 200, cast(
+                JsonValue,
+                {
+                    "type": "file",
+                    "path": SOAK_MARKER_PATH,
+                    "encoding": "base64",
+                    "content": base64.b64encode(marker_blob).decode(),
+                },
             )
         if "/contents/.github/workflows/integration-soak.yml?ref=" in url:
             return 200, cast(
@@ -1247,6 +1263,8 @@ def test_observe_failed_soak_uses_filename_endpoint_and_binds_restore_parent() -
     )
     assert observed.restore_commit == "2" * 40
     assert observed.restore_tree == "5" * 40
+    assert observed.marker_path == SOAK_MARKER_PATH
+    assert observed.marker_blob_digest == SOAK_MARKER_BLOB_DIGEST
     assert any("actions/workflows/integration-soak.yml/runs?" in url for url in calls)
     assert not any("actions/workflows/.github" in url for url in calls)
 
@@ -1295,7 +1313,7 @@ def test_observe_failed_soak_rejects_wrong_ref_before_any_request() -> None:
     [
         ("integration", {"parents": []}, "exactly one parent"),
         ("restore", {"sha": "f" * 40}, "response mismatch"),
-        ("integration", {"message": "ordinary commit"}, "marker"),
+        ("marker", {"content": base64.b64encode(b"ordinary").decode()}, "marker"),
     ],
 )
 def test_observe_failed_soak_rejects_commit_topology_and_marker(
@@ -1311,6 +1329,9 @@ def test_observe_failed_soak_rejects_commit_topology_and_marker(
             assert isinstance(payload, dict)
             return status, cast(JsonValue, {**payload, **update})
         if route == "restore" and url.endswith("/git/commits/" + "2" * 40):
+            assert isinstance(payload, dict)
+            return status, cast(JsonValue, {**payload, **update})
+        if route == "marker" and f"/contents/{SOAK_MARKER_PATH}" in url:
             assert isinstance(payload, dict)
             return status, cast(JsonValue, {**payload, **update})
         return status, payload
