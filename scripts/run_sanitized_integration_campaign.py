@@ -75,6 +75,14 @@ TRUSTED_SYNTHETIC_CHECKS: tuple[tuple[str, int], ...] = (
     ("avo synthetic validate (ubuntu-latest)", 15368),
     ("avo synthetic validate (windows-latest)", 15368),
 )
+# These are GitHub's required status checks on the protected integration head.
+# They are intentionally distinct from the exact synthetic-SHA checks above.
+PROTECTION_CHECKS: tuple[tuple[str, int], ...] = (
+    ("validate (ubuntu-latest)", 15368),
+    ("validate (windows-latest)", 15368),
+)
+# Descriptive alias for callers/tests that refer to the provider boundary.
+TRUSTED_PROTECTION_CHECKS = PROTECTION_CHECKS
 SYNTHETIC_VALIDATION_MAX_AGE = timedelta(hours=1)
 EVIDENCE_ROLES = (
     "private-regression",
@@ -102,6 +110,9 @@ class CampaignRunnerConfig:
     trusted_checks: tuple[tuple[str, int], ...] = field(
         default=TRUSTED_SYNTHETIC_CHECKS, init=False
     )
+    protection_checks: tuple[tuple[str, int], ...] = field(
+        default=PROTECTION_CHECKS, init=False
+    )
     freshness_cutoff: datetime = field(init=False)
     wait_seconds: int = MAX_WAIT_SECONDS
     poll_seconds: int = 15
@@ -128,6 +139,8 @@ class CampaignRunnerConfig:
             raise CampaignRunnerError("candidate and proposer IDs are required")
         if self.trusted_checks != TRUSTED_SYNTHETIC_CHECKS:
             raise CampaignRunnerError("trusted synthetic checks are controller-pinned")
+        if self.protection_checks != PROTECTION_CHECKS:
+            raise CampaignRunnerError("protected head checks are controller-pinned")
         if self.wait_seconds < 0 or self.wait_seconds > MAX_WAIT_SECONDS:
             raise CampaignRunnerError("wait_seconds is outside the bounded limit")
         if self.poll_seconds <= 0 or self.poll_seconds > MAX_POLL_SECONDS:
@@ -748,6 +761,7 @@ def _build_recovery_service(
         repository_digest=preflight_repository_digest(),
         target_ref=TARGET_REF,
         trusted_checks=config.trusted_checks,
+        protection_checks=config.protection_checks,
         freshness_cutoff=config.freshness_cutoff,
         token=token,
     )
@@ -882,6 +896,7 @@ def _build_live(config: CampaignRunnerConfig, pre: PreflightResult) -> Integrati
         repository_digest=preflight_repository_digest(),
         target_ref=TARGET_REF,
         trusted_checks=config.trusted_checks,
+        protection_checks=config.protection_checks,
         freshness_cutoff=config.freshness_cutoff,
         token=token,
     )

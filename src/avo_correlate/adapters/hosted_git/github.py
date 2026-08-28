@@ -231,6 +231,10 @@ class GitHubIntegrationProvider:
     target_ref: str
     trusted_checks: tuple[tuple[str, int], ...]
     freshness_cutoff: datetime
+    # ``trusted_checks`` are the controller-enforced exact synthetic-SHA
+    # checks.  ``protection_checks`` are the provider-enforced required checks
+    # on the protected branch head.  They must be supplied independently.
+    protection_checks: tuple[tuple[str, int], ...]
     protection_policy: GitHubProtectionPolicy = field(default_factory=GitHubProtectionPolicy)
     token: str | None = field(default=None, repr=False, compare=False)
     api_base: str = "https://api.github.com"
@@ -248,14 +252,31 @@ class GitHubIntegrationProvider:
         parsed = urlparse(self.api_base)
         if parsed.scheme != "https" or parsed.netloc != "api.github.com":
             raise ValueError("GitHub API base must be https://api.github.com")
-        if not self.trusted_checks or len(set(self.trusted_checks)) != len(self.trusted_checks):
-            raise ValueError("trusted checks must be unique")
+        self._validate_checks(self.trusted_checks, "trusted")
+        self._validate_checks(self.protection_checks, "protection")
         if self.freshness_cutoff.tzinfo is None:
             raise ValueError("freshness cutoff must be timezone-aware")
-        if any(not name for name, _ in self.trusted_checks):
-            raise ValueError("trusted check contexts must be non-empty strings")
-        if any(app_id < 0 for _, app_id in self.trusted_checks):
-            raise ValueError("trusted check app IDs must be non-negative integers")
+
+    @staticmethod
+    def _validate_checks(
+        checks: tuple[tuple[str, int], ...], label: str
+    ) -> None:
+        candidate: object = checks
+        if not isinstance(candidate, tuple) or not candidate:  # pyright: ignore[reportUnnecessaryIsInstance]
+            raise ValueError(f"{label} checks must be non-empty")
+        seen: set[tuple[str, int]] = set()
+        for raw_check in candidate:
+            check: object = raw_check
+            if not isinstance(check, tuple) or len(check) != 2:  # pyright: ignore[reportUnnecessaryIsInstance]
+                raise ValueError(f"{label} checks must contain name/app ID pairs")
+            name, app_id = check
+            if not isinstance(name, str) or not name:  # pyright: ignore[reportUnnecessaryIsInstance]
+                raise ValueError(f"{label} check contexts must be non-empty strings")
+            if not isinstance(app_id, int) or isinstance(app_id, bool) or app_id < 0:  # pyright: ignore[reportUnnecessaryIsInstance]
+                raise ValueError(f"{label} check app IDs must be non-negative integers")
+            if check in seen:
+                raise ValueError(f"{label} checks must be unique")
+            seen.add(check)
 
     def _call(self, method: str, path: str, body: JsonBody | None = None) -> JsonValue:
         url = self.api_base.rstrip("/") + "/" + path.lstrip("/")
@@ -697,14 +718,14 @@ class GitHubIntegrationProvider:
             context = _required_string(check, "context", "required status check")
             app_id = _required_int(check, "app_id", "required status check")
             actual_checks.append((context, app_id))
-        expected_checks = set(self.trusted_checks)
+        expected_checks = set(self.protection_checks)
         if len(actual_checks) != len(set(actual_checks)) or set(actual_checks) != expected_checks:
-            raise ValueError("branch protection required checks differ from trusted checks")
+            raise ValueError("branch protection required checks differ from protection checks")
         contexts = status.get("contexts")
         if not isinstance(contexts, list) or any(not isinstance(x, str) for x in contexts):
             raise ValueError("branch protection contexts are malformed")
         if set(contexts) != {context for context, _ in expected_checks}:
-            raise ValueError("branch protection contexts differ from trusted checks")
+            raise ValueError("branch protection contexts differ from protection checks")
 
         reviews = _nested_object(protection, "required_pull_request_reviews", "branch protection")
         if (

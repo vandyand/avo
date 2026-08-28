@@ -640,6 +640,7 @@ def _check_identity_failure() -> tuple[str, str]:
         repository_digest=github_repository_digest("acme", "widget"),
         target_ref=TARGET_REF,
         trusted_checks=(("ci", 1),),
+        protection_checks=(("ci", 1),),
         freshness_cutoff=_FIXED_ARTIFACT_TIME,
         protection_policy=GitHubProtectionPolicy(),
         transport=transport,
