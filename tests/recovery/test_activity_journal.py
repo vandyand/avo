@@ -70,6 +70,24 @@ def test_expired_lease_is_recovered(
     database.dispose()
 
 
+def test_claim_rejects_nonpositive_lease_without_mutating_queue(
+    services: tuple[Database, RunService, ActivityService],
+) -> None:
+    database, _, activities = services
+    activity_id = activities.enqueue(
+        "run-1", activity_key="bounded-lease", input_digest=DIGEST_A, actor_id="scheduler"
+    )
+
+    with pytest.raises(ValueError, match="lease_seconds must be positive"):
+        activities.claim_next(worker_id="worker", lease_seconds=0)
+
+    claimed = activities.claim_next(worker_id="worker", lease_seconds=10)
+    assert claimed is not None
+    assert claimed.activity_id == activity_id
+    assert claimed.attempt_count == 1
+    database.dispose()
+
+
 def test_wrong_worker_cannot_complete(
     services: tuple[Database, RunService, ActivityService],
 ) -> None:
