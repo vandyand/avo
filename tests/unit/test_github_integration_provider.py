@@ -104,6 +104,7 @@ def provider_for_intent(
         repository_digest=D,
         target_ref=intent.target_ref,
         trusted_checks=(("ci", 7),),
+        protection_checks=(("ci", 7),),
         freshness_cutoff=datetime(2026, 1, 1, tzinfo=UTC),
         protection_policy=GitHubProtectionPolicy(required_approving_review_count=0),
         transport=transport,
@@ -233,6 +234,7 @@ def provider(
             repository_digest=D,
             target_ref=target_ref,
             trusted_checks=(("ci", 7),),
+            protection_checks=(("ci", 7),),
             freshness_cutoff=datetime(2026, 1, 1, tzinfo=UTC),
             protection_policy=GitHubProtectionPolicy(required_approving_review_count=0),
             token=token,
@@ -243,6 +245,7 @@ def provider(
         repository_digest=D,
         target_ref=target_ref,
         trusted_checks=(("ci", 7),),
+        protection_checks=(("ci", 7),),
         freshness_cutoff=datetime(2026, 1, 1, tzinfo=UTC),
         protection_policy=GitHubProtectionPolicy(required_approving_review_count=0),
         token=token,
@@ -263,6 +266,7 @@ def test_requires_repository_digest_bound_to_configured_repository() -> None:
             repository_digest="sha256:" + "f" * 64,
             target_ref="refs/heads/integration",
             trusted_checks=(("ci", 7),),
+            protection_checks=(("ci", 7),),
             freshness_cutoff=datetime(2026, 1, 1, tzinfo=UTC),
         )
 
@@ -1035,6 +1039,41 @@ def test_protection_evidence_requires_exact_context_and_app_allowlist() -> None:
         provider(transport=transport).observe_integration("refs/heads/integration")
 
 
+def test_protection_checks_are_separate_from_exact_synthetic_checks() -> None:
+    protection = full_protection()
+    synthetic = _check_run(99, "synthetic-ci", 9)
+
+    def transport(
+        method: str, url: str, body: JsonBody | None, headers: Mapping[str, str]
+    ) -> tuple[int, JsonValue]:
+        del method, body, headers
+        if url.endswith("/protection"):
+            return 200, protection
+        if "/check-runs?" in url:
+            return 200, {"total_count": 1, "check_runs": [synthetic]}
+        raise AssertionError(url)
+
+    configured = GitHubIntegrationProvider(
+        owner="acme",
+        repo="widget",
+        repository_digest=D,
+        target_ref="refs/heads/integration",
+        trusted_checks=(("synthetic-ci", 9),),
+        protection_checks=(("ci", 7),),
+        freshness_cutoff=datetime(2026, 1, 1, tzinfo=UTC),
+        protection_policy=GitHubProtectionPolicy(required_approving_review_count=0),
+        transport=transport,
+    )
+    snapshot = configured._evidence_snapshot(C, H)  # type: ignore[reportPrivateUsage]
+    assert snapshot.protection_evidence["required_status_checks"] == {
+        "strict": True,
+        "checks": [{"context": "ci", "app_id": 7}],
+    }
+    assert snapshot.check_evidence_manifest["trusted_checks"] == [
+        {"context": "synthetic-ci", "app_id": 9}
+    ]
+
+
 def test_non_success_transport_status_fails_closed() -> None:
     def transport(
         method: str, url: str, body: JsonBody | None, headers: Mapping[str, str]
@@ -1073,6 +1112,7 @@ def test_protection_policy_is_typed_and_configurable_for_integration_approvals()
         repository_digest=D,
         target_ref="refs/heads/integration",
         trusted_checks=(("ci", 7),),
+        protection_checks=(("ci", 7),),
         freshness_cutoff=datetime(2026, 1, 1, tzinfo=UTC),
         protection_policy=GitHubProtectionPolicy(required_approving_review_count=1),
         transport=transport,
@@ -1398,9 +1438,12 @@ def test_discover_pull_request_evidence_returns_only_sanitized_allowlisted_field
         ({"owner": "acme/x"}, "repository binding"),
         ({"api_base": "http://api.github.com"}, "API base"),
         ({"trusted_checks": (("ci", 7), ("ci", 7))}, "unique"),
+        ({"protection_checks": (("ci", 7), ("ci", 7))}, "unique"),
         ({"freshness_cutoff": datetime(2026, 1, 1)}, "timezone"),
         ({"trusted_checks": (("", 7),)}, "non-empty"),
+        ({"protection_checks": (("", 7),)}, "non-empty"),
         ({"trusted_checks": (("ci", -1),)}, "non-negative"),
+        ({"protection_checks": (("ci", -1),)}, "non-negative"),
     ],
 )
 def test_provider_constructor_rejects_malformed_configuration(
@@ -1412,11 +1455,24 @@ def test_provider_constructor_rejects_malformed_configuration(
         "repository_digest": D,
         "target_ref": "refs/heads/integration",
         "trusted_checks": (("ci", 7),),
+        "protection_checks": (("ci", 7),),
         "freshness_cutoff": datetime(2026, 1, 1, tzinfo=UTC),
     }
     values.update(kwargs)
     with pytest.raises(ValueError, match=message):
         GitHubIntegrationProvider(**values)
+
+
+def test_provider_requires_explicit_protection_checks() -> None:
+    with pytest.raises(TypeError):
+        GitHubIntegrationProvider(  # pyright: ignore[reportCallIssue]
+            owner="acme",
+            repo="widget",
+            repository_digest=D,
+            target_ref="refs/heads/integration",
+            trusted_checks=(("ci", 7),),
+            freshness_cutoff=datetime(2026, 1, 1, tzinfo=UTC),
+        )
 
 
 @pytest.mark.parametrize(

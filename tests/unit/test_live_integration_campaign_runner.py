@@ -57,6 +57,8 @@ def test_runner_pins_synthetic_checks_and_derives_bounded_freshness(tmp_path: Pa
     trusted_now = datetime(2026, 8, 28, 12, 0, tzinfo=UTC)
     configured = config(tmp_path, _trusted_clock=lambda: trusted_now)
     assert configured.trusted_checks == runner.TRUSTED_SYNTHETIC_CHECKS
+    assert configured.protection_checks == runner.PROTECTION_CHECKS
+    assert configured.protection_checks != configured.trusted_checks
     assert configured.freshness_cutoff == trusted_now - timedelta(hours=1)
     with pytest.raises(TypeError):
         runner.CampaignRunnerConfig(
