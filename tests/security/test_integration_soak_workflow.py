@@ -3,7 +3,7 @@
 from pathlib import Path
 
 WORKFLOW = Path(__file__).parents[2] / ".github" / "workflows" / "integration-soak.yml"
-MARKER_PATH = "docs/avo-0046-live-rollback-canary.txt"
+MARKER_PATH = "src/avo_correlate/live_rollback_marker.txt"
 MARKER_DIGEST = "84e940a02be358b4d7abc4d6fb1b83b723adce8fbd0feaa8c193919a0e28a318"
 
 

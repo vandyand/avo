@@ -41,7 +41,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          marker_path='docs/avo-0046-live-rollback-canary.txt'
+          marker_path='src/avo_correlate/live_rollback_marker.txt'
           marker='AVO-Live-Rollback-Marker: fail-soak'
           marker_digest='84e940a02be358b4d7abc4d6fb1b83b723adce8fbd0feaa8c193919a0e28a318'
           # The marker is intentionally a candidate-tree fact, rather than a
