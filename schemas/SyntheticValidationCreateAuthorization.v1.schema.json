@@ -1,0 +1,44 @@
+{
+  "additionalProperties": false,
+  "description": "Durable, single-writer authorization recorded immediately before create.",
+  "properties": {
+    "expected_commit": {
+      "title": "Expected Commit",
+      "type": "string"
+    },
+    "expected_tree": {
+      "title": "Expected Tree",
+      "type": "string"
+    },
+    "operation_id": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Operation Id",
+      "type": "string"
+    },
+    "plan_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Plan Digest",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "validation_ref": {
+      "minLength": 1,
+      "title": "Validation Ref",
+      "type": "string"
+    }
+  },
+  "required": [
+    "operation_id",
+    "plan_digest",
+    "validation_ref",
+    "expected_commit",
+    "expected_tree"
+  ],
+  "title": "SyntheticValidationCreateAuthorization",
+  "type": "object"
+}

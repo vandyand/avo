@@ -2,7 +2,9 @@
 
 import json
 from pathlib import Path
+from typing import Any
 
+from avo_correlate.application.integration_rollback_service import IntegrationRollbackRequest
 from avo_correlate.contracts import (
     AdmissionDecision,
     CampaignCompletionPlan,
@@ -54,7 +56,18 @@ from avo_correlate.contracts.advisory_evaluation import (
     AdvisoryEvaluationResultManifest,
 )
 from avo_correlate.contracts.agent import AgentContext, AgentObservation, AgentTurn
+from avo_correlate.contracts.base import StrictModel
 from avo_correlate.contracts.inference import StructuredInferenceContext
+from avo_correlate.contracts.integration_drill import (
+    DrillEvidenceBinding,
+    IntegrationDrillCaseResult,
+    IntegrationDrillPlan,
+    IntegrationDrillResult,
+    IntegrationDrillRollbackAuthorization,
+    IntegrationDrillRollbackIntent,
+    IntegrationDrillRollbackReceipt,
+    IntegrationDrillSoakObservation,
+)
 from avo_correlate.contracts.model import ModelInvocationRecord, ModelRequest, ModelResponse
 from avo_correlate.contracts.operations import (
     DryRunReport,
@@ -84,9 +97,18 @@ from avo_correlate.contracts.runtime import (
 from avo_correlate.contracts.sandbox import SandboxExecutionResult, SandboxExecutionSpec
 from avo_correlate.contracts.search import SearchCandidate, SearchDecision, SearchState
 from avo_correlate.contracts.supervisor import SupervisorDirective, SupervisorObservation
+from avo_correlate.contracts.synthetic_validation import (
+    SyntheticValidationAttempt,
+    SyntheticValidationCompletionProof,
+    SyntheticValidationCreateAuthorization,
+    SyntheticValidationObservation,
+    SyntheticValidationOutcome,
+    SyntheticValidationPlan,
+    SyntheticValidationRequest,
+)
 from avo_correlate.contracts.tools import CapabilityClaims, ToolInvocationRecord
 
-MODELS = (
+MODELS: tuple[type[StrictModel], ...] = (
     ExperimentSpec,
     VariationSessionRequest,
     VariationSessionResult,
@@ -170,15 +192,32 @@ MODELS = (
     RuntimeInspection,
     RuntimeSessionRef,
     SessionRuntimeProjection,
+    SyntheticValidationObservation,
+    SyntheticValidationRequest,
+    SyntheticValidationPlan,
+    SyntheticValidationOutcome,
+    SyntheticValidationAttempt,
+    SyntheticValidationCreateAuthorization,
+    SyntheticValidationCompletionProof,
+    DrillEvidenceBinding,
+    IntegrationDrillSoakObservation,
+    IntegrationDrillRollbackAuthorization,
+    IntegrationDrillRollbackIntent,
+    IntegrationDrillRollbackReceipt,
+    IntegrationDrillCaseResult,
+    IntegrationDrillPlan,
+    IntegrationDrillResult,
+    IntegrationRollbackRequest,
 )
 
 
 def export(output_dir: Path) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
     for model in MODELS:
-        destination = output_dir / f"{model.__name__}.v1.schema.json"
+        model_api: Any = model
+        destination = output_dir / f"{model_api.__name__}.v1.schema.json"
         destination.write_text(
-            json.dumps(model.model_json_schema(), indent=2, sort_keys=True) + "\n",
+            json.dumps(model_api.model_json_schema(), indent=2, sort_keys=True) + "\n",
             encoding="utf-8",
             newline="\n",
         )
