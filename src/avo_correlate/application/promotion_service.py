@@ -467,6 +467,7 @@ class PromotionController:
             decision_digest=decision_digest,
             provenance=provenance,
             evidence_digests=evidence,
+            operation_kind="ordinary_campaign",
         )
         payload = bundle_bytes(bundle)
         digest = promotion_bundle_digest(bundle)
@@ -710,6 +711,7 @@ class PromotionController:
             decision_digest=decision_digest,
             provenance=provenance,
             evidence_digests=evidence,
+            operation_kind="authorized_rollback",
             rollback_operation_id=authorization.operation_id,
             rollback_authorization=authorization,
         )
@@ -833,10 +835,18 @@ class PromotionController:
                 # trusted nested object that bypassed PromotionBundle's
                 # cross-record validators.
                 parsed = PromotionBundle.model_validate(bundle.model_dump(mode="json"))
-            if (
+            if parsed.operation_kind is None:
+                raise ValueError("bundle operation kind is missing")
+            if parsed.operation_kind == "ordinary_campaign" and (
+                parsed.rollback_authorization is not None
+                or parsed.rollback_operation_id is not None
+                or "authorized_rollback" in parsed.decision.reason_codes
+            ):
+                raise ValueError("ordinary bundle carries rollback authority")
+            if parsed.operation_kind == "authorized_rollback" and (
                 parsed.rollback_authorization is None
-                and parsed.snapshot.target_ref == "refs/heads/integration"
-                and parsed.request.rollback_attestation is not None
+                or parsed.rollback_operation_id != parsed.rollback_authorization.operation_id
+                or "authorized_rollback" not in parsed.decision.reason_codes
             ):
                 raise ValueError("legacy rollback bundles require controller authorization")
             expected = promotion_bundle_digest(parsed)
