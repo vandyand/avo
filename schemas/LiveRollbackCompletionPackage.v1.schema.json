@@ -510,6 +510,19 @@
           "title": "Failed Integration Head Tree",
           "type": "string"
         },
+        "failed_soak_attestation_id": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Failed Soak Attestation Id"
+        },
         "issuer": {
           "minLength": 1,
           "title": "Issuer",
@@ -527,6 +540,19 @@
           "pattern": "^sha256:[0-9a-f]{64}$",
           "title": "Operation Id",
           "type": "string"
+        },
+        "prepublication_authorization_id": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Prepublication Authorization Id"
         },
         "reason": {
           "minLength": 1,
