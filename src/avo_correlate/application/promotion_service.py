@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import json
+import os
 from collections.abc import Callable
 from pathlib import Path
-from typing import Protocol
+from typing import Any, Protocol
 
 from avo_correlate.adapters.artifacts.filesystem import FilesystemArtifactStore
+from avo_correlate.contracts.base import ArtifactRef
 from avo_correlate.contracts.promotion_bundle import (
     GitRefSnapshot,
     PromotionBundle,
@@ -16,6 +18,7 @@ from avo_correlate.contracts.promotion_bundle import (
     PromotionDryRunResult,
     PromotionProvenanceBinding,
     PromotionReplayReport,
+    RollbackPromotionBundleAuthorization,
     WorkspaceComparison,
     promotion_bundle_bytes,
     promotion_bundle_digest,
@@ -25,6 +28,8 @@ from avo_correlate.contracts.promotion_bundle import (
 from avo_correlate.contracts.promotion_policy import (
     GateAttestation,
     PathManifestAttestation,
+    PromotionDecision,
+    PromotionOutcome,
     PromotionPolicy,
     PromotionRequest,
     path_manifest_digest,
@@ -52,6 +57,86 @@ class PromotionProvenanceError(ValueError):
 
 class PromotionEvidenceError(ValueError):
     """Controller-owned attestation evidence could not be independently verified."""
+
+
+class RollbackPromotionAuthorizationJournal:
+    """Create-once durable storage for controller rollback authority.
+
+    The content-addressed object store is sufficient for bytes, but it does not
+    prevent two different authorizations from being used for one operation.  A
+    tiny operation index supplies that missing invariant.
+    """
+
+    def __init__(self, artifact_store: FilesystemArtifactStore) -> None:
+        self._store = artifact_store
+        self._root = artifact_store.root / "rollback-promotion-authorizations"
+
+    def record(self, authorization: RollbackPromotionBundleAuthorization) -> ArtifactRef:
+        payload = canonical_bytes(authorization)
+        reference = self._store.put_bytes(
+            payload,
+            media_type="application/vnd.avo.rollback-promotion-authorization+json",
+            role="rollback-promotion-authorization",
+            max_bytes=1024 * 1024,
+        )
+        index = self._root / authorization.operation_id.removeprefix("sha256:")
+        self._root.mkdir(parents=True, exist_ok=True)
+        value = canonical_bytes(
+            {
+                "authorization": authorization.model_dump(mode="json"),
+                "artifact": reference.model_dump(mode="json"),
+            }
+        )
+        try:
+            with index.open("xb") as handle:
+                handle.write(value)
+                handle.flush()
+                os.fsync(handle.fileno())
+        except FileExistsError:
+            try:
+                existing = json.loads(index.read_bytes())
+                existing_auth = RollbackPromotionBundleAuthorization.model_validate(
+                    existing["authorization"]
+                )
+            except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+                raise ValueError("rollback authorization index is malformed") from exc
+            if existing_auth != authorization:
+                raise ValueError("conflicting rollback authorization for operation") from None
+            existing_reference = ArtifactRef.model_validate(existing["artifact"])
+            if (
+                existing_reference.role != "rollback-promotion-authorization"
+                or existing_reference.media_type
+                != "application/vnd.avo.rollback-promotion-authorization+json"
+            ):
+                raise ValueError("rollback authorization artifact metadata is malformed") from None
+            if self._store.read_bytes(existing_reference) != payload:
+                raise ValueError("rollback authorization artifact is missing or corrupt") from None
+            return existing_reference
+        return reference
+
+    def require(self, authorization: RollbackPromotionBundleAuthorization) -> None:
+        index = self._root / authorization.operation_id.removeprefix("sha256:")
+        try:
+            raw = index.read_bytes()
+            if canonical_bytes(json.loads(raw)) != raw:
+                raise ValueError("rollback authorization index is not canonical JSON")
+            value = json.loads(raw)
+            existing = RollbackPromotionBundleAuthorization.model_validate(value["authorization"])
+            if existing != authorization:
+                raise ValueError("rollback authorization differs from durable authority")
+            artifact = value["artifact"]
+            reference = ArtifactRef.model_validate(artifact)
+            if (
+                reference.role != "rollback-promotion-authorization"
+                or reference.media_type
+                != "application/vnd.avo.rollback-promotion-authorization+json"
+            ):
+                raise ValueError("rollback authorization artifact metadata is malformed")
+            data = self._store.read_bytes(reference)
+            if data != canonical_bytes(authorization):
+                raise ValueError("rollback authorization artifact differs from durable authority")
+        except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+            raise ValueError("rollback authorization is not durably recorded") from exc
 
 
 ProvenanceVerifier = Callable[[str, str, str], object]
@@ -149,6 +234,7 @@ class PromotionController:
         self._trusted_repository_root = repository_root
         self._trusted_artifact_root = artifact_root
         self._max_bundle_bytes = max_bundle_bytes
+        self._rollback_authorizations = RollbackPromotionAuthorizationJournal(artifact_store)
 
     def dry_run(
         self,
@@ -322,6 +408,313 @@ class PromotionController:
             raise RuntimeError("artifact store returned an unexpected bundle digest")
         return PromotionDryRunResult(bundle_digest=digest, bundle=bundle, artifact=artifact)
 
+    def create_rollback_bundle(
+        self,
+        request: object,
+        *,
+        canary_package: object,
+        canary_package_artifact: ArtifactRef,
+        drill_authorization: object | None = None,
+        authorization: object | None = None,
+        candidate_root: Path,
+        publication: object,
+        config: PromotionControllerConfig | None = None,
+    ) -> PromotionDryRunResult:
+        """Create a fresh, controller-authorized rollback bundle.
+
+        Every rollback topology value is derived from a trusted package,
+        publication, or the current repository.  The request is used only as a
+        typed operation identity and is checked against those derived values.
+        """
+
+        from avo_correlate.contracts.integration_campaign import IntegrationCampaignEvidencePackage
+        from avo_correlate.contracts.integration_drill import (
+            IntegrationDrillRollbackAuthorization,
+            IntegrationRollbackRequest,
+        )
+        from avo_correlate.contracts.integration_promotion import CandidatePublicationBinding
+
+        if config is not None and config != self._trusted_config:
+            raise ValueError(
+                "caller supplied a policy configuration different from the trusted one"
+            )
+        config = self._trusted_config
+        if not isinstance(request, IntegrationRollbackRequest):
+            raise TypeError("rollback request must be a trusted IntegrationRollbackRequest")
+        if not isinstance(canary_package, IntegrationCampaignEvidencePackage):
+            raise TypeError("canary package must be a trusted durable package")
+        if drill_authorization is None:
+            drill_authorization = authorization
+        if not isinstance(drill_authorization, IntegrationDrillRollbackAuthorization):
+            raise TypeError("drill authorization must be a trusted durable authorization")
+        if not isinstance(publication, CandidatePublicationBinding):
+            raise TypeError("publication must be a trusted CandidatePublicationBinding")
+        rollback_request = IntegrationRollbackRequest.model_validate(
+            request.model_dump(mode="json")
+        )
+        canary = IntegrationCampaignEvidencePackage.model_validate(
+            canary_package.model_dump(mode="json")
+        )
+        drill = IntegrationDrillRollbackAuthorization.model_validate(
+            drill_authorization.model_dump(mode="json")
+        )
+        candidate_publication = CandidatePublicationBinding.model_validate(
+            publication.model_dump(mode="json")
+        )
+        self._validate_durable_canary(canary, canary_package_artifact)
+        self._validate_drill_authorization(rollback_request, drill, config)
+        candidate_path = candidate_root.resolve(strict=True)
+        if _roots_overlap(candidate_path, self._trusted_repository_root):
+            raise ValueError("candidate workspace must not overlap the trusted repository")
+        if _roots_overlap(candidate_path, self._trusted_artifact_root):
+            raise ValueError("candidate workspace must not overlap the artifact store")
+
+        snapshot = self._repository.snapshot()
+        if snapshot.target_ref != "refs/heads/integration":
+            raise ValueError("rollback target must be protected integration")
+        self._validate_rollback_facts(rollback_request, canary, drill, snapshot)
+        comparison = self._repository.compare_candidate(candidate_root, snapshot)
+        if comparison.candidate_digest != candidate_publication.candidate_digest:
+            raise ValueError("rollback candidate digest differs from trusted publication")
+        if (
+            candidate_publication.repository_digest != snapshot.repository_digest
+            or candidate_publication.base_commit != snapshot.commit
+            or candidate_publication.base_tree != snapshot.tree
+            or candidate_publication.candidate_tree != canary.intent.base_tree
+            or candidate_publication.candidate_commit
+            != rollback_request.rollback_candidate_commit
+            or not candidate_publication.verified
+        ):
+            raise ValueError("rollback publication is not bound to the failed target and restore")
+        if not _evidence_verified(
+            self._evidence_verifier,
+            candidate_publication.publication_evidence_digest,
+            candidate_publication.controller_publisher_identity,
+            comparison.candidate_digest,
+            snapshot.source_tree_digest,
+        ) or not _provenance_verified(
+            self._provenance_verifier,
+            candidate_publication.publication_evidence_digest,
+            comparison.candidate_digest,
+            snapshot.source_tree_digest,
+        ):
+            raise PromotionEvidenceError("rollback publication evidence verification failed")
+        if not _evidence_verified(
+            self._evidence_verifier,
+            snapshot.protection_evidence_digest,
+            config.base_issuer_id,
+            comparison.candidate_digest,
+            snapshot.source_tree_digest,
+        ):
+            raise PromotionEvidenceError("rollback base evidence verification failed")
+
+        authorization_values = {
+            "schema_version": 1,
+            "operation_id": rollback_request.operation_id,
+            "promotion_operation_id": rollback_request.promotion_operation_id,
+            "canary_operation_id": canary.intent.operation_id,
+            "canary_package_digest": canonical_digest(canary),
+            "drill_authorization_id": canonical_digest(drill),
+            "repository_digest": snapshot.repository_digest,
+            "target_ref": "refs/heads/integration",
+            "main_before_commit": rollback_request.main_before_commit,
+            "failed_integration_head_commit": snapshot.commit,
+            "failed_integration_head_tree": snapshot.tree,
+            "restore_to_commit": canary.intent.base_commit,
+            "restore_to_tree": canary.intent.base_tree,
+            "rollback_candidate_commit": rollback_request.rollback_candidate_commit,
+            "rollback_candidate_tree": candidate_publication.candidate_tree,
+            "rollback_candidate_parent_commit": snapshot.commit,
+            "candidate_digest": comparison.candidate_digest,
+            "source_tree_digest": snapshot.source_tree_digest,
+            "restore_tree_digest": comparison.candidate_digest,
+            "publication_evidence_digest": candidate_publication.publication_evidence_digest,
+            "issuer_id": drill.issuer,
+            "reason": drill.reason,
+            "authorized": True,
+        }
+        authorization = RollbackPromotionBundleAuthorization.model_validate(
+            {
+                **authorization_values,
+                "authorization_id": canonical_digest(authorization_values),
+            }
+        )
+        self._rollback_authorizations.record(authorization)
+
+        base_evidence_digest = _base_evidence_digest(snapshot, comparison.candidate_digest)
+        path_digest = path_manifest_digest(comparison.changed_paths)
+        path_evidence_digest = _path_evidence_digest(
+            comparison.candidate_digest, snapshot.source_tree_digest, comparison.changed_paths
+        )
+        base_attestation = GateAttestation(
+            gate_name="base",
+            candidate_digest=comparison.candidate_digest,
+            base_digest=snapshot.source_tree_digest,
+            evidence_digest=base_evidence_digest,
+            issuer_id=config.base_issuer_id,
+            passed=True,
+            valid_from_epoch=config.policy.evaluation_epoch,
+            valid_until_epoch=config.policy.evaluation_epoch,
+        )
+        path_attestation = PathManifestAttestation(
+            candidate_digest=comparison.candidate_digest,
+            base_digest=snapshot.source_tree_digest,
+            evidence_digest=path_evidence_digest,
+            path_manifest_digest=path_digest,
+            issuer_id=config.path_issuer_id,
+            valid_from_epoch=config.policy.evaluation_epoch,
+            valid_until_epoch=config.policy.evaluation_epoch,
+        )
+        policy_request = PromotionRequest(
+            candidate_id=f"rollback-{rollback_request.operation_id.removeprefix('sha256:')}",
+            proposer_id=config.controller_identity,
+            candidate_digest=comparison.candidate_digest,
+            base_digest=snapshot.source_tree_digest,
+            changed_paths=comparison.changed_paths,
+            path_manifest_attestation=path_attestation,
+            base_attestation=base_attestation,
+            gate_attestations=[],
+            reviewer_attestations=[],
+            rollback_attestation=None,
+            exception_requested=False,
+        )
+        decision = PromotionDecision(
+            candidate_id=policy_request.candidate_id,
+            outcome=PromotionOutcome.ALLOW,
+            risk_class=PromotionPolicy.derive_risk(comparison.changed_paths),
+            reason_codes=["authorized_rollback"],
+            required_quorum=0,
+        )
+        evidence = sorted(
+            {
+                candidate_publication.publication_evidence_digest,
+                snapshot.protection_evidence_digest,
+                base_evidence_digest,
+                path_evidence_digest,
+                authorization.authorization_id,
+                authorization.canary_package_digest,
+            }
+        )
+        request_digest = canonical_digest(policy_request)
+        controller_config_digest = canonical_digest(_policy_payload(config))
+        decision_digest = canonical_digest(decision)
+        provenance = PromotionProvenanceBinding(
+            candidate_digest=comparison.candidate_digest,
+            base_digest=snapshot.source_tree_digest,
+            source_provenance_digest=candidate_publication.publication_evidence_digest,
+            request_digest=request_digest,
+            controller_config_digest=controller_config_digest,
+            decision_digest=decision_digest,
+            path_manifest_digest=path_digest,
+            evidence_manifest_digest=canonical_digest(evidence),
+            verified=True,
+        )
+        bundle = PromotionBundle(
+            snapshot=snapshot,
+            comparison=comparison,
+            request=policy_request,
+            request_digest=request_digest,
+            controller_config=config,
+            controller_config_digest=controller_config_digest,
+            decision=decision,
+            decision_digest=decision_digest,
+            provenance=provenance,
+            evidence_digests=evidence,
+            rollback_authorization=authorization,
+        )
+        payload = bundle_bytes(bundle)
+        digest = promotion_bundle_digest(bundle)
+        if self._repository.snapshot() != snapshot:
+            raise PromotionStaleBaseError("repository changed before bundle write")
+        artifact = self._artifact_store.put_bytes(
+            payload,
+            media_type="application/vnd.avo.promotion-bundle+json",
+            role="promotion-bundle",
+            max_bytes=self._max_bundle_bytes,
+        )
+        if artifact.digest != digest:
+            raise RuntimeError("artifact store returned an unexpected bundle digest")
+        return PromotionDryRunResult(bundle_digest=digest, bundle=bundle, artifact=artifact)
+
+    def rollback_dry_run(self, request: object, **kwargs: object) -> PromotionDryRunResult:
+        """Compatibility name for the controller-owned rollback constructor."""
+
+        return self.create_rollback_bundle(request, **kwargs)  # type: ignore[arg-type]
+
+    def _validate_durable_canary(self, canary: Any, reference: ArtifactRef) -> None:
+        if (
+            reference.digest != canonical_digest(canary)
+            or reference.role != "integration-campaign-package"
+            or reference.media_type != "application/vnd.avo.integration-campaign+json"
+            or reference.size_bytes != len(canonical_bytes(canary))
+        ):
+            raise ValueError("canary package artifact is not the durable canonical package")
+        try:
+            data = self._artifact_store.read_bytes(reference)
+            parsed = json.loads(data, object_pairs_hook=_strict_object_pairs)
+            if canonical_bytes(parsed) != data:
+                raise ValueError("canary package artifact is not canonical JSON")
+            canary.__class__.model_validate(parsed)
+        except (OSError, TypeError, ValueError, KeyError, json.JSONDecodeError) as exc:
+            raise ValueError("durable canary package is missing or malformed") from exc
+
+    @staticmethod
+    def _validate_drill_authorization(
+        request: Any,
+        authorization: Any,
+        config: PromotionControllerConfig,
+    ) -> None:
+        if (
+            authorization.operation_id != request.operation_id
+            or authorization.repository_digest != request.repository_digest
+            or authorization.target_ref != "refs/heads/integration"
+            or authorization.main_before_commit != request.main_before_commit
+            or authorization.main_after_commit != request.main_before_commit
+            or authorization.failed_integration_head_commit
+            != request.failed_integration_head_commit
+            or authorization.failed_integration_head_tree != request.failed_integration_head_tree
+            or authorization.restore_to_commit != request.restore_to_commit
+            or authorization.restore_to_tree != request.restore_to_tree
+            or authorization.rollback_candidate_commit
+            != request.rollback_candidate_commit
+            or authorization.rollback_candidate_parent_commit
+            != request.rollback_candidate_parent_commit
+            or authorization.issuer not in config.policy.rollback_issuer_ids
+            or authorization.authorization_id
+            != canonical_digest(authorization.model_dump(exclude={"authorization_id"}, mode="json"))
+        ):
+            raise ValueError("drill rollback authorization is stale or untrusted")
+
+    @staticmethod
+    def _validate_rollback_facts(
+        request: Any, canary: Any, drill: Any, snapshot: GitRefSnapshot
+    ) -> None:
+        canary_intent = canary.intent
+        canary_receipt = canary.receipt
+        if (
+            request.repository_digest != snapshot.repository_digest
+            or request.target_ref != "refs/heads/integration"
+            or request.failed_integration_head_commit != snapshot.commit
+            or request.failed_integration_head_tree != snapshot.tree
+            or request.restore_to_commit != canary_intent.base_commit
+            or request.restore_to_tree != canary_intent.base_tree
+            or request.rollback_candidate_parent_commit != snapshot.commit
+        ):
+            raise ValueError("rollback request is not bound to current target or canary")
+        if (
+            canary.report.outcome not in {"applied", "already_applied"}
+            or canary.deploy_performed
+            or canary.intent.target_ref != request.target_ref
+            or canary.intent.repository_digest != request.repository_digest
+            or canary.main_before_commit != request.main_before_commit
+            or canary.main_after_commit != request.main_before_commit
+            or canary_receipt.applied_result_commit != snapshot.commit
+            or canary_receipt.applied_result_tree != snapshot.tree
+            or drill.target_head_commit != snapshot.commit
+            or drill.target_head_tree != snapshot.tree
+        ):
+            raise ValueError("successful canary is not the exact current failed target")
+
     def replay(
         self,
         bundle: PromotionBundle | bytes,
@@ -341,6 +734,12 @@ class PromotionController:
                 parsed = PromotionBundle.model_validate(raw)
             else:
                 parsed = bundle
+            if (
+                parsed.rollback_authorization is None
+                and parsed.snapshot.target_ref == "refs/heads/integration"
+                and parsed.request.rollback_attestation is not None
+            ):
+                raise ValueError("legacy rollback bundles require controller authorization")
             expected = promotion_bundle_digest(parsed)
             if expected != bundle_digest:
                 raise ValueError("bundle digest mismatch")
@@ -395,6 +794,13 @@ class PromotionController:
             }
             if parsed.request.rollback_attestation is not None:
                 expected_evidence.add(parsed.request.rollback_attestation.evidence_digest)
+            if parsed.rollback_authorization is not None:
+                expected_evidence.update(
+                    {
+                        parsed.rollback_authorization.authorization_id,
+                        parsed.rollback_authorization.canary_package_digest,
+                    }
+                )
             if set(parsed.evidence_digests) != expected_evidence:
                 raise ValueError("bundle evidence manifest differs from referenced evidence")
             if parsed.provenance.evidence_manifest_digest != canonical_digest(
@@ -443,6 +849,35 @@ class PromotionController:
             ):
                 raise ValueError("attestation evidence verification failed")
             checks.extend(("controller_config", "decision", "provenance"))
+            if parsed.rollback_authorization is not None:
+                authorization = parsed.rollback_authorization
+                if (
+                    authorization.issuer_id
+                    not in parsed.controller_config.policy.rollback_issuer_ids
+                    or authorization.publication_evidence_digest
+                    != parsed.provenance.source_provenance_digest
+                    or authorization.authorization_id
+                    != canonical_digest(
+                        authorization.model_dump(exclude={"authorization_id"}, mode="json")
+                    )
+                ):
+                    raise ValueError("rollback authorization issuer or digest is invalid")
+                self._rollback_authorizations.require(authorization)
+                checks.append("rollback_authorization")
+                active_repository = repository or self._repository
+                if active_repository.snapshot() != parsed.snapshot:
+                    return PromotionReplayReport(
+                        bundle_digest=bundle_digest,
+                        outcome="stale_base",
+                        checks=[*checks, "cas_precondition"],
+                        errors=["cas_precondition_mismatch"],
+                    )
+                checks.append("cas_precondition")
+                return PromotionReplayReport(
+                    bundle_digest=bundle_digest,
+                    outcome="would_apply",
+                    checks=checks,
+                )
             decision = PromotionPolicy().classify(parsed.request, parsed.controller_config.policy)
             _validate_gate_scope(parsed.request, parsed.controller_config)
             if decision != parsed.decision:
@@ -488,6 +923,7 @@ __all__ = [
     "PromotionEvidenceError",
     "PromotionProvenanceError",
     "PromotionStaleBaseError",
+    "RollbackPromotionAuthorizationJournal",
     "TrustedPromotionRepository",
     "bundle_bytes",
 ]

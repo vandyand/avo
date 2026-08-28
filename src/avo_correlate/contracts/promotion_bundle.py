@@ -4,7 +4,7 @@ import re
 from collections.abc import Sequence
 from typing import Literal, cast
 
-from pydantic import Field, StrictBool, field_validator, model_validator
+from pydantic import AliasChoices, Field, StrictBool, field_validator, model_validator
 
 from avo_correlate.contracts.base import ArtifactRef, NonEmptyString, Sha256Digest, StrictModel
 from avo_correlate.contracts.promotion_policy import (
@@ -113,6 +113,81 @@ class PromotionProvenanceBinding(StrictModel):
     verified: StrictBool
 
 
+class RollbackPromotionBundleAuthorization(StrictModel):
+    """Controller-issued authority for one protected integration rollback.
+
+    This record is deliberately separate from ordinary promotion attestations.
+    It is created only after the controller has checked the durable canary,
+    drill authorization, candidate publication, and the current repository
+    topology.  The ID is a content address of every field except itself.
+    """
+
+    schema_version: Literal[1] = 1
+    operation_id: Sha256Digest
+    promotion_operation_id: Sha256Digest
+    canary_operation_id: Sha256Digest
+    canary_package_digest: Sha256Digest
+    drill_authorization_id: Sha256Digest | None = None
+    repository_digest: Sha256Digest
+    target_ref: Literal["refs/heads/integration"]
+    main_before_commit: str
+    failed_integration_head_commit: str
+    failed_integration_head_tree: str
+    restore_to_commit: str
+    restore_to_tree: str
+    rollback_candidate_commit: str
+    rollback_candidate_tree: str
+    rollback_candidate_parent_commit: str
+    candidate_digest: Sha256Digest
+    source_tree_digest: Sha256Digest
+    restore_tree_digest: Sha256Digest
+    publication_evidence_digest: Sha256Digest
+    issuer_id: NonEmptyString = Field(validation_alias=AliasChoices("issuer_id", "issuer"))
+    reason: NonEmptyString
+    authorized: StrictBool = True
+    authorization_id: Sha256Digest
+
+    @property
+    def issuer(self) -> str:
+        """Compatibility view for the drill authorization's issuer field."""
+
+        return self.issuer_id
+
+    @field_validator(
+        "main_before_commit",
+        "failed_integration_head_commit",
+        "failed_integration_head_tree",
+        "restore_to_commit",
+        "restore_to_tree",
+        "rollback_candidate_commit",
+        "rollback_candidate_tree",
+        "rollback_candidate_parent_commit",
+    )
+    @classmethod
+    def git_object_id(cls, value: str) -> str:
+        if not _GIT_OBJECT.fullmatch(value):
+            raise ValueError("Git object IDs must be lowercase 40- or 64-hex values")
+        return value
+
+    @model_validator(mode="after")
+    def validate_authorization(self) -> "RollbackPromotionBundleAuthorization":
+        if not self.authorized:
+            raise ValueError("rollback promotion authorization must be authorized")
+        if self.rollback_candidate_parent_commit != self.failed_integration_head_commit:
+            raise ValueError("rollback candidate parent differs from failed integration head")
+        if self.rollback_candidate_commit in {
+            self.failed_integration_head_commit,
+            self.restore_to_commit,
+        }:
+            raise ValueError("rollback candidate must be a new commit distinct from restore anchor")
+        expected = canonical_digest(
+            self.model_dump(exclude={"authorization_id"}, mode="json")
+        )
+        if self.authorization_id != expected:
+            raise ValueError("rollback promotion authorization digest mismatch")
+        return self
+
+
 class PromotionBundle(StrictModel):
     schema_version: Literal[1] = 1
     format: Literal["avo-promotion-bundle-v1"] = "avo-promotion-bundle-v1"
@@ -126,6 +201,7 @@ class PromotionBundle(StrictModel):
     decision_digest: Sha256Digest
     provenance: PromotionProvenanceBinding
     evidence_digests: list[Sha256Digest] = Field(min_length=1)
+    rollback_authorization: RollbackPromotionBundleAuthorization | None = None
 
     @field_validator("evidence_digests")
     @classmethod
@@ -165,6 +241,27 @@ class PromotionBundle(StrictModel):
             self.request.changed_paths
         ):
             raise ValueError("path manifest digest does not match changed paths")
+        authorization = self.rollback_authorization
+        if authorization is not None and (
+                authorization.repository_digest != self.snapshot.repository_digest
+                or authorization.target_ref != self.snapshot.target_ref
+                or authorization.failed_integration_head_commit != self.snapshot.commit
+                or authorization.failed_integration_head_tree != self.snapshot.tree
+                or authorization.source_tree_digest != self.snapshot.source_tree_digest
+                or authorization.candidate_digest != self.request.candidate_digest
+                or authorization.restore_tree_digest != self.request.candidate_digest
+                or authorization.rollback_candidate_tree != authorization.restore_to_tree
+                or authorization.publication_evidence_digest
+                != self.provenance.source_provenance_digest
+                or authorization.authorization_id not in self.evidence_digests
+                or authorization.canary_package_digest not in self.evidence_digests
+                or self.request.gate_attestations
+                or self.request.reviewer_attestations
+                or self.request.rollback_attestation is not None
+                or self.decision.outcome.value != "allow"
+                or "authorized_rollback" not in self.decision.reason_codes
+        ):
+            raise ValueError("rollback authorization is not bound to this bundle")
         return self
 
 
@@ -219,6 +316,10 @@ def promotion_bundle_payload(bundle: PromotionBundle) -> dict[str, object]:
     )
     payload["controller_config"] = promotion_policy_payload(bundle.controller_config)
     payload["evidence_digests"] = sorted(cast(list[str], payload["evidence_digests"]))
+    if payload.get("rollback_authorization") is None:
+        # Keep ordinary v1 bundles byte-for-byte compatible with the pre-
+        # authorization shape; the new field is truly optional on the wire.
+        payload.pop("rollback_authorization", None)
     return payload
 
 
@@ -242,6 +343,7 @@ __all__ = [
     "PromotionDryRunResult",
     "PromotionProvenanceBinding",
     "PromotionReplayReport",
+    "RollbackPromotionBundleAuthorization",
     "WorkspaceComparison",
     "promotion_bundle_bytes",
     "promotion_bundle_digest",

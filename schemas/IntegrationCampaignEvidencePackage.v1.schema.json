@@ -1151,6 +1151,17 @@
           "title": "Request Digest",
           "type": "string"
         },
+        "rollback_authorization": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RollbackPromotionBundleAuthorization"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "schema_version": {
           "const": 1,
           "default": 1,
@@ -1736,6 +1747,158 @@
         "valid_until_epoch"
       ],
       "title": "RollbackAttestation",
+      "type": "object"
+    },
+    "RollbackPromotionBundleAuthorization": {
+      "additionalProperties": false,
+      "description": "Controller-issued authority for one protected integration rollback.\n\nThis record is deliberately separate from ordinary promotion attestations.\nIt is created only after the controller has checked the durable canary,\ndrill authorization, candidate publication, and the current repository\ntopology.  The ID is a content address of every field except itself.",
+      "properties": {
+        "authorization_id": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Authorization Id",
+          "type": "string"
+        },
+        "authorized": {
+          "default": true,
+          "title": "Authorized",
+          "type": "boolean"
+        },
+        "canary_operation_id": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Canary Operation Id",
+          "type": "string"
+        },
+        "canary_package_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Canary Package Digest",
+          "type": "string"
+        },
+        "candidate_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Candidate Digest",
+          "type": "string"
+        },
+        "drill_authorization_id": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Drill Authorization Id"
+        },
+        "failed_integration_head_commit": {
+          "title": "Failed Integration Head Commit",
+          "type": "string"
+        },
+        "failed_integration_head_tree": {
+          "title": "Failed Integration Head Tree",
+          "type": "string"
+        },
+        "issuer_id": {
+          "minLength": 1,
+          "title": "Issuer Id",
+          "type": "string"
+        },
+        "main_before_commit": {
+          "title": "Main Before Commit",
+          "type": "string"
+        },
+        "operation_id": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Operation Id",
+          "type": "string"
+        },
+        "promotion_operation_id": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Promotion Operation Id",
+          "type": "string"
+        },
+        "publication_evidence_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Publication Evidence Digest",
+          "type": "string"
+        },
+        "reason": {
+          "minLength": 1,
+          "title": "Reason",
+          "type": "string"
+        },
+        "repository_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Repository Digest",
+          "type": "string"
+        },
+        "restore_to_commit": {
+          "title": "Restore To Commit",
+          "type": "string"
+        },
+        "restore_to_tree": {
+          "title": "Restore To Tree",
+          "type": "string"
+        },
+        "restore_tree_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Restore Tree Digest",
+          "type": "string"
+        },
+        "rollback_candidate_commit": {
+          "title": "Rollback Candidate Commit",
+          "type": "string"
+        },
+        "rollback_candidate_parent_commit": {
+          "title": "Rollback Candidate Parent Commit",
+          "type": "string"
+        },
+        "rollback_candidate_tree": {
+          "title": "Rollback Candidate Tree",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "source_tree_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Source Tree Digest",
+          "type": "string"
+        },
+        "target_ref": {
+          "const": "refs/heads/integration",
+          "title": "Target Ref",
+          "type": "string"
+        }
+      },
+      "required": [
+        "operation_id",
+        "promotion_operation_id",
+        "canary_operation_id",
+        "canary_package_digest",
+        "repository_digest",
+        "target_ref",
+        "main_before_commit",
+        "failed_integration_head_commit",
+        "failed_integration_head_tree",
+        "restore_to_commit",
+        "restore_to_tree",
+        "rollback_candidate_commit",
+        "rollback_candidate_tree",
+        "rollback_candidate_parent_commit",
+        "candidate_digest",
+        "source_tree_digest",
+        "restore_tree_digest",
+        "publication_evidence_digest",
+        "issuer_id",
+        "reason",
+        "authorization_id"
+      ],
+      "title": "RollbackPromotionBundleAuthorization",
       "type": "object"
     },
     "WorkspaceComparison": {

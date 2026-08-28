@@ -45,6 +45,7 @@ from avo_correlate.contracts.promotion_bundle import (
     PromotionDryRunResult,
     PromotionProvenanceBinding,
     PromotionReplayReport,
+    RollbackPromotionBundleAuthorization,
     WorkspaceComparison,
 )
 from avo_correlate.contracts.promotion_policy import (
@@ -98,8 +99,8 @@ __all__ = [
     "IntegrationProviderObservation",
     "IntegrationProviderReconciliation",
     "IntegrationRollbackRequest",
-    "LiveRollbackCompletionPackage",
     "LiveRollbackCheckEntry",
+    "LiveRollbackCompletionPackage",
     "LiveRollbackEvidencePackage",
     "LiveRollbackManifestEvidence",
     "LiveRollbackProtectionEntry",
@@ -120,6 +121,7 @@ __all__ = [
     "PromotionReplayReport",
     "PromotionRequest",
     "ReconciliationCaseRecord",
+    "RollbackPromotionBundleAuthorization",
     "RuntimeCapabilityReport",
     "RuntimeEvent",
     "RuntimeInspection",
