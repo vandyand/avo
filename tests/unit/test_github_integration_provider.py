@@ -1,3 +1,5 @@
+import base64
+import hashlib
 import json
 from collections.abc import Mapping
 from datetime import UTC, datetime
@@ -25,6 +27,7 @@ from avo_correlate.contracts.integration_promotion import (
     IntegrationPromotionPreconditionError,
     integration_operation_id,
 )
+from avo_correlate.contracts.integration_soak import SOAK_MARKER, SOAK_WORKFLOW_PATH
 from avo_correlate.domain.canonical import canonical_digest
 
 D = github_repository_digest("acme", "widget")
@@ -1084,6 +1087,147 @@ def test_non_success_transport_status_fails_closed() -> None:
 
     with pytest.raises(GitHubTransportError, match="unexpected status"):
         provider(transport=transport).observe_integration("refs/heads/integration")
+
+
+def _failed_soak_provider(transport: JsonTransport) -> GitHubIntegrationProvider:
+    return GitHubIntegrationProvider(
+        owner="acme",
+        repo="widget",
+        repository_digest=D,
+        target_ref="refs/heads/integration",
+        trusted_checks=(("ci", 7),),
+        protection_checks=(("ci", 7),),
+        freshness_cutoff=datetime(2026, 1, 1, tzinfo=UTC),
+        transport=transport,
+        token="test-token",
+    )
+
+
+def _failed_soak_transport(
+    *, run_path: str = SOAK_WORKFLOW_PATH, duplicate_workflow_run: bool = False
+) -> tuple[JsonTransport, list[str]]:
+    integration, restore, main = "1" * 40, "2" * 40, "3" * 40
+    completed = "2026-08-28T10:00:00Z"
+    blob = b"name: integration-soak\n"
+    digest = hashlib.sha256(blob).hexdigest()
+    calls: list[str] = []
+
+    def transport(
+        method: str, url: str, body: JsonBody | None, headers: Mapping[str, str]
+    ) -> tuple[int, JsonValue]:
+        del body, headers
+        calls.append(url)
+        if method != "GET":
+            raise AssertionError(method)
+        if url.endswith("/git/ref/heads/integration"):
+            return 200, cast(
+                JsonValue,
+                {
+                    "ref": "refs/heads/integration",
+                    "object": {"type": "commit", "sha": integration},
+                },
+            )
+        if url.endswith("/git/ref/heads/main"):
+            return 200, cast(
+                JsonValue,
+                {"ref": "refs/heads/main", "object": {"type": "commit", "sha": main}},
+            )
+        if url.endswith("/git/commits/" + integration):
+            return 200, {
+                "sha": integration,
+                "tree": {"sha": "4" * 40},
+                "parents": [{"sha": restore}],
+                "message": SOAK_MARKER,
+            }
+        if url.endswith("/git/commits/" + restore):
+            return 200, cast(
+                JsonValue,
+                {"sha": restore, "tree": {"sha": "5" * 40}, "parents": []},
+            )
+        if url.endswith("/git/commits/" + main):
+            return 200, cast(
+                JsonValue,
+                {"sha": main, "tree": {"sha": main}, "parents": []},
+            )
+        if "/contents/.github/workflows/integration-soak.yml?ref=" in url:
+            return 200, cast(
+                JsonValue,
+                {
+                    "type": "file",
+                    "path": SOAK_WORKFLOW_PATH,
+                    "encoding": "base64",
+                    "content": base64.b64encode(blob).decode(),
+                },
+            )
+        if url.endswith("/actions/variables/AVO_TRUSTED_SOAK_WORKFLOW_SHA256"):
+            return 200, cast(
+                JsonValue,
+                {"name": "AVO_TRUSTED_SOAK_WORKFLOW_SHA256", "value": digest},
+            )
+        if "/actions/workflows/integration-soak.yml/runs?" in url:
+            run = {
+                "id": 900,
+                "workflow_id": 901,
+                "path": run_path,
+                "head_sha": integration,
+                "event": "push",
+                "status": "completed",
+                "conclusion": "failure",
+                "completed_at": completed,
+            }
+            runs = [run, run] if duplicate_workflow_run else [run]
+            return 200, cast(JsonValue, {"total_count": len(runs), "workflow_runs": runs})
+        if "/check-runs?" in url:
+            check = {
+                "id": 902,
+                "name": "avo integration soak",
+                "app": {"id": 15368},
+                "head_sha": integration,
+                "status": "completed",
+                "conclusion": "failure",
+                "completed_at": completed,
+            }
+            return 200, cast(JsonValue, {"total_count": 1, "check_runs": [check]})
+        raise AssertionError(url)
+
+    return transport, calls
+
+
+def test_observe_failed_soak_uses_filename_endpoint_and_binds_restore_parent() -> None:
+    transport, calls = _failed_soak_transport(
+        run_path=SOAK_WORKFLOW_PATH + "@refs/heads/integration"
+    )
+    observed = _failed_soak_provider(transport).observe_failed_soak(
+        now=datetime(2026, 8, 28, 12, tzinfo=UTC)
+    )
+    assert observed.restore_commit == "2" * 40
+    assert observed.restore_tree == "5" * 40
+    assert any("actions/workflows/integration-soak.yml/runs?" in url for url in calls)
+    assert not any("actions/workflows/.github" in url for url in calls)
+
+
+@pytest.mark.parametrize(
+    "run_path",
+    [
+        ".github/workflows/integration-soak.yml@../integration",
+        ".github/workflows/integration-soak.yml@refs/heads/main/../integration",
+        ".github/workflows/integration-soak.yml.extra",
+    ],
+)
+def test_observe_failed_soak_rejects_workflow_path_suffix_traversal(run_path: str) -> None:
+    with pytest.raises(ValueError, match="exactly one matching workflow run"):
+        transport, _calls = _failed_soak_transport(run_path=run_path)
+        _failed_soak_provider(transport).observe_failed_soak(
+            now=datetime(2026, 8, 28, 12, tzinfo=UTC)
+        )
+
+
+def test_observe_failed_soak_rejects_duplicate_workflow_runs() -> None:
+    transport, _calls = _failed_soak_transport(duplicate_workflow_run=True)
+    with pytest.raises(ValueError, match="duplicate"):
+        _failed_soak_provider(transport).observe_failed_soak(
+            now=datetime(2026, 8, 28, 12, tzinfo=UTC)
+        )
 
 
 def test_protection_policy_is_typed_and_configurable_for_integration_approvals() -> None:

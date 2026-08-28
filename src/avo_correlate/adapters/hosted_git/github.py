@@ -262,6 +262,25 @@ _VALIDATION_REF = re.compile(r"^refs/heads/avo/validation/[0-9a-f]{64}$")
 _WORKFLOW_PATH = ".github/workflows/synthetic-validation.yml"
 _WORKFLOW_VARIABLE = "AVO_TRUSTED_WORKFLOW_SHA256"
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
+_SOAK_WORKFLOW_FILENAME = "integration-soak.yml"
+_SOAK_WORKFLOW_RUN_PATH = re.compile(
+    r"^\.github/workflows/integration-soak\.yml(?:@[^@%\x00-\x20~^:?*\\\[\]]+)?$"
+)
+
+
+def _is_soak_workflow_run_path(value: str) -> bool:
+    """Accept GitHub's exact workflow path, optionally annotated with a ref."""
+    if _SOAK_WORKFLOW_RUN_PATH.fullmatch(value) is None:
+        return False
+    if "@" not in value:
+        return True
+    ref = value.rsplit("@", 1)[1]
+    return (
+        bool(ref)
+        and ".." not in ref
+        and not ref.startswith(("/", "."))
+        and not ref.endswith(("/", "."))
+    )
 
 
 def _git_object(value: str, context: str) -> str:
@@ -396,7 +415,7 @@ class GitHubIntegrationProvider:
         return result
 
     @staticmethod
-    def _authority_ref(value: str, context: str) -> str:
+    def _authority_ref(value: str, context: str, *, allow_protected: bool = False) -> str:
         if (
             not value.startswith("refs/heads/")
             or value == "refs/heads/"
@@ -408,8 +427,13 @@ class GitHubIntegrationProvider:
         if (
             any(char in branch for char in "\x00\r\n ~^:?*[\\")
             or ".." in branch
-            or lowered in {"main", "master"}
-            or any(term in lowered for term in ("production", "deploy"))
+            or (
+                not allow_protected
+                and (
+                    lowered in {"main", "master"}
+                    or any(term in lowered for term in ("production", "deploy"))
+                )
+            )
         ):
             raise ValueError(f"malformed {context}")
         return value
@@ -436,10 +460,12 @@ class GitHubIntegrationProvider:
             _git_object(parent, f"{context} parent")
         return actual, tree, parents
 
-    def read_authority_ref(self, ref: str) -> GitHubRefObservation:
+    def read_authority_ref(
+        self, ref: str, *, allow_protected: bool = False
+    ) -> GitHubRefObservation:
         """Read one authenticated heads ref and its complete commit topology."""
         self._require_authenticated()
-        exact_ref = self._authority_ref(ref, "authority ref")
+        exact_ref = self._authority_ref(ref, "authority ref", allow_protected=allow_protected)
         branch = exact_ref.removeprefix("refs/heads/")
         raw = _object(
             self._call("GET", self._path(f"git/ref/heads/{quote(branch, safe='')}")),
@@ -502,7 +528,7 @@ class GitHubIntegrationProvider:
         self._require_authenticated()
         self.verify_repository_binding()
         target = self.read_authority_ref(self.target_ref)
-        main = self.read_authority_ref("refs/heads/main")
+        main = self.read_authority_ref("refs/heads/main", allow_protected=True)
         if main.commit != _git_object(main_commit, "expected main commit"):
             raise ValueError("current main topology mismatch")
         expected_target = (
@@ -628,7 +654,7 @@ class GitHubIntegrationProvider:
         )
         if restore_actual != restore_commit:
             raise ValueError("failed soak restore commit identity mismatch")
-        main = self.read_authority_ref("refs/heads/main")
+        main = self.read_authority_ref("refs/heads/main", allow_protected=True)
         commit_payload = self._commit(integration.commit)
         message = _required_string(commit_payload, "message", "integration commit")
         if SOAK_MARKER not in {line.strip() for line in message.splitlines()}:
@@ -684,7 +710,7 @@ class GitHubIntegrationProvider:
         runs = self._paged_items(
             self._path(
                 "actions/workflows/"
-                f"{quote(SOAK_WORKFLOW_PATH, safe='/')}/runs?head_sha="
+                f"{quote(_SOAK_WORKFLOW_FILENAME, safe='')}/runs?head_sha="
                 f"{quote(integration.commit, safe='')}&event=push"
             ),
             "workflow_runs",
@@ -693,7 +719,9 @@ class GitHubIntegrationProvider:
         candidates: list[JsonObject] = []
         for run in runs:
             if (
-                _required_string(run, "path", "integration soak workflow run") == SOAK_WORKFLOW_PATH
+                _is_soak_workflow_run_path(
+                    _required_string(run, "path", "integration soak workflow run")
+                )
                 and _required_string(run, "head_sha", "integration soak workflow run")
                 == integration.commit
             ):
@@ -1755,7 +1783,7 @@ class GitHubIntegrationProvider:
             if intent.expected_main_commit is not None:
                 # The main ref SHA is intentionally the final provider read
                 # before lease authorization and the one mutating PUT.
-                main = self.read_authority_ref("refs/heads/main")
+                main = self.read_authority_ref("refs/heads/main", allow_protected=True)
                 if main.commit != intent.expected_main_commit:
                     raise ValueError("current main commit differs from expected main commit")
         except (ValueError, GitHubRejected, GitHubTransportError) as exc:
