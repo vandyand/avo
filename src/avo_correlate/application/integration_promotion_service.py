@@ -410,8 +410,11 @@ class IntegrationPromotionService:
             or publication.base_tree != bundle.snapshot.tree
             or publication.candidate_digest != bundle.request.candidate_digest
             or publication.publication_evidence_digest != bundle.provenance.source_provenance_digest
-            or publication.controller_publisher_identity
-            != bundle.controller_config.controller_identity
+            or (
+                bundle.rollback_authorization is None
+                and publication.controller_publisher_identity
+                != bundle.controller_config.controller_identity
+            )
             or publication.publication_evidence_digest not in bundle.evidence_digests
         ):
             raise ValueError("candidate publication does not match bundle provenance")
@@ -445,6 +448,7 @@ class IntegrationPromotionService:
             "expected_candidate_commit": intent.candidate_commit,
             "expected_candidate_tree": intent.candidate_tree,
             "expected_base_commit": intent.base_commit,
+            "expected_main_commit": intent.expected_main_commit,
             "expected_protection_evidence_digest": intent.protection_evidence_digest,
             "expected_provider_identity": intent.provider_identity,
             "expected_provider_api_version": intent.provider_api_version,
@@ -586,6 +590,7 @@ class IntegrationPromotionService:
             expected_candidate_commit=intent.candidate_commit,
             expected_candidate_tree=intent.candidate_tree,
             expected_base_commit=intent.base_commit,
+            expected_main_commit=intent.expected_main_commit,
             expected_protection_evidence_digest=intent.protection_evidence_digest,
             main_protection_evidence_digest=merge.main_protection_evidence_digest,
             expected_provider_identity=intent.provider_identity,
@@ -625,6 +630,7 @@ class IntegrationPromotionService:
             expected_candidate_commit=intent.candidate_commit,
             expected_candidate_tree=intent.candidate_tree,
             expected_base_commit=intent.base_commit,
+            expected_main_commit=intent.expected_main_commit,
             expected_protection_evidence_digest=intent.protection_evidence_digest,
             expected_provider_identity=intent.provider_identity,
             expected_provider_api_version=intent.provider_api_version,

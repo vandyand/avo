@@ -172,6 +172,13 @@ class LiveIntegrationRollbackService:
         package_ref = self._package_journal.record_package(package)
         return LiveRollbackExecution(execution, package, package_ref)
 
+    def read_package(
+        self, operation_id: str
+    ) -> tuple[LiveRollbackEvidencePackage, ArtifactRef] | None:
+        """Read the durable core package without invoking any hosted mutation."""
+
+        return self._package_journal.read_package(operation_id)
+
     def _package(
         self,
         execution: IntegrationRollbackDrillExecution,

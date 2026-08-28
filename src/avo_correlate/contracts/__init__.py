@@ -15,6 +15,16 @@ from avo_correlate.contracts.integration_campaign import (
 )
 from avo_correlate.contracts.integration_drill import IntegrationRollbackRequest
 from avo_correlate.contracts.integration_live_rollback import LiveRollbackEvidencePackage
+from avo_correlate.contracts.integration_live_rollback_completion import (
+    LiveRollbackCheckEntry,
+    LiveRollbackCompletionPackage,
+    LiveRollbackManifestEvidence,
+    LiveRollbackProtectionEntry,
+    LiveRollbackPublicationEvidence,
+    LiveRollbackPublicationOutcome,
+    LiveRollbackPublicationPlan,
+    LiveRollbackWorkflowEvidence,
+)
 from avo_correlate.contracts.integration_promotion import (
     CandidatePublicationBinding,
     IntegrationMergeResult,
@@ -26,7 +36,13 @@ from avo_correlate.contracts.integration_promotion import (
     PromotionLeaseEvidence,
     PromotionMutationAuthorization,
 )
+from avo_correlate.contracts.integration_soak import FailedSoakAttestation
 from avo_correlate.contracts.policy import PolicyDecision
+from avo_correlate.contracts.prepublication import (
+    RollbackPublicationAuthorityConfig,
+    RollbackPublicationAuthorization,
+    RollbackSnapshotRestoreFacts,
+)
 from avo_correlate.contracts.promotion_bundle import (
     GitRefSnapshot,
     PromotionBundle,
@@ -35,6 +51,7 @@ from avo_correlate.contracts.promotion_bundle import (
     PromotionDryRunResult,
     PromotionProvenanceBinding,
     PromotionReplayReport,
+    RollbackPromotionBundleAuthorization,
     WorkspaceComparison,
 )
 from avo_correlate.contracts.promotion_policy import (
@@ -76,6 +93,7 @@ __all__ = [
     "EconomicUsageRecord",
     "EvaluationRecord",
     "ExperimentSpec",
+    "FailedSoakAttestation",
     "GitRefSnapshot",
     "HarnessInvocationRecord",
     "HarnessRuntimeProfile",
@@ -88,7 +106,15 @@ __all__ = [
     "IntegrationProviderObservation",
     "IntegrationProviderReconciliation",
     "IntegrationRollbackRequest",
+    "LiveRollbackCheckEntry",
+    "LiveRollbackCompletionPackage",
     "LiveRollbackEvidencePackage",
+    "LiveRollbackManifestEvidence",
+    "LiveRollbackProtectionEntry",
+    "LiveRollbackPublicationEvidence",
+    "LiveRollbackPublicationOutcome",
+    "LiveRollbackPublicationPlan",
+    "LiveRollbackWorkflowEvidence",
     "PolicyDecision",
     "PromotionBundle",
     "PromotionConfig",
@@ -102,6 +128,10 @@ __all__ = [
     "PromotionReplayReport",
     "PromotionRequest",
     "ReconciliationCaseRecord",
+    "RollbackPromotionBundleAuthorization",
+    "RollbackPublicationAuthorityConfig",
+    "RollbackPublicationAuthorization",
+    "RollbackSnapshotRestoreFacts",
     "RuntimeCapabilityReport",
     "RuntimeEvent",
     "RuntimeInspection",

@@ -315,12 +315,19 @@ def test_journal_conflict_and_fsync_failures(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     fixture = make_package()
+    final = CampaignFinalEvidenceRecord(
+        operation_id=fixture.intent.operation_id,
+        reconciliation=fixture.reconciliation,
+        merge_result=fixture.merge_result,
+    )
     journal = CampaignCompletionJournal(tmp_path)
-    journal.record_package(fixture)
-    altered = fixture.model_copy(update={"main_before_commit": H})
+    journal.record_final_evidence(final)
+    altered = final.model_copy(
+        update={"reconciliation": fixture.reconciliation.model_copy(update={"target_ref": "wrong"})}
+    )
     # Bypass model validation only to simulate an in-process caller tampering with a record.
     with pytest.raises(CampaignJournalError, match="conflicting"):
-        journal.record_package(altered)
+        journal.record_final_evidence(altered)
     sync_calls = 0
 
     def fail_index_sync(path: Path) -> None:
@@ -331,7 +338,16 @@ def test_journal_conflict_and_fsync_failures(
 
     monkeypatch.setattr(journal_module, "_sync_directory", fail_index_sync)
     with pytest.raises(CampaignJournalError, match="durably indexed"):
-        CampaignCompletionJournal(tmp_path / "other").record_package(fixture)
+        CampaignCompletionJournal(tmp_path / "other").record_final_evidence(final)
+
+
+def test_journal_rejects_nested_construct_package_before_any_write(tmp_path: Path) -> None:
+    fixture = make_package()
+    journal = CampaignCompletionJournal(tmp_path)
+    with pytest.raises(CampaignJournalError, match="malformed campaign package"):
+        journal.record_package(fixture)
+    assert not (tmp_path / "artifacts").exists()
+    assert not (tmp_path / "campaign-completion-index").exists()
 
 
 def test_sync_directory_platform_and_close_paths(

@@ -1,0 +1,142 @@
+{
+  "additionalProperties": false,
+  "description": "An authenticated, read-only observation of the deterministic failed soak.\n\nEvery identity in this record is read from GitHub.  In particular,\n``restore_commit`` is the exact sole parent of ``integration_commit`` and\nits tree is read from the parent commit, rather than supplied by a caller.",
+  "properties": {
+    "app_id": {
+      "const": 15368,
+      "default": 15368,
+      "title": "App Id",
+      "type": "integer"
+    },
+    "attestation_id": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Attestation Id",
+      "type": "string"
+    },
+    "check_run_id": {
+      "exclusiveMinimum": 0,
+      "title": "Check Run Id",
+      "type": "integer"
+    },
+    "completed_at": {
+      "format": "date-time",
+      "title": "Completed At",
+      "type": "string"
+    },
+    "conclusion": {
+      "const": "failure",
+      "default": "failure",
+      "title": "Conclusion",
+      "type": "string"
+    },
+    "context": {
+      "const": "avo integration soak",
+      "default": "avo integration soak",
+      "title": "Context",
+      "type": "string"
+    },
+    "freshness_cutoff": {
+      "format": "date-time",
+      "title": "Freshness Cutoff",
+      "type": "string"
+    },
+    "integration_commit": {
+      "title": "Integration Commit",
+      "type": "string"
+    },
+    "integration_parent_commit": {
+      "title": "Integration Parent Commit",
+      "type": "string"
+    },
+    "integration_ref": {
+      "const": "refs/heads/integration",
+      "default": "refs/heads/integration",
+      "title": "Integration Ref",
+      "type": "string"
+    },
+    "integration_tree": {
+      "title": "Integration Tree",
+      "type": "string"
+    },
+    "main_commit": {
+      "title": "Main Commit",
+      "type": "string"
+    },
+    "main_ref": {
+      "const": "refs/heads/main",
+      "default": "refs/heads/main",
+      "title": "Main Ref",
+      "type": "string"
+    },
+    "repository_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Repository Digest",
+      "type": "string"
+    },
+    "repository_variables_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Repository Variables Digest",
+      "type": "string"
+    },
+    "restore_commit": {
+      "title": "Restore Commit",
+      "type": "string"
+    },
+    "restore_tree": {
+      "title": "Restore Tree",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "status": {
+      "const": "completed",
+      "default": "completed",
+      "title": "Status",
+      "type": "string"
+    },
+    "workflow_blob_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Workflow Blob Digest",
+      "type": "string"
+    },
+    "workflow_id": {
+      "exclusiveMinimum": 0,
+      "title": "Workflow Id",
+      "type": "integer"
+    },
+    "workflow_path": {
+      "const": ".github/workflows/integration-soak.yml",
+      "default": ".github/workflows/integration-soak.yml",
+      "title": "Workflow Path",
+      "type": "string"
+    },
+    "workflow_run_id": {
+      "exclusiveMinimum": 0,
+      "title": "Workflow Run Id",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "attestation_id",
+    "repository_digest",
+    "integration_commit",
+    "integration_tree",
+    "integration_parent_commit",
+    "restore_commit",
+    "restore_tree",
+    "main_commit",
+    "check_run_id",
+    "workflow_id",
+    "workflow_run_id",
+    "completed_at",
+    "freshness_cutoff",
+    "workflow_blob_digest",
+    "repository_variables_digest"
+  ],
+  "title": "FailedSoakAttestation",
+  "type": "object"
+}

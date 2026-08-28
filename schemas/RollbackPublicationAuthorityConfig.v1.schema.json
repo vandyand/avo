@@ -1,0 +1,81 @@
+{
+  "additionalProperties": false,
+  "description": "Fixed trust configuration; none of these values come from a canary.",
+  "properties": {
+    "base_issuer_id": {
+      "minLength": 1,
+      "title": "Base Issuer Id",
+      "type": "string"
+    },
+    "controller_identity": {
+      "minLength": 1,
+      "title": "Controller Identity",
+      "type": "string"
+    },
+    "path_issuer_id": {
+      "minLength": 1,
+      "title": "Path Issuer Id",
+      "type": "string"
+    },
+    "publisher_identity": {
+      "minLength": 1,
+      "title": "Publisher Identity",
+      "type": "string"
+    },
+    "repository_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Repository Digest",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "soak_app_id": {
+      "default": 15368,
+      "title": "Soak App Id",
+      "type": "integer"
+    },
+    "soak_context": {
+      "minLength": 1,
+      "title": "Soak Context",
+      "type": "string"
+    },
+    "soak_issuer_id": {
+      "default": "github-app:15368/integration-soak",
+      "minLength": 1,
+      "title": "Soak Issuer Id",
+      "type": "string"
+    },
+    "soak_workflow_path": {
+      "minLength": 1,
+      "title": "Soak Workflow Path",
+      "type": "string"
+    },
+    "target_ref": {
+      "const": "refs/heads/integration",
+      "default": "refs/heads/integration",
+      "title": "Target Ref",
+      "type": "string"
+    },
+    "trusted_config_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Trusted Config Digest",
+      "type": "string"
+    }
+  },
+  "required": [
+    "repository_digest",
+    "soak_context",
+    "soak_workflow_path",
+    "base_issuer_id",
+    "path_issuer_id",
+    "controller_identity",
+    "publisher_identity",
+    "trusted_config_digest"
+  ],
+  "title": "RollbackPublicationAuthorityConfig",
+  "type": "object"
+}
