@@ -1,0 +1,66 @@
+{
+  "additionalProperties": false,
+  "description": "Content-addressable proof emitted by the candidate publisher.",
+  "properties": {
+    "base_commit": {
+      "title": "Base Commit",
+      "type": "string"
+    },
+    "base_tree": {
+      "title": "Base Tree",
+      "type": "string"
+    },
+    "candidate_commit": {
+      "title": "Candidate Commit",
+      "type": "string"
+    },
+    "candidate_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Candidate Digest",
+      "type": "string"
+    },
+    "candidate_ref": {
+      "minLength": 1,
+      "title": "Candidate Ref",
+      "type": "string"
+    },
+    "candidate_tree": {
+      "title": "Candidate Tree",
+      "type": "string"
+    },
+    "publication_id": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Publication Id",
+      "type": "string"
+    },
+    "remote": {
+      "minLength": 1,
+      "title": "Remote",
+      "type": "string"
+    },
+    "repository_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Repository Digest",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "publication_id",
+    "repository_digest",
+    "remote",
+    "candidate_ref",
+    "candidate_commit",
+    "candidate_tree",
+    "base_commit",
+    "base_tree",
+    "candidate_digest"
+  ],
+  "title": "LiveRollbackPublicationEvidence",
+  "type": "object"
+}

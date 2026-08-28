@@ -28,6 +28,14 @@
       "title": "Candidate Tree",
       "type": "string"
     },
+    "changed_paths": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "title": "Changed Paths",
+      "type": "array"
+    },
     "controller_publisher_identity": {
       "minLength": 1,
       "title": "Controller Publisher Identity",

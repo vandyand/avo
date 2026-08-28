@@ -1,0 +1,69 @@
+{
+  "additionalProperties": false,
+  "description": "Workflow blob hash and repository-variable match proof.",
+  "properties": {
+    "provider_api_version": {
+      "minLength": 1,
+      "title": "Provider Api Version",
+      "type": "string"
+    },
+    "provider_identity": {
+      "minLength": 1,
+      "title": "Provider Identity",
+      "type": "string"
+    },
+    "repository_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Repository Digest",
+      "type": "string"
+    },
+    "repository_variables_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Repository Variables Digest",
+      "type": "string"
+    },
+    "repository_variables_match": {
+      "const": true,
+      "default": true,
+      "title": "Repository Variables Match",
+      "type": "boolean"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "source_commit": {
+      "title": "Source Commit",
+      "type": "string"
+    },
+    "target_ref": {
+      "minLength": 1,
+      "title": "Target Ref",
+      "type": "string"
+    },
+    "workflow_blob_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Workflow Blob Digest",
+      "type": "string"
+    },
+    "workflow_path": {
+      "minLength": 1,
+      "title": "Workflow Path",
+      "type": "string"
+    }
+  },
+  "required": [
+    "repository_digest",
+    "target_ref",
+    "source_commit",
+    "workflow_path",
+    "workflow_blob_digest",
+    "repository_variables_digest",
+    "provider_identity",
+    "provider_api_version"
+  ],
+  "title": "LiveRollbackWorkflowEvidence",
+  "type": "object"
+}

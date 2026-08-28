@@ -1,0 +1,51 @@
+{
+  "additionalProperties": false,
+  "description": "Reconstructable trusted check identity and successful result.",
+  "properties": {
+    "app_id": {
+      "exclusiveMinimum": 0,
+      "title": "App Id",
+      "type": "integer"
+    },
+    "completed_at": {
+      "format": "date-time",
+      "title": "Completed At",
+      "type": "string"
+    },
+    "conclusion": {
+      "const": "success",
+      "title": "Conclusion",
+      "type": "string"
+    },
+    "context": {
+      "minLength": 1,
+      "title": "Context",
+      "type": "string"
+    },
+    "name": {
+      "minLength": 1,
+      "title": "Name",
+      "type": "string"
+    },
+    "sha": {
+      "title": "Sha",
+      "type": "string"
+    },
+    "status": {
+      "const": "completed",
+      "title": "Status",
+      "type": "string"
+    }
+  },
+  "required": [
+    "name",
+    "app_id",
+    "context",
+    "sha",
+    "status",
+    "conclusion",
+    "completed_at"
+  ],
+  "title": "LiveRollbackCheckEntry",
+  "type": "object"
+}

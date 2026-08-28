@@ -68,6 +68,18 @@
       "title": "Expected Candidate Tree",
       "type": "string"
     },
+    "expected_main_commit": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Expected Main Commit"
+    },
     "expected_protection_evidence_digest": {
       "pattern": "^sha256:[0-9a-f]{64}$",
       "title": "Expected Protection Evidence Digest",

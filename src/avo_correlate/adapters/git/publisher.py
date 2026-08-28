@@ -6,6 +6,9 @@ clone, and performs one non-forced push only after the resulting commit has
 been independently checked against the candidate tree digest.
 """
 
+# The strict casts below intentionally fence untrusted journal payloads.
+# pyright: reportUnknownArgumentType=false, reportArgumentType=false, reportUnnecessaryIsInstance=false
+
 from __future__ import annotations
 
 import errno
@@ -58,6 +61,10 @@ class PublicationPlan:
     candidate_commit: str
     candidate_tree: str
     controller_publisher_identity: str
+    # The normalized source paths included in the prepared candidate.  Older
+    # journals may omit this field; an empty tuple remains valid for those
+    # records and is intentionally not used to derive trust.
+    changed_paths: tuple[str, ...] = ()
 
     def identity_payload(self) -> dict[str, Any]:
         return {
@@ -71,6 +78,7 @@ class PublicationPlan:
             "candidate_commit": self.candidate_commit,
             "candidate_tree": self.candidate_tree,
             "controller_publisher_identity": self.controller_publisher_identity,
+            "changed_paths": list(self.changed_paths),
         }
 
     def payload(self) -> dict[str, Any]:
@@ -84,6 +92,47 @@ class PublicationResult:
     binding: CandidatePublicationBinding
     evidence_bytes: bytes
     evidence_artifact: ArtifactRef
+
+
+@dataclass(frozen=True, slots=True)
+class PreparedPublication:
+    """A locally prepared candidate whose remote publication is still pending."""
+
+    plan: PublicationPlan
+    candidate_root: Path
+    plan_artifact: ArtifactRef | None = None
+
+    @property
+    def publication_id(self) -> str:
+        return self.plan.publication_id
+
+    @property
+    def changed_paths(self) -> tuple[str, ...]:
+        return self.plan.changed_paths
+
+    @property
+    def publication_plan(self) -> PublicationPlan:
+        """Compatibility name used by authority consumers."""
+
+        return self.plan
+
+    @property
+    def evidence_digest(self) -> str:
+        payload = {
+            "schema_version": 1,
+            "publication_id": self.plan.publication_id,
+            "repository_digest": self.plan.repository_digest,
+            "base_commit": self.plan.base_commit,
+            "base_tree": self.plan.base_tree,
+            "candidate_digest": self.plan.candidate_digest,
+            "candidate_ref": self.plan.candidate_ref,
+            "candidate_commit": self.plan.candidate_commit,
+            "candidate_tree": self.plan.candidate_tree,
+            "controller_publisher_identity": self.plan.controller_publisher_identity,
+            "changed_paths": list(self.plan.changed_paths),
+            "verified": True,
+        }
+        return canonical_digest(payload)
 
 
 @dataclass(frozen=True, slots=True)
@@ -122,6 +171,12 @@ class PublicationJournal(Protocol):
     def record_outcome(self, outcome: PublicationOutcome) -> ArtifactRef: ...
 
     def record_evidence(self, data: bytes) -> ArtifactRef: ...
+
+
+class PrepublicationAuthorizationJournal(Protocol):
+    """Minimal authority boundary required before the one remote push."""
+
+    def require(self, authorization: object) -> None: ...
 
 
 class PublicationAmbiguousError(GitRepositoryError):
@@ -253,9 +308,17 @@ class FilesystemPublicationJournal:
         if payload.get("schema_version") != 1:
             raise GitRepositoryError("unsupported publication plan schema")
         expected = {"schema_version", *PublicationPlan.__dataclass_fields__}
-        if set(payload) != expected:
+        # v1 plans written before path binding did not carry changed_paths.
+        legacy_expected = expected - {"changed_paths"}
+        if set(payload) not in (expected, legacy_expected):
             raise GitRepositoryError("publication plan fields are malformed")
-        values = {key: payload[key] for key in PublicationPlan.__dataclass_fields__}
+        values = {
+            key: payload.get(key, ())
+            for key in PublicationPlan.__dataclass_fields__
+        }
+        if not isinstance(values["changed_paths"], (list, tuple)):
+            raise GitRepositoryError("publication plan changed paths are malformed")
+        values["changed_paths"] = tuple(values["changed_paths"])
         plan = PublicationPlan(**values)
         if canonical_digest(plan.identity_payload()) != plan.publication_id:
             raise GitRepositoryError("publication plan digest mismatch")
@@ -340,6 +403,8 @@ class GitCandidatePublisher:
         base_commit: str,
         base_tree: str,
         expected_candidate_digest: str,
+        *,
+        _prepare_only: bool = False,
     ) -> PublicationResult:
         """Create and publish a verified candidate commit.
 
@@ -480,11 +545,20 @@ class GitCandidatePublisher:
                 candidate_ref,
                 candidate_commit,
                 candidate_tree,
+                changed_paths=self._changed_paths(clone, base_commit, candidate_tree),
             )
             try:
-                self.publication_journal.record_plan(plan)
+                plan_artifact = self.publication_journal.record_plan(plan)
             except Exception as exc:
                 raise GitRepositoryError("publication plan was not durably recorded") from exc
+            if _prepare_only:
+                # The candidate is intentionally retained by the caller.  The
+                # private clone is discarded; publish_prepared recreates the
+                # exact deterministic commit and verifies it against this plan.
+                return cast(
+                    Any,
+                    PreparedPublication(plan, candidate.resolve(strict=True), plan_artifact),
+                )
             if self._remote_ref_exists(clone, candidate_ref):
                 raise GitRepositoryError("generated candidate ref already exists")
             try:
@@ -528,6 +602,7 @@ class GitCandidatePublisher:
             "candidate_commit": candidate_commit,
             "candidate_tree": candidate_tree,
             "controller_publisher_identity": self.controller_publisher_identity,
+            "changed_paths": list(plan.changed_paths),
             "verified": True,
         }
         evidence_bytes = canonical_bytes(evidence_payload)
@@ -562,6 +637,191 @@ class GitCandidatePublisher:
         )
         return PublicationResult(binding, evidence_bytes, evidence_artifact)
 
+    def prepare(
+        self,
+        candidate_root: Path,
+        base_commit: str,
+        base_tree: str,
+        expected_candidate_digest: str,
+    ) -> PreparedPublication:
+        """Prepare and durably journal a candidate without updating any ref."""
+
+        if self.publication_journal is None:
+            raise GitRepositoryError("a durable publication journal is required")
+        existing = self.publication_journal.find_matching_plan(
+            self.repository_digest,
+            self.expected_remote,
+            base_commit,
+            base_tree,
+            expected_candidate_digest,
+            self.controller_publisher_identity,
+        )
+        if existing is not None:
+            # A restart must reuse the exact pre-push plan so it can recover a
+            # durable preauthorization and reconcile the remote before ever
+            # considering another push.
+            return PreparedPublication(
+                existing,
+                Path(candidate_root).resolve(strict=True),
+                self.publication_journal.record_plan(existing),
+            )
+
+        prepared = self.publish_result(
+            candidate_root,
+            base_commit,
+            base_tree,
+            expected_candidate_digest,
+            _prepare_only=True,
+        )
+        if not isinstance(prepared, PreparedPublication):
+            raise GitRepositoryError("publisher failed to return a prepared candidate")
+        return prepared
+
+    def publish_prepared(
+        self,
+        prepared: PreparedPublication,
+        *,
+        authorization: object,
+        authorization_journal: PrepublicationAuthorizationJournal | None = None,
+    ) -> PublicationResult:
+        """Publish one prepared plan, optionally across an authority fence.
+
+        When ``authorization`` is supplied, the journal check is deliberately
+        the first operation.  Thus a missing, mixed, or tampered authorization
+        cannot reach the push boundary.
+        """
+
+        if not isinstance(prepared, PreparedPublication):
+            raise TypeError("prepared must be a trusted PreparedPublication")
+        if authorization_journal is None:
+            raise GitRepositoryError("a pre-publication authorization journal is required")
+        authorization_journal.require(authorization)
+        self._validate_candidate_ref(prepared.plan.candidate_ref)
+        self._validate_changed_paths(prepared.plan.changed_paths)
+        self._validate_authorization_plan(authorization, prepared)
+        return self._publish_prepared(prepared)
+
+    # Explicit name for callers that want the security property visible at the
+    # call site.  Ordinary publish/publish_result remain source-compatible.
+    publish_authorized = publish_prepared
+
+    def _publish_prepared(self, prepared: PreparedPublication) -> PublicationResult:
+        """Rebuild and publish a prepared commit, checking every bound value."""
+
+        plan = prepared.plan
+        candidate = prepared.candidate_root
+        if self.publication_journal is None:
+            raise GitRepositoryError("a durable publication journal is required")
+        if not candidate.is_dir():
+            raise GitRepositoryError("prepared candidate root is missing")
+        with tempfile.TemporaryDirectory(prefix="avo-candidate-publish-") as directory:
+            clone = Path(directory) / "clone"
+            self._run([
+                "clone", "--no-checkout", "--no-recurse-submodules", "--",
+                self.expected_remote, str(clone),
+            ])
+            self._verify_remote(clone)
+            self._verify_base(clone, plan.base_commit, plan.base_tree)
+            self._run(["checkout", "--detach", "--force", plan.base_commit], cwd=clone)
+            self._run(["clean", "-ffdx"], cwd=clone)
+            self._remove_worktree_contents(clone)
+            self._copy_candidate(candidate.resolve(strict=True), clone)
+            reader = GitRepositoryReader(
+                Path.cwd(), plan.base_commit, self.expected_remote,
+                "sha256:" + "0" * 64, self.max_file_bytes, self.max_tree_bytes,
+                self.max_entries,
+            )
+            final_source = self._scan_candidate(reader, candidate)
+            if final_source.digest != plan.candidate_digest:
+                raise GitRepositoryError("prepared candidate changed before publication")
+            self._run(["add", "--all", "--", "."], cwd=clone)
+            environment = self._environment()
+            base_date = self._run(
+                ["show", "-s", "--format=%cI", plan.base_commit], cwd=clone
+            ).stdout.strip()
+            if not base_date:
+                raise GitRepositoryError("trusted base has no deterministic commit timestamp")
+            environment.update({"GIT_AUTHOR_DATE": base_date, "GIT_COMMITTER_DATE": base_date})
+            self._run([
+                "-c", f"user.name={self.controller_publisher_identity}",
+                "-c", "user.email=avo-controller@invalid", "-c", "commit.gpgSign=false",
+                "commit", "--no-gpg-sign", "--allow-empty", "-m",
+                "AVO candidate publication",
+            ], cwd=clone, environment=environment)
+            candidate_commit = self._run(["rev-parse", "HEAD"], cwd=clone).stdout.strip()
+            candidate_tree = self._run(["rev-parse", "HEAD^{tree}"], cwd=clone).stdout.strip()
+            parent_line = self._run(
+                ["rev-list", "--parents", "-n", "1", "HEAD"], cwd=clone
+            ).stdout.strip().split()
+            if candidate_commit != plan.candidate_commit or candidate_tree != plan.candidate_tree:
+                raise GitRepositoryError("prepared candidate commit differs from publication plan")
+            if parent_line[1:] != [plan.base_commit]:
+                raise GitRepositoryError(
+                    "prepared candidate does not have the expected sole parent"
+                )
+            if self._changed_paths(clone, plan.base_commit, candidate_tree) != plan.changed_paths:
+                raise GitRepositoryError("prepared changed paths differ from publication plan")
+            if self._remote_ref_exists(clone, plan.candidate_ref):
+                raise GitRepositoryError("generated candidate ref already exists")
+            try:
+                self._run([
+                    "push", "--no-follow-tags", "origin",
+                    f"{plan.candidate_commit}:{plan.candidate_ref}",
+                ], cwd=clone)
+            except Exception as exc:
+                self._record_ambiguous(plan, str(exc))
+                raise PublicationAmbiguousError(
+                    plan.publication_id, plan.candidate_ref,
+                    "candidate push outcome is ambiguous; reconcile before retrying",
+                ) from exc
+            self._record_outcome(PublicationOutcome(
+                plan.publication_id, "pushed", plan.candidate_ref,
+                plan.candidate_commit, plan.candidate_tree,
+            ))
+            try:
+                if self._remote_ref_commit(clone, plan.candidate_ref) != plan.candidate_commit:
+                    raise GitRepositoryError("published candidate ref does not point at commit")
+            except Exception as exc:
+                self._record_ambiguous(plan, str(exc))
+                raise PublicationAmbiguousError(
+                    plan.publication_id, plan.candidate_ref,
+                    "candidate publication observation is ambiguous; reconcile before retrying",
+                ) from exc
+        evidence_payload = {
+            "schema_version": 1,
+            "publication_id": plan.publication_id,
+            "repository_digest": plan.repository_digest,
+            "base_commit": plan.base_commit,
+            "base_tree": plan.base_tree,
+            "candidate_digest": plan.candidate_digest,
+            "candidate_ref": plan.candidate_ref,
+            "candidate_commit": plan.candidate_commit,
+            "candidate_tree": plan.candidate_tree,
+            "controller_publisher_identity": plan.controller_publisher_identity,
+            "changed_paths": list(plan.changed_paths),
+            "verified": True,
+        }
+        evidence_bytes = canonical_bytes(evidence_payload)
+        evidence_digest = canonical_digest(evidence_payload)
+        evidence_artifact = self.publication_journal.record_evidence(evidence_bytes)
+        if (
+            evidence_artifact.digest != evidence_digest
+            or evidence_artifact.size_bytes != len(evidence_bytes)
+        ):
+            raise PublicationAmbiguousError(
+                plan.publication_id, plan.candidate_ref,
+                "publication evidence was not durably content-addressed",
+            )
+        binding = CandidatePublicationBinding.model_validate(
+            {key: value for key, value in evidence_payload.items() if key != "publication_id"}
+            | {"publication_evidence_digest": evidence_digest}
+        )
+        self._record_outcome(PublicationOutcome(
+            plan.publication_id, "verified", plan.candidate_ref,
+            plan.candidate_commit, plan.candidate_tree,
+        ))
+        return PublicationResult(binding, evidence_bytes, evidence_artifact)
+
     def reconcile(self, publication_id: str) -> PublicationResult | None:
         """Reconcile a previously planned/pushed publication without retrying push."""
 
@@ -575,6 +835,8 @@ class GitCandidatePublisher:
             or plan.expected_remote != self.expected_remote
         ):
             raise GitRepositoryError("publication plan belongs to a different repository")
+        self._validate_candidate_ref(plan.candidate_ref)
+        self._validate_changed_paths(plan.changed_paths)
         with tempfile.TemporaryDirectory(prefix="avo-candidate-reconcile-") as directory:
             clone = Path(directory) / "clone"
             self._run(
@@ -608,6 +870,7 @@ class GitCandidatePublisher:
             "candidate_commit": plan.candidate_commit,
             "candidate_tree": plan.candidate_tree,
             "controller_publisher_identity": plan.controller_publisher_identity,
+            "changed_paths": list(plan.changed_paths),
             "verified": True,
         }
         evidence_bytes = canonical_bytes(evidence_payload)
@@ -635,6 +898,24 @@ class GitCandidatePublisher:
         )
         return PublicationResult(binding, evidence_bytes, evidence_artifact)
 
+    def reconcile_authorized(
+        self,
+        publication_id: str,
+        authorization: object,
+        *,
+        authorization_journal: PrepublicationAuthorizationJournal,
+    ) -> PublicationResult | None:
+        """Reconcile a rollback publication only after the preauth fence."""
+
+        authorization_journal.require(authorization)
+        plan = self._journal().read_plan(publication_id)
+        if plan is None:
+            raise GitRepositoryError("publication plan was not found")
+        self._validate_candidate_ref(plan.candidate_ref)
+        self._validate_changed_paths(plan.changed_paths)
+        self._validate_authorization_plan(authorization, PreparedPublication(plan, Path()))
+        return self.reconcile(publication_id)
+
     def _new_plan(
         self,
         base_commit: str,
@@ -643,6 +924,8 @@ class GitCandidatePublisher:
         candidate_ref: str,
         candidate_commit: str,
         candidate_tree: str,
+        *,
+        changed_paths: list[str] | tuple[str, ...] = (),
     ) -> PublicationPlan:
         values = {
             "schema_version": 1,
@@ -655,6 +938,7 @@ class GitCandidatePublisher:
             "candidate_commit": candidate_commit,
             "candidate_tree": candidate_tree,
             "controller_publisher_identity": self.controller_publisher_identity,
+            "changed_paths": list(changed_paths),
         }
         return PublicationPlan(
             publication_id=canonical_digest(values),
@@ -667,7 +951,21 @@ class GitCandidatePublisher:
             candidate_commit=candidate_commit,
             candidate_tree=candidate_tree,
             controller_publisher_identity=self.controller_publisher_identity,
+            changed_paths=tuple(changed_paths),
         )
+
+    def _changed_paths(self, clone: Path, base_commit: str, candidate_tree: str) -> tuple[str, ...]:
+        output = self._run(
+            ["diff", "--name-only", "--diff-filter=ACDMRTUXB", base_commit, candidate_tree],
+            cwd=clone,
+        ).stdout
+        paths = [line for line in output.splitlines() if line]
+        if any(
+            not path or path.startswith(("/", "\\")) or ".." in Path(path).parts
+            for path in paths
+        ):
+            raise GitRepositoryError("Git changed path is unsafe")
+        return tuple(sorted(set(paths), key=lambda path: (path.casefold(), path)))
 
     def _record_outcome(self, outcome: PublicationOutcome) -> None:
         try:
@@ -811,7 +1109,56 @@ class GitCandidatePublisher:
         return line[0].split()[0]
 
     def _new_candidate_ref(self) -> str:
-        return f"refs/heads/avo/candidate/{secrets.token_hex(16)}"
+        return f"refs/heads/avo/candidate/{secrets.token_hex(32)}"
+
+    @staticmethod
+    def _validate_candidate_ref(ref: str) -> None:
+        if re.fullmatch(r"refs/heads/avo/candidate/[0-9a-f]{64}", ref) is None:
+            raise GitRepositoryError("candidate ref is outside the controller candidate namespace")
+
+    @staticmethod
+    def _validate_changed_paths(paths: tuple[str, ...]) -> None:
+        expected = tuple(sorted(paths, key=lambda value: (value.casefold(), value)))
+        if paths != expected or not paths:
+            raise GitRepositoryError("candidate changed paths are malformed")
+        if len({path.casefold() for path in paths}) != len(paths):
+            raise GitRepositoryError("candidate changed paths contain a collision")
+        for path in paths:
+            if (
+                not path
+                or path.startswith(("/", "\\"))
+                or ".." in path.replace("\\", "/").split("/")
+            ):
+                raise GitRepositoryError("candidate changed path is unsafe")
+
+    @staticmethod
+    def _validate_authorization_plan(
+        authorization: object, prepared: PreparedPublication
+    ) -> None:
+        """Bind every publication identity to the exact stored preauth object."""
+
+        plan = prepared.plan
+        try:
+            expected = {
+                "publication_plan_digest": plan.publication_id,
+                "repository_digest": plan.repository_digest,
+                "failed_integration_head_commit": plan.base_commit,
+                "failed_integration_head_tree": plan.base_tree,
+                "rollback_candidate_commit": plan.candidate_commit,
+                "rollback_candidate_tree": plan.candidate_tree,
+                "candidate_digest": plan.candidate_digest,
+                "candidate_ref": plan.candidate_ref,
+                "publisher_identity": plan.controller_publisher_identity,
+                "changed_paths": list(plan.changed_paths),
+                "publication_evidence_digest": prepared.evidence_digest,
+            }
+            actual = {name: getattr(authorization, name) for name in expected}
+        except (AttributeError, TypeError) as exc:
+            raise GitRepositoryError("pre-publication authorization is not typed") from exc
+        if actual != expected:
+            raise GitRepositoryError(
+                "pre-publication authorization does not match publication plan"
+            )
 
     def _run(
         self,
@@ -970,6 +1317,8 @@ __all__ = [
     "FilesystemPublicationJournal",
     "GitCandidatePublisher",
     "GitCommandRunner",
+    "PreparedPublication",
+    "PrepublicationAuthorizationJournal",
     "PublicationAmbiguousError",
     "PublicationJournal",
     "PublicationOutcome",
