@@ -13,6 +13,8 @@ from avo_correlate.contracts.integration_campaign import (
     IntegrationCampaignEvidencePackage,
     IntegrationIntentTemplate,
 )
+from avo_correlate.contracts.integration_drill import IntegrationRollbackRequest
+from avo_correlate.contracts.integration_live_rollback import LiveRollbackEvidencePackage
 from avo_correlate.contracts.integration_promotion import (
     CandidatePublicationBinding,
     IntegrationMergeResult,
@@ -85,6 +87,8 @@ __all__ = [
     "IntegrationPromotionReport",
     "IntegrationProviderObservation",
     "IntegrationProviderReconciliation",
+    "IntegrationRollbackRequest",
+    "LiveRollbackEvidencePackage",
     "PolicyDecision",
     "PromotionBundle",
     "PromotionConfig",
