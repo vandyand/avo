@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -137,16 +137,30 @@ def _completion_fixture() -> LiveRollbackCompletionPackage:
         manifest_digest=provider_observation.check_evidence_manifest_digest,
         provider_identity=provider_observation.provider_identity,
         provider_api_version=provider_observation.provider_api_version,
-        entries=["avo synthetic validate (ubuntu-latest)"],
-        check_entries=[LiveRollbackCheckEntry.model_construct(
+            entries=[
+                "avo synthetic validate (ubuntu-latest)",
+                "avo synthetic validate (windows-latest)",
+            ],
+            check_entries=[LiveRollbackCheckEntry.model_construct(
             name="avo synthetic validate",
             app_id=15368,
             context="avo synthetic validate (ubuntu-latest)",
             sha=provider_observation.synthetic_merge_commit,
             status="completed",
-            conclusion="success",
-        )],
-        protection_entries=[],
+                conclusion="success",
+                completed_at=NOW,
+            ), LiveRollbackCheckEntry.model_construct(
+                name="avo synthetic validate",
+                app_id=15368,
+                context="avo synthetic validate (windows-latest)",
+                sha=provider_observation.synthetic_merge_commit,
+                status="completed",
+                conclusion="success",
+                completed_at=NOW,
+            )],
+            protection_entries=[],
+            freshness_cutoff=NOW - timedelta(hours=1),
+            observed_at=NOW,
         source_pinned=True,
     )
     protection_manifest = LiveRollbackManifestEvidence.model_construct(
@@ -157,13 +171,19 @@ def _completion_fixture() -> LiveRollbackCompletionPackage:
         manifest_digest=provider_observation.protection_evidence_digest,
         provider_identity=provider_observation.provider_identity,
         provider_api_version=provider_observation.provider_api_version,
-        entries=["validate (ubuntu-latest)"],
+            entries=["validate (ubuntu-latest)", "validate (windows-latest)"],
         check_entries=[],
-        protection_entries=[LiveRollbackProtectionEntry.model_construct(
-            context="avo synthetic validate (ubuntu-latest)",
-            required=True,
-            enforced=True,
-        )],
+            protection_entries=[LiveRollbackProtectionEntry.model_construct(
+                context="validate (ubuntu-latest)",
+                required=True,
+                enforced=True,
+            ), LiveRollbackProtectionEntry.model_construct(
+                context="validate (windows-latest)",
+                required=True,
+                enforced=True,
+            )],
+            freshness_cutoff=NOW - timedelta(hours=1),
+            observed_at=NOW,
         source_pinned=True,
     )
     workflow = LiveRollbackWorkflowEvidence.model_construct(
@@ -193,7 +213,10 @@ def _completion_fixture() -> LiveRollbackCompletionPackage:
         target_repository_digest=request.repository_digest,
         target_ref=request.target_ref,
         target_identity="pr-99",
-        trusted_check_contexts=["avo synthetic validate (ubuntu-latest)"],
+            trusted_check_contexts=[
+                "avo synthetic validate (ubuntu-latest)",
+                "avo synthetic validate (windows-latest)",
+            ],
         provider_identity=provider_observation.provider_identity,
         provider_api_version=provider_observation.provider_api_version,
     )
@@ -321,7 +344,7 @@ def test_completion_journal_indexes_only_after_cleanup(tmp_path: Path) -> None:
             "cleanup_outcome": package.cleanup_outcome.model_copy(update={"outcome": "created"})
         }
     )
-    with pytest.raises(LiveRollbackCompletionJournalError, match="cleanup"):
+    with pytest.raises(LiveRollbackCompletionJournalError, match=r"cleanup|semantic"):
         journal.record_package(pending)
 
 
@@ -333,3 +356,41 @@ def test_completion_journal_rejects_missing_or_tampered_child(tmp_path: Path) ->
     journal._store.path_for_digest(child.digest).unlink()  # pyright: ignore[reportPrivateUsage]
     with pytest.raises(LiveRollbackCompletionJournalError, match=r"child|unverifiable"):
         journal.read_package(package.operation_id)
+
+
+def test_completion_journal_semantically_validates_before_index(tmp_path: Path) -> None:
+    package = _completion_fixture()
+    journal = LiveRollbackCompletionJournal(tmp_path)
+    invalid = package.model_copy(update={"deploy_performed": True})
+    with pytest.raises(LiveRollbackCompletionJournalError, match="semantic"):
+        journal.record_package(invalid)
+    assert not (tmp_path / "live-rollback-completion-index").exists()
+    traversal = package.model_copy(update={"operation_id": "../escape"})
+    with pytest.raises(LiveRollbackCompletionJournalError, match="semantic"):
+        journal.record_package(traversal)
+    assert not (tmp_path / "escape.json").exists()
+
+
+def test_completion_package_rejects_duplicate_or_stale_exact_checks() -> None:
+    package = _completion_fixture()
+    check = package.check_manifest.check_entries[0]
+    duplicate = package.check_manifest.model_copy(
+        update={"check_entries": [check, check]}
+    )
+    with pytest.raises(ValueError, match=r"exact|contexts|artifact|topology"):
+        package.model_copy(update={"check_manifest": duplicate}).validate_package()  # pyright: ignore[reportCallIssue]
+    stale = check.model_copy(update={"completed_at": NOW - timedelta(hours=2)})
+    stale_manifest = package.check_manifest.model_copy(
+        update={"check_entries": [stale, package.check_manifest.check_entries[1]]}
+    )
+    with pytest.raises(ValueError, match=r"exact|freshness|artifact|topology"):
+        package.model_copy(update={"check_manifest": stale_manifest}).validate_package()  # pyright: ignore[reportCallIssue]
+
+
+def test_completion_package_binds_reconciliation_protection_digest() -> None:
+    package = _completion_fixture()
+    changed = package.provider_reconciliation.model_copy(
+        update={"protection_evidence_digest": "sha256:" + "b" * 64}
+    )
+    with pytest.raises(ValueError, match=r"topology|provider"):
+        package.model_copy(update={"provider_reconciliation": changed}).validate_package()  # pyright: ignore[reportCallIssue]

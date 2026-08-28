@@ -1923,6 +1923,11 @@
           "title": "App Id",
           "type": "integer"
         },
+        "completed_at": {
+          "format": "date-time",
+          "title": "Completed At",
+          "type": "string"
+        },
         "conclusion": {
           "const": "success",
           "title": "Conclusion",
@@ -1954,7 +1959,8 @@
         "context",
         "sha",
         "status",
-        "conclusion"
+        "conclusion",
+        "completed_at"
       ],
       "title": "LiveRollbackCheckEntry",
       "type": "object"
@@ -2099,6 +2105,11 @@
           "title": "Entries",
           "type": "array"
         },
+        "freshness_cutoff": {
+          "format": "date-time",
+          "title": "Freshness Cutoff",
+          "type": "string"
+        },
         "kind": {
           "enum": [
             "trusted-check-manifest",
@@ -2110,6 +2121,11 @@
         "manifest_digest": {
           "pattern": "^sha256:[0-9a-f]{64}$",
           "title": "Manifest Digest",
+          "type": "string"
+        },
+        "observed_at": {
+          "format": "date-time",
+          "title": "Observed At",
           "type": "string"
         },
         "protection_entries": {
@@ -2164,7 +2180,9 @@
         "manifest_digest",
         "provider_identity",
         "provider_api_version",
-        "entries"
+        "entries",
+        "freshness_cutoff",
+        "observed_at"
       ],
       "title": "LiveRollbackManifestEvidence",
       "type": "object"

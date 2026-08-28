@@ -37,6 +37,13 @@ class LiveRollbackCompletionJournal:
         self._max = max_package_bytes
 
     def record_package(self, package: LiveRollbackCompletionPackage) -> ArtifactRef:
+        try:
+            _check_digest(package.operation_id)
+            package = LiveRollbackCompletionPackage.model_validate(package)
+        except (TypeError, ValueError) as exc:
+            raise LiveRollbackCompletionJournalError(
+                "completion package failed semantic validation"
+            ) from exc
         if package.cleanup_outcome.outcome != "cleaned":
             raise LiveRollbackCompletionJournalError(
                 "completion cannot be indexed before durable cleanup"

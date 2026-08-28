@@ -257,3 +257,44 @@ def test_core_completion_verifier_rejects_forged_digest() -> None:
     forged = package.cleanup_proof.model_copy(update={"completion_digest": "sha256:" + "f" * 64})
     with pytest.raises(ValueError, match="durable rollback core"):
         verifier.verify(package.validation_plan, forged)
+
+
+def test_completion_service_fences_target_and_main_immediately_before_index() -> None:
+    package = _completion_fixture()
+    validation = _Validation(package)
+    journal = _CompletionJournal()
+    valid = LiveRollbackTargetObservation(
+        repository_digest=package.provider_reconciliation.repository_digest,
+        target_ref=package.provider_reconciliation.target_ref,
+        commit=package.provider_reconciliation.target_head_commit,
+        tree=package.provider_reconciliation.target_head_tree,
+        parent_commits=(package.core_package.request.failed_integration_head_commit,),
+    )
+    stale = LiveRollbackTargetObservation(
+        repository_digest=valid.repository_digest,
+        target_ref=valid.target_ref,
+        commit="f" * 40,
+        tree=valid.tree,
+        parent_commits=valid.parent_commits,
+    )
+    observations = iter((valid, valid, stale))
+    service = LiveRollbackCompletionService(
+        cast(Any, _Core(package)),
+        cast(Any, validation),
+        cast(Any, journal),
+        current_target_observation=lambda: next(observations),
+        main_head_reader=lambda: package.core_package.request.main_before_commit,
+    )
+    with pytest.raises(RuntimeError, match="stale"):
+        service.run(
+            package.core_package.request,
+            canary_package=package.core_package.canary_package,
+            canary_package_artifact=package.core_package.canary_package_artifact,
+            authorization=package.core_package.authorization,
+            bundle=package.core_package.bundle,
+            publication=package.core_package.publication,
+            bundle_digest=package.core_package.bundle_digest,
+            intent_factory=lambda _lease: cast(Any, object()),
+            inputs=_inputs(package),
+        )
+    assert journal.recorded is None

@@ -7,6 +7,11 @@
       "title": "App Id",
       "type": "integer"
     },
+    "completed_at": {
+      "format": "date-time",
+      "title": "Completed At",
+      "type": "string"
+    },
     "conclusion": {
       "const": "success",
       "title": "Conclusion",
@@ -38,7 +43,8 @@
     "context",
     "sha",
     "status",
-    "conclusion"
+    "conclusion",
+    "completed_at"
   ],
   "title": "LiveRollbackCheckEntry",
   "type": "object"

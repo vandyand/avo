@@ -230,6 +230,7 @@ class LiveRollbackCompletionService:
             proof,
             cleanup_outcome,
         )
+        self._validate_final_state(request, inputs.provider_reconciliation)
         package_ref = self._completion_journal.record_package(package)
         return LiveRollbackCompletionExecution(
             core, package, package_ref, validation_outcome, cleanup_outcome, core.rollback.replayed

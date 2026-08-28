@@ -3,11 +3,18 @@
 from __future__ import annotations
 
 import re
+from datetime import datetime
 from typing import Literal
 
-from pydantic import Field, model_validator
+from pydantic import Field, field_validator, model_validator
 
-from avo_correlate.contracts.base import ArtifactRef, NonEmptyString, Sha256Digest, StrictModel
+from avo_correlate.contracts.base import (
+    ArtifactRef,
+    NonEmptyString,
+    Sha256Digest,
+    StrictModel,
+    require_aware_datetime,
+)
 from avo_correlate.contracts.integration_live_rollback import LiveRollbackEvidencePackage
 from avo_correlate.contracts.integration_promotion import (
     IntegrationProviderObservation,
@@ -23,6 +30,13 @@ from avo_correlate.domain.canonical import canonical_bytes, canonical_digest
 
 _GIT = re.compile(r"^[0-9a-f]{40}(?:[0-9a-f]{24})?$")
 _VALIDATION_WORKFLOW = ".github/workflows/synthetic-validation.yml"
+_TRUSTED_CONTEXTS = frozenset(
+    {
+        "avo synthetic validate (ubuntu-latest)",
+        "avo synthetic validate (windows-latest)",
+    }
+)
+_PROTECTION_CONTEXTS = frozenset({"validate (ubuntu-latest)", "validate (windows-latest)"})
 
 
 def _empty_check_entries() -> list[LiveRollbackCheckEntry]:
@@ -42,6 +56,9 @@ class LiveRollbackCheckEntry(StrictModel):
     sha: str
     status: Literal["completed"]
     conclusion: Literal["success"]
+    completed_at: datetime
+
+    _aware_completed_at = field_validator("completed_at")(require_aware_datetime)
 
     @model_validator(mode="after")
     def validate_entry(self) -> LiveRollbackCheckEntry:
@@ -164,7 +181,12 @@ class LiveRollbackManifestEvidence(StrictModel):
     protection_entries: list[LiveRollbackProtectionEntry] = Field(
         default_factory=_empty_protection_entries
     )
+    freshness_cutoff: datetime
+    observed_at: datetime
     source_pinned: Literal[True] = True
+
+    _aware_freshness_cutoff = field_validator("freshness_cutoff")(require_aware_datetime)
+    _aware_observed_at = field_validator("observed_at")(require_aware_datetime)
 
     @model_validator(mode="after")
     def validate_manifest(self) -> LiveRollbackManifestEvidence:
@@ -172,11 +194,19 @@ class LiveRollbackManifestEvidence(StrictModel):
             raise ValueError("manifest source commit is malformed")
         if len(self.entries) != len(set(self.entries)):
             raise ValueError("manifest entries must be unique")
+        if self.observed_at < self.freshness_cutoff:
+            raise ValueError("manifest observation predates freshness cutoff")
         if self.kind == "trusted-check-manifest":
             if not self.check_entries or self.protection_entries:
                 raise ValueError("check manifest must carry typed check entries")
+            if len({entry.context for entry in self.check_entries}) != len(self.check_entries):
+                raise ValueError("trusted check contexts must be unique")
         elif not self.protection_entries or self.check_entries:
             raise ValueError("protection manifest must carry typed protection entries")
+        elif len({entry.context for entry in self.protection_entries}) != len(
+            self.protection_entries
+        ):
+            raise ValueError("protection contexts must be unique")
         return self
 
 
@@ -332,6 +362,8 @@ class LiveRollbackCompletionPackage(StrictModel):
             or reconciliation.provider_identity != intent.provider_identity
             or reconciliation.provider_api_version != intent.provider_api_version
             or reconciliation.target_ref != request.target_ref
+            or reconciliation.protection_evidence_digest
+            != observation.protection_evidence_digest
             or reconciliation.target_head_commit != receipt.applied_result_commit
             or reconciliation.target_head_tree != receipt.applied_result_tree
             or reconciliation.target_parents != [request.failed_integration_head_commit]
@@ -432,15 +464,21 @@ class LiveRollbackCompletionPackage(StrictModel):
             raise ValueError("live completion validation or cleanup binding is inconsistent")
         expected_contexts = set(plan.request.trusted_check_contexts)
         if (
-            {entry.context for entry in self.check_manifest.check_entries} != expected_contexts
+            expected_contexts != set(_TRUSTED_CONTEXTS)
+            or {entry.context for entry in self.check_manifest.check_entries}
+            != set(_TRUSTED_CONTEXTS)
+            or set(self.check_manifest.entries) != set(_TRUSTED_CONTEXTS)
             or any(
                 entry.sha != observation.synthetic_merge_commit
+                or entry.completed_at < self.check_manifest.freshness_cutoff
+                or entry.completed_at > self.check_manifest.observed_at
                 for entry in self.check_manifest.check_entries
             )
             or {
                 entry.context for entry in self.protection_manifest.protection_entries
             }
-            != expected_contexts
+            != set(_PROTECTION_CONTEXTS)
+            or set(self.protection_manifest.entries) != set(_PROTECTION_CONTEXTS)
             or any(
                 entry.app_id != 15368
                 or entry.status != "completed"
