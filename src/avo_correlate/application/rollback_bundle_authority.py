@@ -93,6 +93,20 @@ class RollbackBundleAuthority:
             raise TypeError("snapshot/restore facts must be authenticated typed facts")
         if not isinstance(prepared, PreparedPublication):
             raise TypeError("prepared must be a trusted PreparedPublication")
+        # Public callers can hand us Pydantic model instances created with
+        # model_construct(), which bypasses nested validators.  Round-trip all
+        # provider evidence before the create-once authority is written.
+        operation = IntegrationRollbackRequest.model_validate_json(
+            canonical_bytes(operation)
+        )
+        canary_package = IntegrationCampaignEvidencePackage.model_validate_json(
+            canonical_bytes(canary_package)
+        )
+        canary_package_artifact = ArtifactRef.model_validate_json(
+            canonical_bytes(canary_package_artifact)
+        )
+        facts = RollbackSnapshotRestoreFacts.model_validate_json(canonical_bytes(facts))
+        failed_soak = FailedSoakAttestation.model_validate_json(canonical_bytes(failed_soak))
         self._validate_soak(failed_soak)
         plan = prepared.plan
         config = self.config
@@ -104,6 +118,27 @@ class RollbackBundleAuthority:
             or canary_package_artifact.size_bytes != len(canonical_bytes(canary))
         ):
             raise ValueError("canary package artifact is not the canonical semantic package")
+        try:
+            if self.journal.read_artifact(canary_package_artifact) != canonical_bytes(canary):
+                raise ValueError("canary package artifact contents differ from package")
+            lease_reference = canary.lease_evidence_artifact
+            lease_payload = canonical_bytes(canary.lease_evidence)
+            if (
+                lease_reference.digest != canonical_digest(canary.lease_evidence)
+                or lease_reference.size_bytes != len(lease_payload)
+                or self.journal.read_artifact(lease_reference) != lease_payload
+            ):
+                raise ValueError("canary lease evidence child is not content-bound")
+            for evidence_reference in canary.evidence_artifacts:
+                evidence_payload = self.journal.read_artifact(evidence_reference)
+                parsed = json.loads(evidence_payload)
+                if (
+                    canonical_bytes(parsed) != evidence_payload
+                    or canonical_digest(parsed) != evidence_reference.digest
+                ):
+                    raise ValueError("canary evidence child is not canonical")
+        except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
+            raise ValueError("durable canary child evidence is missing or tampered") from exc
         if (
             facts.repository_digest != config.repository_digest
             or facts.repository_digest != operation.repository_digest

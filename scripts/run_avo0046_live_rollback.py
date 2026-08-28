@@ -159,7 +159,7 @@ class LiveRollbackHostedRunner:
             raise RuntimeError("successful canary package is missing from durable state")
         canary, canary_ref = loaded
         target = self.provider.read_authority_ref(TARGET_REF)
-        main = self.provider.read_authority_ref(MAIN_REF)
+        main = self.provider.read_authority_ref(MAIN_REF, allow_protected=True)
         if (
             canary.report.outcome not in {"applied", "already_applied"}
             or canary.receipt.applied_result_commit != target.commit
@@ -306,7 +306,7 @@ def _askpass_path(state_root: Path) -> Path:
 
 
 def _main_head(provider: GitHubIntegrationProvider) -> str:
-    return provider.read_authority_ref(MAIN_REF).commit
+    return provider.read_authority_ref(MAIN_REF, allow_protected=True).commit
 
 
 def _target_observation(provider: GitHubIntegrationProvider) -> LiveRollbackTargetObservation:
@@ -375,6 +375,28 @@ def _validate_canary_trust_matches_fixed(preflight: LiveRollbackPreflight) -> No
         or CANARY_ROLLBACK_ISSUER not in config.policy.rollback_issuer_ids
     ):
         raise RuntimeError("durable canary controller identity differs from fixed rollback trust")
+
+
+def _validate_durable_canary(
+    state_root: Path, preflight: LiveRollbackPreflight
+) -> None:
+    """Require the caller's canary objects to be the fully checked durable record.
+
+    ``LiveRollbackPreflight`` is a public in-process boundary, so an object made
+    with Pydantic ``model_construct`` must not be allowed to stand in for the
+    package read by the campaign journal.  Reading the indexed package again
+    also verifies its lease and evidence children before publication preparation.
+    """
+
+    store = FilesystemArtifactStore(state_root / "artifacts")
+    loaded = CampaignCompletionJournal(
+        state_root / "completion", artifact_store=store
+    ).read_package(preflight.canary_operation_id)
+    if loaded is None:
+        raise RuntimeError("durable canary package is missing")
+    canary, reference = loaded
+    if canary != preflight.canary_package or reference != preflight.canary_package_artifact:
+        raise RuntimeError("preflight canary is not the durable semantic package")
 
 
 def _rollback_request(
@@ -460,6 +482,7 @@ def execute_live(
     _check_operation_id(preflight.operation_id)
     _check_operation_id(preflight.canary_operation_id)
     _assert_safe_roots(state_root, repository_root, candidate_root)
+    _validate_durable_canary(state_root, preflight)
     _validate_canary_trust_matches_fixed(preflight)
     artifact_store = FilesystemArtifactStore(state_root / "artifacts")
     # This is the independent, authenticated rollback trigger.  Nothing that

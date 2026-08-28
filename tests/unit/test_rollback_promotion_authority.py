@@ -1,11 +1,19 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import pytest
 
 from avo_correlate.adapters.artifacts import FilesystemArtifactStore
+from avo_correlate.adapters.git.publisher import PreparedPublication, PublicationPlan
 from avo_correlate.application.promotion_service import RollbackPromotionAuthorizationJournal
+from avo_correlate.application.rollback_bundle_authority import RollbackBundleAuthority
+from avo_correlate.contracts.base import ArtifactRef
+from avo_correlate.contracts.integration_campaign import IntegrationCampaignEvidencePackage
+from avo_correlate.contracts.integration_drill import IntegrationRollbackRequest
+from avo_correlate.contracts.integration_soak import FailedSoakAttestation
+from avo_correlate.contracts.prepublication import RollbackSnapshotRestoreFacts
 from avo_correlate.contracts.promotion_bundle import RollbackPromotionBundleAuthorization
 from avo_correlate.domain.canonical import canonical_digest
 
@@ -69,3 +77,53 @@ def test_authorization_journal_is_create_once_and_rejects_conflicts(tmp_path: Pa
         journal.require(authorization, require_children=True)
     with pytest.raises(ValueError, match="conflicting"):
         journal.record(_authorization("different reason"))
+
+
+def test_prepublication_authority_rejects_nested_model_construct_before_record() -> None:
+    class Journal:
+        records = 0
+
+        def record(self, *_args: Any, **_kwargs: Any) -> None:
+            self.records += 1
+
+        def read_artifact(self, *_args: Any, **_kwargs: Any) -> bytes:
+            raise AssertionError("child reads must not follow semantic rejection")
+
+    operation = IntegrationRollbackRequest.model_construct(
+        operation_id=D,
+        promotion_operation_id="sha256:" + "b" * 64,
+        repository_digest="sha256:" + "c" * 64,
+        target_ref="refs/heads/integration",
+        main_before_commit=G,
+        failed_integration_head_commit=G,
+        failed_integration_head_tree=G,
+        restore_to_commit=G,
+        restore_to_tree=G,
+        rollback_candidate_commit="2" * 40,
+        rollback_candidate_parent_commit=G,
+    )
+    plan = PublicationPlan(
+        publication_id=D,
+        repository_digest=operation.repository_digest,
+        expected_remote="https://github.com/acme/widget.git",
+        base_commit=G,
+        base_tree=G,
+        candidate_digest=D,
+        candidate_ref="refs/heads/avo/candidate/" + "a" * 32,
+        candidate_commit="2" * 40,
+        candidate_tree=G,
+        controller_publisher_identity="publisher",
+        changed_paths=("src/x.py",),
+    )
+    journal = Journal()
+    authority = RollbackBundleAuthority(Any, journal)  # type: ignore[arg-type]
+    with pytest.raises((ValueError, TypeError)):
+        authority.authorize(
+            operation,
+            canary_package_artifact=ArtifactRef.model_construct(),
+            canary_package=IntegrationCampaignEvidencePackage.model_construct(),
+            failed_soak=FailedSoakAttestation.model_construct(),
+            facts=RollbackSnapshotRestoreFacts.model_construct(),
+            prepared=PreparedPublication(plan, Path("candidate")),
+        )
+    assert journal.records == 0

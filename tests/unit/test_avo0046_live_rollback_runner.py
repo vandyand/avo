@@ -1,5 +1,6 @@
 from datetime import UTC, datetime
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, cast
 
 import pytest
@@ -29,6 +30,7 @@ from scripts.run_avo0046_live_rollback import (
     _assert_safe_roots,
     _authority_config,
     _check_operation_id,
+    _main_head,
     _rollback_controller_config,
     _validate_completed_canary,
     build_parser,
@@ -190,6 +192,18 @@ def test_runner_rejects_candidate_vcs_metadata_before_execution(tmp_path: Path) 
     (candidate / ".git").mkdir()
     with pytest.raises(ValueError, match="VCS-free"):
         _assert_safe_roots(tmp_path / "state", repository, candidate)
+
+
+def test_runner_reads_protected_main_with_explicit_authority_opt_in() -> None:
+    calls: list[tuple[str, bool]] = []
+
+    class Provider:
+        def read_authority_ref(self, ref: str, *, allow_protected: bool = False) -> object:
+            calls.append((ref, allow_protected))
+            return SimpleNamespace(commit="a" * 40)
+
+    assert _main_head(cast(Any, Provider())) == "a" * 40
+    assert calls == [("refs/heads/main", True)]
 
 
 def test_completed_replay_requires_the_cli_canary_identity() -> None:
