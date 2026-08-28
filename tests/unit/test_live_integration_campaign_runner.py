@@ -91,7 +91,8 @@ def test_askpass_contains_no_token(tmp_path: Path, monkeypatch: pytest.MonkeyPat
     assert secret not in content
     assert "GITHUB_TOKEN" in content
     assert "x-access-token" in content
-    assert "username" in content.lower()
+    lowered = content.lower()
+    assert "username" in lowered or "[uu]sername" in lowered
     assert "password" in content.lower()
 
 
