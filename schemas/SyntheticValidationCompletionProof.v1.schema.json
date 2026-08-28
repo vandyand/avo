@@ -1,0 +1,40 @@
+{
+  "additionalProperties": false,
+  "description": "Durable caller proof authorizing deletion of one exact validation ref.",
+  "properties": {
+    "completed": {
+      "const": true,
+      "default": true,
+      "title": "Completed",
+      "type": "boolean"
+    },
+    "completion_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Completion Digest",
+      "type": "string"
+    },
+    "operation_id": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Operation Id",
+      "type": "string"
+    },
+    "plan_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Plan Digest",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "operation_id",
+    "plan_digest",
+    "completion_digest"
+  ],
+  "title": "SyntheticValidationCompletionProof",
+  "type": "object"
+}

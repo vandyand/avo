@@ -1,8 +1,8 @@
 # AVO Roadmap
 
-Status date: 2026-08-27.
+Status date: 2026-08-28.
 
-Review date: 2026-08-27.
+Review date: 2026-08-28.
 
 Authority: This file is AVO's sole authority for outcomes, priority, sequencing, milestone status, and decision gates.
 
@@ -42,6 +42,14 @@ production authority outside the proposing agent's control.
 - Trusted hosted CI is green on Ubuntu and Windows. The canonical Linux gate passes all 373 tests
   at 85.40% branch coverage, and the native Windows portability gate passes 365 tests with one
   expected platform skip.
+- The sanitized AVO-004.5 live gate completed on 2026-08-28: PR #5 passed independent Luna and
+  Terra review, a separate full candidate suite (757 passed / 7 skipped), private evaluation, exact Ubuntu/Windows
+  checks from App 15368, protected integration promotion, one-parent topology reconciliation,
+  duplicate-runner fail-closed behavior, and completed-state replay. The [durable live result](avo-0045-sanitized-live-result.md)
+  records the immutable commit identities and digests.
+- The live gate exposed a head-versus-synthetic check attachment gap. A temporary exact-validation
+  ref/workflow-dispatch bridge recovered the gate and was cleaned up; it is not a production
+  attester. AVO-004.6 is ready to drill this boundary and harden the attestation path.
 
 ## Milestone register
 
@@ -72,15 +80,43 @@ approving every ordinary patch.
 | AVO-004.2 | complete | Green trusted CI baseline plus a controlling Git repository and remote, with candidate workspaces still VCS-free. | Hosted Linux/Windows CI, public repository, tagged commit/tree baseline, disposable-clone recovery, and enforced server-side `main` protection pass. |
 | AVO-004.3 | complete | ADR defining risk classes, constitutional paths, reviewer independence, exception policy, and rollback limits. | ADR 0007, exported strict schemas, 85 focused policy tests, independent adversarial review, and the full trusted suite pass. |
 | AVO-004.4 | complete | Dry-run promotion controller producing a content-addressed promotion bundle without merging. | [ADR 0008](adr/0008-dry-run-promotion-controller.md) and the [v1 result](avo-004-promotion-dry-run-v1-result.md) pass deterministic replay, trusted-base evaluation, provenance, adversarial review, coverage, and compare-and-swap checks. |
-| AVO-004.5 | ready | Automatic ordinary-change promotion to a protected integration branch. | Required trusted checks, independent review quorum, private regression evaluation, and integration soak all pass. |
-| AVO-004.6 | planned | Rollback and failure drills with immutable evidence. | Injected stale-base, flaky-check, reviewer-disagreement, failed-soak, and revert scenarios fail closed and reconstruct. |
+| AVO-004.5 | complete | Controller-driven ordinary-change promotion to a protected integration branch under the documented temporary exact-validation bridge. | The sanitized live campaign passes required trusted checks, independent review quorum, private regression evaluation, exact synthetic reconstruction, integration soak, protected merge, and durable recovery evidence. [Result](avo-0045-sanitized-live-result.md) |
+| AVO-004.6 | ready | Rollback and failure drills with immutable evidence, plus production-grade exact-SHA attestation. | The concrete failure-drill sequence below fails closed and reconstructs, and the temporary validation bridge is replaced or formally bounded by a base-controlled attester or dedicated GitHub App. [Result](avo-0045-sanitized-live-result.md) |
 | AVO-004.7 | planned | Graduation of ordinary changes from integration to automatic protected-main promotion. | A preregistered clean-run threshold is met with zero boundary violations and successful rollback drills. |
 
 The roadmap gate was completed first because the operator explicitly authorized it. The green test
 and coverage baseline, controlling repository, public remote, baseline tag, recovery rehearsal, and
 server-side `main` protection now pass. AVO-004.4's no-merge controller passed independent
-adversarial review and protected Ubuntu/Windows CI before merging. AVO-004.5 is the next gate; it
-adds bounded mutation only to a protected integration branch, not directly to `main`.
+adversarial review and protected Ubuntu/Windows CI before merging. AVO-004.5 then completed one
+sanitized live promotion to the protected integration branch without changing `main`. AVO-004.6
+is now the next gate: it turns the live campaign's recovery and exact-SHA observations into
+repeatable failure evidence and production attestation hardening.
+
+### AVO-004.6 next-gate failure-drill sequence
+
+Run each drill from a clean, trusted base and retain immutable evidence for the decision and
+reconciliation outcome:
+
+1. Replay the same operation concurrently with duplicate runners; exactly one may own the lease,
+   and every duplicate must fail closed or return the durable completed result.
+2. Present a stale base and a changed protected-branch head; compare-and-swap must refuse the
+   promotion without creating a merge or mutating `main`.
+3. Remove, stale, or mismatch one required Ubuntu/Windows check, including a check attached only
+   to the PR head rather than the exact synthetic SHA; the attester must reject it.
+4. Supply reviewer disagreement, insufficient quorum, and a failed private evaluation; no merge
+   may occur and the rejection must reconstruct from the receipt.
+5. Interrupt the provider/authentication boundary and restart from durable intent; recovery must
+   be idempotent, with no duplicate merge or lost receipt.
+6. Supply an external two-parent result or incorrect parent/tree identity; topology reconciliation
+   must reject it and preserve the target branch.
+7. Exercise integration soak failure and an authorized rollback; both must produce durable,
+   content-addressed evidence and leave protected `main` unchanged.
+8. Replace the temporary exact-validation ref/workflow-dispatch bridge with a base-controlled
+   exact-SHA attestation or dedicated GitHub App, then repeat the check-identity drills.
+
+The gate exits only when all injected failures fail closed, successful recovery is idempotent, the
+result and rollback records reconstruct, and the exact-SHA checks are produced by a repeatable
+production-boundary attester.
 
 ### Promotion policy target
 

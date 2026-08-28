@@ -1,0 +1,95 @@
+{
+  "additionalProperties": false,
+  "description": "Durable result of trigger/ref reconciliation or cleanup.",
+  "properties": {
+    "error": {
+      "anyOf": [
+        {
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Error"
+    },
+    "expected_commit": {
+      "title": "Expected Commit",
+      "type": "string"
+    },
+    "expected_tree": {
+      "title": "Expected Tree",
+      "type": "string"
+    },
+    "observed_commit": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Observed Commit"
+    },
+    "observed_tree": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Observed Tree"
+    },
+    "operation_id": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Operation Id",
+      "type": "string"
+    },
+    "outcome": {
+      "enum": [
+        "created",
+        "already_present",
+        "reconciled",
+        "reconciliation_required",
+        "invalid",
+        "quarantined",
+        "cleaned"
+      ],
+      "title": "Outcome",
+      "type": "string"
+    },
+    "plan_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Plan Digest",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "validation_ref": {
+      "minLength": 1,
+      "title": "Validation Ref",
+      "type": "string"
+    }
+  },
+  "required": [
+    "operation_id",
+    "plan_digest",
+    "validation_ref",
+    "expected_commit",
+    "expected_tree",
+    "outcome"
+  ],
+  "title": "SyntheticValidationOutcome",
+  "type": "object"
+}

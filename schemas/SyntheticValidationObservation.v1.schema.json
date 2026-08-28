@@ -1,0 +1,64 @@
+{
+  "additionalProperties": false,
+  "description": "The exact current PR and synthetic merge observation being validated.",
+  "properties": {
+    "base_commit": {
+      "title": "Base Commit",
+      "type": "string"
+    },
+    "base_ref": {
+      "minLength": 1,
+      "title": "Base Ref",
+      "type": "string"
+    },
+    "base_tree": {
+      "title": "Base Tree",
+      "type": "string"
+    },
+    "head_commit": {
+      "title": "Head Commit",
+      "type": "string"
+    },
+    "head_ref": {
+      "minLength": 1,
+      "title": "Head Ref",
+      "type": "string"
+    },
+    "head_tree": {
+      "title": "Head Tree",
+      "type": "string"
+    },
+    "repository_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Repository Digest",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "synthetic_commit": {
+      "title": "Synthetic Commit",
+      "type": "string"
+    },
+    "synthetic_tree": {
+      "title": "Synthetic Tree",
+      "type": "string"
+    }
+  },
+  "required": [
+    "repository_digest",
+    "base_ref",
+    "base_commit",
+    "base_tree",
+    "head_ref",
+    "head_commit",
+    "head_tree",
+    "synthetic_commit",
+    "synthetic_tree"
+  ],
+  "title": "SyntheticValidationObservation",
+  "type": "object"
+}

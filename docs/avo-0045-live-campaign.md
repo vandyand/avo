@@ -29,7 +29,7 @@ Evidence is content-addressed and validated by the trusted quality adapter.
 The two reviewer artifacts must represent independent trusted domains. The
 hosted check evidence is additionally read from the exact synthetic merge
 commit and must contain the configured Ubuntu and Windows checks, completed
-successfully within the freshness window.
+successfully within the controller-derived one-hour freshness window.
 
 ## Preflight
 
@@ -39,7 +39,7 @@ does not require the six post-discovery evidence files, perform a GitHub
 request, or mutate a remote. `--dry-run` has the same no-remote-mutation
 guarantee.
 
-Example shape (the check names and App IDs are configuration, not defaults):
+Example shape (the synthetic check names and App IDs are controller-pinned):
 
 ```text
 uv run python scripts/run_sanitized_integration_campaign.py \
@@ -50,9 +50,6 @@ uv run python scripts/run_sanitized_integration_campaign.py \
   --controller-config ../avo-0045-evidence/controller-config.json \
   --candidate-id sanitized-live-001 \
   --proposer-id avo-controller \
-  --trusted-check "validate (ubuntu-latest)=15368" \
-  --trusted-check "validate (windows-latest)=15368" \
-  --freshness-cutoff 2026-08-27T00:00:00Z \
   --preflight
 ```
 
