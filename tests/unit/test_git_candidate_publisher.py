@@ -8,6 +8,7 @@ import subprocess
 from collections.abc import Callable, Mapping
 from dataclasses import replace
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, cast
 
 import pytest
@@ -117,12 +118,25 @@ def test_prepare_has_no_remote_mutation_and_authorized_publish_fences_push(
             self.values.append(authorization)
 
     fence = Fence()
+    auth = SimpleNamespace(
+        publication_plan_digest=prepared.plan.publication_id,
+        repository_digest=prepared.plan.repository_digest,
+        failed_integration_head_commit=prepared.plan.base_commit,
+        failed_integration_head_tree=prepared.plan.base_tree,
+        rollback_candidate_commit=prepared.plan.candidate_commit,
+        rollback_candidate_tree=prepared.plan.candidate_tree,
+        candidate_digest=prepared.plan.candidate_digest,
+        candidate_ref=prepared.plan.candidate_ref,
+        publisher_identity=prepared.plan.controller_publisher_identity,
+        changed_paths=list(prepared.plan.changed_paths),
+        publication_evidence_digest=prepared.evidence_digest,
+    )
     result = adapter.publish_prepared(
         prepared,
-        authorization="typed-preauth",
+        authorization=auth,
         authorization_journal=fence,
     )
-    assert fence.values == ["typed-preauth"]
+    assert fence.values == [auth]
     assert run_git(
         remote, "rev-parse", result.binding.candidate_ref
     ) == result.binding.candidate_commit
@@ -148,11 +162,11 @@ def test_ref_collision_fails_before_push(
     git_fixture: tuple[Path, Path, Path, str, str, str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     remote, _seed, candidate, base_commit, base_tree, digest = git_fixture
-    ref = "refs/heads/avo/candidate/" + "a" * 32
+    ref = "refs/heads/avo/candidate/" + "a" * 64
     run_git(remote, "update-ref", ref, base_commit)
 
     def fixed_token_hex(_n: int) -> str:
-        return "a" * 32
+        return "a" * 64
 
     monkeypatch.setattr(
         "avo_correlate.adapters.git.publisher.secrets.token_hex",
@@ -319,7 +333,9 @@ def test_live_transport_requires_explicit_github_https() -> None:
 
 
 def _publication_plan(adapter: GitCandidatePublisher, base_commit: str, base_tree: str,
-                      *, candidate_ref: str = "refs/heads/avo/candidate/test") -> PublicationPlan:
+                      *,
+                      candidate_ref: str = "refs/heads/avo/candidate/" + "a" * 64
+                      ) -> PublicationPlan:
     return adapter._new_plan(
         base_commit,
         base_tree,
@@ -327,6 +343,7 @@ def _publication_plan(adapter: GitCandidatePublisher, base_commit: str, base_tre
         candidate_ref,
         "b" * 40,
         "c" * 40,
+        changed_paths=("README.md",),
     )
 
 
@@ -385,7 +402,8 @@ def test_journal_rejects_malformed_index_role_identity_and_multiple_matches(
     journal = FilesystemPublicationJournal(tmp_path / "journal-multiple")
     journal.record_plan(first)
     second = _publication_plan(
-        adapter, base_commit, base_tree, candidate_ref="refs/heads/avo/candidate/other"
+        adapter, base_commit, base_tree,
+        candidate_ref="refs/heads/avo/candidate/" + "b" * 64,
     )
     journal.record_plan(second)
     with pytest.raises(GitRepositoryError, match="multiple"):

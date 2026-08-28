@@ -602,6 +602,7 @@ class GitCandidatePublisher:
             "candidate_commit": candidate_commit,
             "candidate_tree": candidate_tree,
             "controller_publisher_identity": self.controller_publisher_identity,
+            "changed_paths": list(plan.changed_paths),
             "verified": True,
         }
         evidence_bytes = canonical_bytes(evidence_payload)
@@ -695,6 +696,9 @@ class GitCandidatePublisher:
         if authorization_journal is None:
             raise GitRepositoryError("a pre-publication authorization journal is required")
         authorization_journal.require(authorization)
+        self._validate_candidate_ref(prepared.plan.candidate_ref)
+        self._validate_changed_paths(prepared.plan.changed_paths)
+        self._validate_authorization_plan(authorization, prepared)
         return self._publish_prepared(prepared)
 
     # Explicit name for callers that want the security property visible at the
@@ -831,6 +835,8 @@ class GitCandidatePublisher:
             or plan.expected_remote != self.expected_remote
         ):
             raise GitRepositoryError("publication plan belongs to a different repository")
+        self._validate_candidate_ref(plan.candidate_ref)
+        self._validate_changed_paths(plan.changed_paths)
         with tempfile.TemporaryDirectory(prefix="avo-candidate-reconcile-") as directory:
             clone = Path(directory) / "clone"
             self._run(
@@ -902,6 +908,12 @@ class GitCandidatePublisher:
         """Reconcile a rollback publication only after the preauth fence."""
 
         authorization_journal.require(authorization)
+        plan = self._journal().read_plan(publication_id)
+        if plan is None:
+            raise GitRepositoryError("publication plan was not found")
+        self._validate_candidate_ref(plan.candidate_ref)
+        self._validate_changed_paths(plan.changed_paths)
+        self._validate_authorization_plan(authorization, PreparedPublication(plan, Path()))
         return self.reconcile(publication_id)
 
     def _new_plan(
@@ -1097,7 +1109,56 @@ class GitCandidatePublisher:
         return line[0].split()[0]
 
     def _new_candidate_ref(self) -> str:
-        return f"refs/heads/avo/candidate/{secrets.token_hex(16)}"
+        return f"refs/heads/avo/candidate/{secrets.token_hex(32)}"
+
+    @staticmethod
+    def _validate_candidate_ref(ref: str) -> None:
+        if re.fullmatch(r"refs/heads/avo/candidate/[0-9a-f]{64}", ref) is None:
+            raise GitRepositoryError("candidate ref is outside the controller candidate namespace")
+
+    @staticmethod
+    def _validate_changed_paths(paths: tuple[str, ...]) -> None:
+        expected = tuple(sorted(paths, key=lambda value: (value.casefold(), value)))
+        if paths != expected or not paths:
+            raise GitRepositoryError("candidate changed paths are malformed")
+        if len({path.casefold() for path in paths}) != len(paths):
+            raise GitRepositoryError("candidate changed paths contain a collision")
+        for path in paths:
+            if (
+                not path
+                or path.startswith(("/", "\\"))
+                or ".." in path.replace("\\", "/").split("/")
+            ):
+                raise GitRepositoryError("candidate changed path is unsafe")
+
+    @staticmethod
+    def _validate_authorization_plan(
+        authorization: object, prepared: PreparedPublication
+    ) -> None:
+        """Bind every publication identity to the exact stored preauth object."""
+
+        plan = prepared.plan
+        try:
+            expected = {
+                "publication_plan_digest": plan.publication_id,
+                "repository_digest": plan.repository_digest,
+                "failed_integration_head_commit": plan.base_commit,
+                "failed_integration_head_tree": plan.base_tree,
+                "rollback_candidate_commit": plan.candidate_commit,
+                "rollback_candidate_tree": plan.candidate_tree,
+                "candidate_digest": plan.candidate_digest,
+                "candidate_ref": plan.candidate_ref,
+                "publisher_identity": plan.controller_publisher_identity,
+                "changed_paths": list(plan.changed_paths),
+                "publication_evidence_digest": prepared.evidence_digest,
+            }
+            actual = {name: getattr(authorization, name) for name in expected}
+        except (AttributeError, TypeError) as exc:
+            raise GitRepositoryError("pre-publication authorization is not typed") from exc
+        if actual != expected:
+            raise GitRepositoryError(
+                "pre-publication authorization does not match publication plan"
+            )
 
     def _run(
         self,

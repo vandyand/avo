@@ -294,8 +294,7 @@ class GitHubIntegrationProvider:
             raise ValueError("invalid GitHub repository binding")
         if self.repository_digest != github_repository_digest(self.owner, self.repo):
             raise ValueError("repository digest does not match configured GitHub repository")
-        if not self.target_ref.startswith("refs/heads/") or self.target_ref == "refs/heads/":
-            raise ValueError("target ref must be refs/heads/<branch>")
+        self._authority_ref(self.target_ref, "target ref")
         parsed = urlparse(self.api_base)
         if parsed.scheme != "https" or parsed.netloc != "api.github.com":
             raise ValueError("GitHub API base must be https://api.github.com")
@@ -350,12 +349,68 @@ class GitHubIntegrationProvider:
         if not self.token:
             raise GitHubRejected("authenticated GitHub token is required")
 
+    def _paged_items(
+        self, path: str, key: str, label: str, *, max_items: int = 10_000
+    ) -> list[JsonObject]:
+        """Read a bounded REST collection, rejecting pagination drift/replays."""
+
+        page = 1
+        total: int | None = None
+        seen_ids: set[int] = set()
+        result: list[JsonObject] = []
+        while True:
+            suffix = "&" if "?" in path else "?"
+            payload = _object(
+                self._call("GET", f"{path}{suffix}per_page=100&page={page}"), label
+            )
+            declared = _required_int(payload, "total_count", label)
+            if declared < 0 or declared > max_items:
+                raise ValueError(f"{label} total count exceeds bounded pagination")
+            if total is None:
+                total = declared
+            elif total != declared:
+                raise ValueError(f"{label} total count changed during pagination")
+            items = payload.get(key)
+            if not isinstance(items, list) or len(items) > 100:
+                raise ValueError(f"{label} page is malformed or oversized")
+            for item in items:
+                parsed = _object(item, label[:-1] if label.endswith("s") else label)
+                raw_id = parsed.get("id")
+                if isinstance(raw_id, int) and not isinstance(raw_id, bool):
+                    if raw_id in seen_ids:
+                        raise ValueError(f"duplicate {label} ID across pages")
+                    seen_ids.add(raw_id)
+                result.append(parsed)
+            expected_pages = max(1, ceil(declared / 100))
+            if page > expected_pages or page > 100:
+                raise ValueError(f"{label} pagination exceeded declared bounds")
+            expected_items = declared - ((page - 1) * 100) if page == expected_pages else 100
+            if len(items) != expected_items:
+                raise ValueError(f"{label} page is inconsistent with total_count")
+            if page == expected_pages:
+                break
+            page += 1
+        assert total is not None
+        if len(result) != total:
+            raise ValueError(f"{label} pagination did not collect total_count items")
+        return result
+
     @staticmethod
     def _authority_ref(value: str, context: str) -> str:
-        if not value.startswith("refs/heads/") or value == "refs/heads/":
+        if (
+            not value.startswith("refs/heads/")
+            or value == "refs/heads/"
+            or value.endswith(("/", "."))
+        ):
             raise ValueError(f"{context} must be a full heads ref")
         branch = value.removeprefix("refs/heads/")
-        if any(char in branch for char in "\x00\r\n~^:?*[\\") or ".." in branch:
+        lowered = branch.casefold()
+        if (
+            any(char in branch for char in "\x00\r\n ~^:?*[\\")
+            or ".." in branch
+            or lowered in {"main", "master"}
+            or any(term in lowered for term in ("production", "deploy"))
+        ):
             raise ValueError(f"malformed {context}")
         return value
 
@@ -626,23 +681,17 @@ class GitHubIntegrationProvider:
         if workflow_digest != variable_digest:
             raise ValueError("integration soak workflow blob does not match trusted variable")
 
-        runs_payload = _object(
-            self._call(
-                "GET",
-                self._path(
-                    "actions/workflows/"
-                    f"{quote(SOAK_WORKFLOW_PATH, safe='/')}/runs?head_sha="
-                    f"{quote(integration.commit, safe='')}&event=push&per_page=100"
-                ),
+        runs = self._paged_items(
+            self._path(
+                "actions/workflows/"
+                f"{quote(SOAK_WORKFLOW_PATH, safe='/')}/runs?head_sha="
+                f"{quote(integration.commit, safe='')}&event=push"
             ),
+            "workflow_runs",
             "integration soak workflow runs",
         )
-        runs = runs_payload.get("workflow_runs")
-        if not isinstance(runs, list):
-            raise ValueError("integration soak workflow runs are malformed")
         candidates: list[JsonObject] = []
-        for raw_run in runs:
-            run = _object(raw_run, "integration soak workflow run")
+        for run in runs:
             if (
                 _required_string(run, "path", "integration soak workflow run") == SOAK_WORKFLOW_PATH
                 and _required_string(run, "head_sha", "integration soak workflow run")
@@ -676,19 +725,13 @@ class GitHubIntegrationProvider:
         if completed_at > current or completed_at < self.freshness_cutoff:
             raise ValueError("integration soak workflow run is stale or future-dated")
 
-        checks_payload = _object(
-            self._call(
-                "GET",
-                self._path(f"commits/{integration.commit}/check-runs?per_page=100&page=1"),
-            ),
+        check_runs = self._paged_items(
+            self._path(f"commits/{integration.commit}/check-runs"),
+            "check_runs",
             "integration soak check runs",
         )
-        check_runs = checks_payload.get("check_runs")
-        if not isinstance(check_runs, list):
-            raise ValueError("integration soak check runs are malformed")
         matches: list[JsonObject] = []
-        for raw_check in check_runs:
-            check = _object(raw_check, "integration soak check run")
+        for check in check_runs:
             app = _nested_object(check, "app", "integration soak check run")
             if (
                 _required_string(check, "name", "integration soak check run") == SOAK_CONTEXT
