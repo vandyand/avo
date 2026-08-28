@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import os
+import subprocess
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
@@ -179,6 +181,26 @@ def test_askpass_contains_no_token(tmp_path: Path, monkeypatch: pytest.MonkeyPat
     lowered = content.lower()
     assert "username" in lowered or "[uu]sername" in lowered
     assert "password" in lowered or "[pp]assword" in lowered
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows batch helper requires cmd.exe")
+def test_windows_askpass_returns_exact_values(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    secret = "ghp-fake-token-for-regression"
+    monkeypatch.setenv("GITHUB_TOKEN", secret)
+    helper = runner.askpass_path(tmp_path / "state")
+
+    def run_helper(prompt: str) -> bytes:
+        result = subprocess.run(
+            ["cmd.exe", "/d", "/c", str(helper), prompt],
+            capture_output=True,
+            check=True,
+        )
+        return result.stdout
+
+    assert run_helper("Username for github.com") == b"x-access-token\r\n"
+    assert run_helper("Password for github.com") == secret.encode() + b"\r\n"
 
 
 def test_redact_secret_is_used_for_diagnostics() -> None:

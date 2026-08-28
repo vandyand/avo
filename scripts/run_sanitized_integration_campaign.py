@@ -367,8 +367,16 @@ def _askpass_path(state_root: Path) -> Path:
         path = state_root / "github-askpass.cmd"
         data = (
             "@echo off\r\n"
-            "echo %~1 | findstr /I username >nul && (echo x-access-token & exit /b 0)\r\n"
-            "echo %~1 | findstr /I password >nul && (echo %GITHUB_TOKEN% & exit /b 0)\r\n"
+            "echo %~1 | findstr /I username >nul\r\n"
+            "if not errorlevel 1 (\r\n"
+            "  echo x-access-token\r\n"
+            "  exit /b 0\r\n"
+            ")\r\n"
+            "echo %~1 | findstr /I password >nul\r\n"
+            "if not errorlevel 1 (\r\n"
+            "  echo %GITHUB_TOKEN%\r\n"
+            "  exit /b 0\r\n"
+            ")\r\n"
             "exit /b 1\r\n"
         )
     else:
