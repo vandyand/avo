@@ -41,9 +41,21 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          marker_path='docs/avo-0046-live-rollback-canary.txt'
           marker='AVO-Live-Rollback-Marker: fail-soak'
-          message="$(git log -1 --format=%B "$GITHUB_SHA")"
-          if grep -Fqx "$marker" <<< "$message"; then
+          marker_digest='84e940a02be358b4d7abc4d6fb1b83b723adce8fbd0feaa8c193919a0e28a318'
+          # The marker is intentionally a candidate-tree fact, rather than a
+          # squash commit-message fact.  This survives GitHub's merge API,
+          # while the exact path/content binding remains in candidate
+          # provenance and changed-path evidence.  Symlinks and malformed
+          # content fail closed instead of being interpreted as a trigger.
+          if [[ -e "$marker_path" || -L "$marker_path" ]]; then
+            lines="$(wc -l < "$marker_path" | tr -d '[:space:]')"
+            actual_marker_digest="$(sha256sum "$marker_path" | awk '{print $1}')"
+            if [[ -L "$marker_path" || ! -f "$marker_path" || "$lines" -ne 1 || "$actual_marker_digest" != "$marker_digest" ]] || ! grep -Fqx "$marker" "$marker_path"; then
+              echo "live-rollback marker path exists but is not the exact standalone marker" >&2
+              exit 1
+            fi
             echo "deterministic AVO live-rollback soak failure"
             exit 1
           fi

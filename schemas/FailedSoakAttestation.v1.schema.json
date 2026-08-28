@@ -68,6 +68,18 @@
       "title": "Main Ref",
       "type": "string"
     },
+    "marker_blob_digest": {
+      "default": "sha256:84e940a02be358b4d7abc4d6fb1b83b723adce8fbd0feaa8c193919a0e28a318",
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Marker Blob Digest",
+      "type": "string"
+    },
+    "marker_path": {
+      "const": "docs/avo-0046-live-rollback-canary.txt",
+      "default": "docs/avo-0046-live-rollback-canary.txt",
+      "title": "Marker Path",
+      "type": "string"
+    },
     "repository_digest": {
       "pattern": "^sha256:[0-9a-f]{64}$",
       "title": "Repository Digest",

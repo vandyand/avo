@@ -31,7 +31,8 @@ from avo_correlate.contracts.integration_promotion import (
 from avo_correlate.contracts.integration_soak import (
     SOAK_APP_ID,
     SOAK_CONTEXT,
-    SOAK_MARKER,
+    SOAK_MARKER_BLOB_DIGEST,
+    SOAK_MARKER_PATH,
     SOAK_WORKFLOW_PATH,
     SOAK_WORKFLOW_VARIABLE,
     FailedSoakAttestation,
@@ -655,10 +656,39 @@ class GitHubIntegrationProvider:
         if restore_actual != restore_commit:
             raise ValueError("failed soak restore commit identity mismatch")
         main = self.read_authority_ref("refs/heads/main", allow_protected=True)
-        commit_payload = self._commit(integration.commit)
-        message = _required_string(commit_payload, "message", "integration commit")
-        if SOAK_MARKER not in {line.strip() for line in message.splitlines()}:
-            raise ValueError("integration commit lacks the exact AVO live-rollback marker")
+
+        # The trigger is a content-addressed candidate-tree fact.  Commit
+        # messages are not stable through GitHub squash merges and therefore
+        # must not be used as the authority for a failed soak.
+        marker_raw = _object(
+            self._call(
+                "GET",
+                self._path(
+                    "contents/"
+                    f"{quote(SOAK_MARKER_PATH, safe='/')}?ref="
+                    f"{quote(integration.commit, safe='')}"
+                ),
+            ),
+            "integration soak marker content",
+        )
+        if (
+            _required_string(marker_raw, "type", "integration soak marker content") != "file"
+            or _required_string(marker_raw, "path", "integration soak marker content")
+            != SOAK_MARKER_PATH
+            or _required_string(marker_raw, "encoding", "integration soak marker content")
+            != "base64"
+        ):
+            raise ValueError("integration soak marker identity or encoding mismatch")
+        try:
+            marker_encoded = "".join(
+                _required_string(marker_raw, "content", "integration soak marker content").split()
+            )
+            marker_blob = base64.b64decode(marker_encoded.encode("ascii"), validate=True)
+        except (UnicodeEncodeError, ValueError) as exc:
+            raise ValueError("integration soak marker content is not valid base64") from exc
+        marker_digest = "sha256:" + hashlib.sha256(marker_blob).hexdigest()
+        if marker_digest != SOAK_MARKER_BLOB_DIGEST:
+            raise ValueError("integration soak marker content does not match trusted bytes")
 
         # The workflow and repository variable are pinned independently from the
         # candidate. Hash the exact bytes returned by GitHub without normalization.
@@ -815,6 +845,8 @@ class GitHubIntegrationProvider:
             .replace("+00:00", "Z"),
             "workflow_blob_digest": workflow_digest,
             "repository_variables_digest": variable_digest,
+            "marker_path": SOAK_MARKER_PATH,
+            "marker_blob_digest": marker_digest,
             "context": SOAK_CONTEXT,
             "app_id": SOAK_APP_ID,
             "status": "completed",
