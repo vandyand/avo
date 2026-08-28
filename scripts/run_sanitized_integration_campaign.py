@@ -367,9 +367,14 @@ def _askpass_path(state_root: Path) -> Path:
         path = state_root / "github-askpass.cmd"
         data = (
             "@echo off\r\n"
-            "echo %~1 | findstr /I username >nul && (echo x-access-token & exit /b 0)\r\n"
-            "echo %~1 | findstr /I password >nul && (echo %GITHUB_TOKEN% & exit /b 0)\r\n"
-            "exit /b 1\r\n"
+            "set \"AVO_ASKPASS_PROMPT=%~1\"\r\n"
+            "powershell.exe -NoProfile -NonInteractive -Command \"$p = "
+            "[Environment]::GetEnvironmentVariable('AVO_ASKPASS_PROMPT'); if ($p "
+            "-match '(?i)username') { [Console]::Out.WriteLine('x-access-token'); "
+            "exit 0 }; if ($p -match '(?i)password') { "
+            "[Console]::Out.WriteLine([Environment]::GetEnvironmentVariable('GITHUB_TOKEN')); "
+            "exit 0 }; exit 1\"\r\n"
+            "exit /b %errorlevel%\r\n"
         )
     else:
         path = state_root / "github-askpass.sh"
