@@ -10,6 +10,7 @@ import re
 from collections.abc import Callable
 from typing import Any
 
+from avo_correlate.adapters.artifacts.filesystem import ArtifactIntegrityError
 from avo_correlate.adapters.artifacts.rollback_bundle_authority import (
     RollbackBundleAuthorityJournal,
 )
@@ -137,7 +138,13 @@ class RollbackBundleAuthority:
                     or canonical_digest(parsed) != evidence_reference.digest
                 ):
                     raise ValueError("canary evidence child is not canonical")
-        except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
+        except (
+            ArtifactIntegrityError,
+            OSError,
+            TypeError,
+            ValueError,
+            json.JSONDecodeError,
+        ) as exc:
             raise ValueError("durable canary child evidence is missing or tampered") from exc
         if (
             facts.repository_digest != config.repository_digest
@@ -404,5 +411,6 @@ class RollbackBundleAuthority:
             raise ValueError("failed soak context or workflow is not trusted")
         if soak.status != "completed" or soak.conclusion != "failure":
             raise ValueError("rollback authorization requires a failed completed soak")
+
 
 __all__ = ["RollbackBundleAuthority", "prepared_publication_evidence_digest"]

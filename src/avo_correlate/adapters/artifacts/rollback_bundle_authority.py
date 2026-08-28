@@ -5,7 +5,10 @@ from __future__ import annotations
 import json
 import os
 
-from avo_correlate.adapters.artifacts.filesystem import FilesystemArtifactStore
+from avo_correlate.adapters.artifacts.filesystem import (
+    ArtifactIntegrityError,
+    FilesystemArtifactStore,
+)
 from avo_correlate.contracts.base import ArtifactRef
 from avo_correlate.contracts.integration_campaign import IntegrationCampaignEvidencePackage
 from avo_correlate.contracts.prepublication import RollbackPublicationAuthorization
@@ -133,7 +136,14 @@ class RollbackBundleAuthorityJournal:
                 or list(plan.changed_paths) != authorization.changed_paths
             ):
                 raise ValueError("durable publication plan topology differs from authority")
-        except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+        except (
+            ArtifactIntegrityError,
+            OSError,
+            KeyError,
+            TypeError,
+            ValueError,
+            json.JSONDecodeError,
+        ) as exc:
             raise ValueError("rollback publication authorization is not durably recorded") from exc
 
     def read_artifact(self, reference: ArtifactRef) -> bytes:
