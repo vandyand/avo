@@ -835,17 +835,11 @@ def _recover_before_preflight(config: CampaignRunnerConfig) -> IntegrationCampai
         )
     service = _build_recovery_service(config)
     operation_id = operations[0]
-    package_record = completion.read_package(operation_id)
-    if package_record is not None:
-        # A package is the terminal campaign record.  Reconstruct the result
-        # from its content-addressed artifact instead of calling finalize()
-        # again.  Besides making the cleanup proof explicitly durable, this
-        # keeps a completed replay read/cleanup-only (finalize releases the
-        # promotion lease as a defensive normal-path action).
-        package, package_ref = package_record
-        result = IntegrationCampaignResult(
-            report=package.report, package=package, package_artifact=package_ref
-        )
+    if completion.read_package(operation_id) is not None:
+        # Finalize revalidates the package against its durable plan and releases
+        # a lease left behind by a crash after package indexing.  It performs no
+        # hosted mutation for an already-completed operation.
+        result = service.finalize(operation_id)
         _cleanup_recovered_validation(config, service, result)
         return result
     if completion.read_final_evidence(operation_id) is not None:

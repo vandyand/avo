@@ -566,18 +566,19 @@ def test_recovery_finalizes_crash_after_final_evidence(
     assert runner.recover_before_preflight(config(tmp_path)) is finalized
 
 
-def test_recovery_reuses_completed_package_for_cleanup_without_finalize(
+def test_recovery_finalizes_completed_package_before_cleanup(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    finalized = object()
+    operation_id = "sha256:" + "a" * 64
     package = _package()
-    operation_id = package.intent.operation_id
     package_ref = ArtifactRef.model_construct(
         digest=canonical_digest(package),
         size_bytes=1,
         media_type="application/vnd.avo.integration-campaign+json",
         role="integration-campaign-package",
     )
-    cleanup_results: list[tuple[Any, Any]] = []
+    cleanup_results: list[Any] = []
 
     class CompletedPackage:
         def __init__(self, *_args: object, **_kwargs: object) -> None:
@@ -586,7 +587,7 @@ def test_recovery_reuses_completed_package_for_cleanup_without_finalize(
         def list_plan_operations(self) -> tuple[str, ...]:
             return (operation_id,)
 
-        def read_package(self, recovered_operation_id: str) -> tuple[Any, ArtifactRef] | None:
+        def read_package(self, recovered_operation_id: str) -> tuple[Any, ArtifactRef]:
             assert recovered_operation_id == operation_id
             return package, package_ref
 
@@ -594,8 +595,9 @@ def test_recovery_reuses_completed_package_for_cleanup_without_finalize(
             return pytest.fail("completed-package recovery must not read final evidence")
 
     class RecoveryService:
-        def finalize(self, _operation_id: str) -> object:
-            return pytest.fail("completed-package recovery must not finalize")
+        def finalize(self, recovered_operation_id: str) -> Any:
+            assert recovered_operation_id == operation_id
+            return finalized
 
         def resume(self, _operation_id: str) -> object:
             return pytest.fail("completed-package recovery must not resume")
@@ -606,7 +608,7 @@ def test_recovery_reuses_completed_package_for_cleanup_without_finalize(
     def cleanup(
         _config: runner.CampaignRunnerConfig, _service: object, result: Any
     ) -> None:
-        cleanup_results.append((result.package, result.package_artifact))
+        cleanup_results.append(result)
 
     monkeypatch.setattr(runner, "CampaignCompletionJournal", CompletedPackage)
     monkeypatch.setattr(runner, "_build_recovery_service", recovery_service)
@@ -614,7 +616,5 @@ def test_recovery_reuses_completed_package_for_cleanup_without_finalize(
 
     recovered = runner.recover_before_preflight(config(tmp_path))
 
-    assert recovered is not None
-    assert recovered.package is package
-    assert recovered.package_artifact is package_ref
-    assert cleanup_results == [(package, package_ref)]
+    assert recovered is finalized
+    assert cleanup_results == [finalized]
