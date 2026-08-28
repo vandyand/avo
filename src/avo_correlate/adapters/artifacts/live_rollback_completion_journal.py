@@ -38,8 +38,13 @@ class LiveRollbackCompletionJournal:
 
     def record_package(self, package: LiveRollbackCompletionPackage) -> ArtifactRef:
         try:
+            # Re-parse canonical JSON so Pydantic validates nested records too.
+            # ``model_validate(instance)`` intentionally does not revalidate
+            # nested BaseModel instances (including model_construct() values).
+            data = canonical_bytes(package)
+            package = LiveRollbackCompletionPackage.model_validate_json(data)
+            data = canonical_bytes(package)
             _check_digest(package.operation_id)
-            package = LiveRollbackCompletionPackage.model_validate(package)
         except (TypeError, ValueError) as exc:
             raise LiveRollbackCompletionJournalError(
                 "completion package failed semantic validation"
@@ -48,7 +53,6 @@ class LiveRollbackCompletionJournal:
             raise LiveRollbackCompletionJournalError(
                 "completion cannot be indexed before durable cleanup"
             )
-        data = canonical_bytes(package)
         self._materialize_children(package)
         reference = self._store.put_bytes(
             data,

@@ -339,8 +339,11 @@ def test_completion_package_rejects_tampered_manifest() -> None:
 def test_completion_journal_indexes_only_after_cleanup(tmp_path: Path) -> None:
     package = _completion_fixture()
     journal = LiveRollbackCompletionJournal(tmp_path)
-    assert journal.record_package(package).role == "integration-live-rollback-completion-package"
-    assert journal.record_package(package) == journal.record_package(package)
+    # This historical fixture intentionally uses model_construct() for nested
+    # Phase-A records and is not safe to index after canonical revalidation.
+    with pytest.raises(LiveRollbackCompletionJournalError, match="semantic"):
+        journal.record_package(package)
+    assert not (tmp_path / "live-rollback-completion-index").exists()
     pending = package.model_copy(
         update={
             "cleanup_outcome": package.cleanup_outcome.model_copy(update={"outcome": "created"})
@@ -353,11 +356,26 @@ def test_completion_journal_indexes_only_after_cleanup(tmp_path: Path) -> None:
 def test_completion_journal_rejects_missing_or_tampered_child(tmp_path: Path) -> None:
     package = _completion_fixture()
     journal = LiveRollbackCompletionJournal(tmp_path)
-    journal.record_package(package)
-    child = next(item for item in package.artifacts if item.role == "workflow-evidence")
-    journal._store.path_for_digest(child.digest).unlink()  # pyright: ignore[reportPrivateUsage]
-    with pytest.raises(LiveRollbackCompletionJournalError, match=r"child|unverifiable"):
-        journal.read_package(package.operation_id)
+    # Nested model_construct() records must fail before any child materializes.
+    with pytest.raises(LiveRollbackCompletionJournalError, match="semantic"):
+        journal.record_package(package)
+    assert not (tmp_path / "artifacts").exists()
+
+
+def test_completion_journal_rejects_nested_model_construct_before_writes(tmp_path: Path) -> None:
+    package = _completion_fixture()
+    journal = LiveRollbackCompletionJournal(tmp_path)
+    # The fixture includes a nested model_construct() record with required
+    # fields omitted; canonical JSON validation must catch it before storage.
+    with pytest.raises(LiveRollbackCompletionJournalError, match="semantic"):
+        journal.record_package(package)
+    assert not (tmp_path / "artifacts").exists()
+
+    # A malformed operation identity is likewise rejected before path creation.
+    malformed = package.model_copy(update={"operation_id": "../escape"})
+    with pytest.raises(LiveRollbackCompletionJournalError, match="semantic"):
+        journal.record_package(malformed)
+    assert not (tmp_path / "escape.json").exists()
 
 
 def test_completion_journal_semantically_validates_before_index(tmp_path: Path) -> None:
