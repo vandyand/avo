@@ -174,10 +174,12 @@ def _completion_fixture() -> LiveRollbackCompletionPackage:
             entries=["validate (ubuntu-latest)", "validate (windows-latest)"],
         check_entries=[],
             protection_entries=[LiveRollbackProtectionEntry.model_construct(
+                app_id=15368,
                 context="validate (ubuntu-latest)",
                 required=True,
                 enforced=True,
             ), LiveRollbackProtectionEntry.model_construct(
+                app_id=15368,
                 context="validate (windows-latest)",
                 required=True,
                 enforced=True,
@@ -394,3 +396,14 @@ def test_completion_package_binds_reconciliation_protection_digest() -> None:
     )
     with pytest.raises(ValueError, match=r"topology|provider"):
         package.model_copy(update={"provider_reconciliation": changed}).validate_package()  # pyright: ignore[reportCallIssue]
+
+
+def test_completion_package_rejects_forged_protection_app_identity() -> None:
+    package = _completion_fixture()
+    entries = list(package.protection_manifest.protection_entries)
+    entries[0] = entries[0].model_copy(update={"app_id": 1})
+    manifest = package.protection_manifest.model_copy(
+        update={"protection_entries": entries}
+    )
+    with pytest.raises(ValueError, match=r"protection|evidence|exact"):
+        package.model_copy(update={"protection_manifest": manifest}).validate_package()  # pyright: ignore[reportCallIssue]

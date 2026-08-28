@@ -1,6 +1,7 @@
 import base64
 import hashlib
 from collections.abc import Mapping
+from dataclasses import replace
 from datetime import UTC, datetime
 from typing import cast
 
@@ -151,4 +152,91 @@ def test_live_rollback_manifests_are_typed_and_source_bound() -> None:
     assert check.source_commit == C
     assert check.check_entries[0].app_id == 15368
     assert protection_manifest.source_commit == A
+    assert protection_manifest.protection_entries[0].app_id == 15368
     assert protection_manifest.protection_entries[0].enforced
+
+
+def _snapshot_with_runs(runs: list[JsonObject]) -> GitHubEvidenceSnapshot:
+    manifest: JsonObject = {
+        "schema_version": 1,
+        "trusted_checks": [{"context": "ci", "app_id": 15368}],
+        "runs": runs,
+    }
+    protection: JsonObject = {
+        "required_status_checks": {
+            "strict": True,
+            "checks": [{"context": "ci", "app_id": 15368}],
+        },
+        "required_pull_request_reviews": {
+            "required_approving_review_count": 0,
+            "dismiss_stale_reviews": True,
+            "require_last_push_approval": False,
+        },
+        "enforce_admins": True,
+        "required_linear_history": True,
+        "required_conversation_resolution": True,
+        "allow_force_pushes": False,
+        "allow_deletions": False,
+        "lock_branch": False,
+    }
+    return GitHubEvidenceSnapshot(
+        synthetic_merge_commit=C,
+        synthetic_merge_tree=B,
+        protection_evidence_digest=canonical_digest(protection),
+        check_evidence_manifest_digest=canonical_digest(manifest),
+        protection_evidence=protection,
+        check_evidence_manifest=manifest,
+    )
+
+
+def _run(name: str) -> JsonObject:
+    return {
+        "name": name,
+        "app_id": 15368,
+        "head_sha": C,
+        "status": "completed",
+        "conclusion": "success",
+        "completed_at": "2026-02-01T00:00:00Z",
+    }
+
+
+def test_live_rollback_manifests_rejects_unexpected_and_duplicate_runs() -> None:
+    def transport(
+        method: str, url: str, body: JsonBody | None, headers: Mapping[str, str]
+    ) -> tuple[int, JsonValue]:
+        del method, url, body, headers
+        return 200, repository()
+
+    checks = provider(transport)
+    with pytest.raises(ValueError, match="unexpected trusted check"):
+        checks.live_rollback_manifests(
+            _snapshot_with_runs([_run("ci"), _run("other")]),
+            protection_source_commit=A,
+        )
+    with pytest.raises(ValueError, match="duplicate trusted check"):
+        checks.live_rollback_manifests(
+            _snapshot_with_runs([_run("ci"), _run("ci")]),
+            protection_source_commit=A,
+        )
+
+
+def test_live_rollback_manifests_rejects_duplicate_declarations() -> None:
+    snapshot = _snapshot_with_runs([_run("ci")])
+    manifest = cast(JsonObject, snapshot.check_evidence_manifest)
+    manifest["trusted_checks"] = [
+        {"context": "ci", "app_id": 15368},
+        {"context": "ci", "app_id": 15368},
+    ]
+    snapshot = replace(
+        snapshot,
+        check_evidence_manifest_digest=canonical_digest(manifest),
+    )
+
+    def transport(
+        method: str, url: str, body: JsonBody | None, headers: Mapping[str, str]
+    ) -> tuple[int, JsonValue]:
+        del method, url, body, headers
+        return 200, repository()
+
+    with pytest.raises(ValueError, match="duplicate trusted check declaration"):
+        provider(transport).live_rollback_manifests(snapshot, protection_source_commit=A)

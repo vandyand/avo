@@ -2,6 +2,11 @@
   "additionalProperties": false,
   "description": "Reconstructable required branch-protection context.",
   "properties": {
+    "app_id": {
+      "exclusiveMinimum": 0,
+      "title": "App Id",
+      "type": "integer"
+    },
     "context": {
       "minLength": 1,
       "title": "Context",
@@ -21,6 +26,7 @@
     }
   },
   "required": [
+    "app_id",
     "context"
   ],
   "title": "LiveRollbackProtectionEntry",

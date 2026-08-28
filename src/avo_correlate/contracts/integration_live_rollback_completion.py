@@ -70,6 +70,7 @@ class LiveRollbackCheckEntry(StrictModel):
 class LiveRollbackProtectionEntry(StrictModel):
     """Reconstructable required branch-protection context."""
 
+    app_id: int = Field(gt=0)
     context: NonEmptyString
     required: Literal[True] = True
     enforced: Literal[True] = True
@@ -486,7 +487,7 @@ class LiveRollbackCompletionPackage(StrictModel):
                 for entry in self.check_manifest.check_entries
             )
             or any(
-                not entry.required or not entry.enforced
+                entry.app_id != 15368 or not entry.required or not entry.enforced
                 for entry in self.protection_manifest.protection_entries
             )
         ):

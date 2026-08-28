@@ -593,6 +593,8 @@ class GitHubIntegrationProvider:
             context = _required_string(check, "context", "trusted check declaration")
             app_id = _required_int(check, "app_id", "trusted check declaration")
             expected_checks.add((context, app_id))
+        if len(expected_checks) != len(trusted):
+            raise ValueError("duplicate trusted check declaration")
         if expected_checks != set(self.trusted_checks):
             raise ValueError("trusted check declarations differ from configured checks")
 
@@ -603,10 +605,10 @@ class GitHubIntegrationProvider:
             name = _required_string(run, "name", "trusted check run")
             app_id = _required_int(run, "app_id", "trusted check run")
             key = (name, app_id)
-            if key not in expected_checks or key in seen:
-                if key in seen:
-                    raise ValueError("duplicate trusted check entry")
-                continue
+            if key not in expected_checks:
+                raise ValueError("unexpected trusted check entry")
+            if key in seen:
+                raise ValueError("duplicate trusted check entry")
             if (
                 _required_string(run, "head_sha", "trusted check run") != synthetic
                 or _required_string(run, "status", "trusted check run") != "completed"
@@ -630,6 +632,7 @@ class GitHubIntegrationProvider:
                         "sha": synthetic,
                         "status": "completed",
                         "conclusion": "success",
+                        "completed_at": completed,
                     }
                 )
             )
@@ -647,6 +650,8 @@ class GitHubIntegrationProvider:
                 "provider_api_version": self.provider_api_version,
                 "entries": [item.context for item in check_entries],
                 "check_entries": [item.model_dump(mode="json") for item in check_entries],
+                "freshness_cutoff": self.freshness_cutoff,
+                "observed_at": datetime.now(UTC),
                 "source_pinned": True,
             }
         )
@@ -665,7 +670,12 @@ class GitHubIntegrationProvider:
             protection_set.add((context, app_id))
             protection_entries.append(
                 LiveRollbackProtectionEntry.model_validate(
-                    {"context": context, "required": True, "enforced": True}
+                    {
+                        "app_id": app_id,
+                        "context": context,
+                        "required": True,
+                        "enforced": True,
+                    }
                 )
             )
         if protection_set != set(self.protection_checks) or len(protection_entries) != len(
@@ -686,6 +696,8 @@ class GitHubIntegrationProvider:
                 "protection_entries": [
                     item.model_dump(mode="json") for item in protection_entries
                 ],
+                "freshness_cutoff": self.freshness_cutoff,
+                "observed_at": datetime.now(UTC),
                 "source_pinned": True,
             }
         )
