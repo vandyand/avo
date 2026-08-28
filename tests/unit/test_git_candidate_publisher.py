@@ -9,7 +9,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any, cast
+from typing import Any, NoReturn, cast
 
 import pytest
 
@@ -549,6 +549,23 @@ def _authorization(prepared: Any, **updates: Any) -> SimpleNamespace:
     return SimpleNamespace(**values)
 
 
+def _unexpected_publish(message: str) -> Callable[[PreparedPublication], NoReturn]:
+    """Return a typed monkeypatch callback for a forbidden remote publish."""
+
+    def fail(_prepared: PreparedPublication) -> NoReturn:
+        pytest.fail(message)
+
+    return fail
+
+
+def _unexpected_reconcile(_publication_id: str) -> NoReturn:
+    pytest.fail("reconcile reached for missing plan")
+
+
+def _bad_record_evidence(data: bytes) -> SimpleNamespace:
+    return SimpleNamespace(digest="sha256:" + "0" * 64, size_bytes=len(data))
+
+
 class _AuthorizationFence:
     def __init__(self, error: Exception | None = None) -> None:
         self.values: list[object] = []
@@ -586,7 +603,7 @@ def test_prepare_replays_durable_plan_and_surfaces_conflicting_replay(
         expected_remote=remote.as_uri(),
         repository_digest=GitCandidatePublisher._remote_digest(remote.as_uri()),
         controller_publisher_identity="avo-controller",
-        publication_journal=replay,
+        publication_journal=cast(Any, replay),
         allow_local_remote_for_tests=True,
     )
     result = replay_adapter.prepare(candidate, base_commit, base_tree, digest)
@@ -599,7 +616,7 @@ def test_prepare_replays_durable_plan_and_surfaces_conflicting_replay(
         expected_remote=remote.as_uri(),
         repository_digest=GitCandidatePublisher._remote_digest(remote.as_uri()),
         controller_publisher_identity="avo-controller",
-        publication_journal=conflict,
+        publication_journal=cast(Any, conflict),
         allow_local_remote_for_tests=True,
     )
     with pytest.raises(GitRepositoryError, match="conflicting"):
@@ -648,7 +665,7 @@ def test_publish_prepared_rejects_every_authorization_binding_before_remote(
     monkeypatch.setattr(
         adapter,
         "_publish_prepared",
-        lambda _prepared: pytest.fail("remote publication reached before authorization binding"),
+        _unexpected_publish("remote publication reached before authorization binding"),
     )
     with pytest.raises(GitRepositoryError, match="does not match"):
         adapter.publish_prepared(prepared, authorization=auth, authorization_journal=fence)
@@ -664,7 +681,7 @@ def test_publish_prepared_rejects_missing_or_tampered_authorization_child_withou
     monkeypatch.setattr(
         adapter,
         "_publish_prepared",
-        lambda _prepared: pytest.fail("remote publication reached before authorization check"),
+        _unexpected_publish("remote publication reached before authorization check"),
     )
     with pytest.raises(GitRepositoryError, match="not typed"):
         adapter.publish_prepared(
@@ -685,7 +702,9 @@ def test_publish_prepared_requires_trusted_type_and_fence(
     adapter = publisher(remote, digest)
     with pytest.raises(TypeError, match="PreparedPublication"):
         adapter.publish_prepared(
-            object(), authorization=object(), authorization_journal=_AuthorizationFence()
+            cast(PreparedPublication, object()),
+            authorization=object(),
+            authorization_journal=_AuthorizationFence(),
         )
     prepared = PreparedPublication(_publication_plan(adapter, base_commit, base_tree), Path())
     with pytest.raises(GitRepositoryError, match="authorization journal"):
@@ -714,7 +733,7 @@ def test_publish_prepared_rejects_candidate_namespace_and_paths_before_remote(
     monkeypatch.setattr(
         adapter,
         "_publish_prepared",
-        lambda _prepared: pytest.fail("remote publication reached before plan validation"),
+        _unexpected_publish("remote publication reached before plan validation"),
     )
     with pytest.raises(GitRepositoryError, match=message):
         adapter.publish_prepared(
@@ -746,7 +765,11 @@ def test_publish_prepared_remote_ref_collision_is_before_push(
     remote, _seed, candidate, base_commit, base_tree, digest = git_fixture
     adapter = publisher(remote, digest)
     prepared = adapter.prepare(candidate, base_commit, base_tree, digest)
-    monkeypatch.setattr(adapter, "_remote_ref_exists", lambda *_args: True)
+
+    def ref_exists(_clone: Path, _ref: str) -> bool:
+        return True
+
+    monkeypatch.setattr(adapter, "_remote_ref_exists", ref_exists)
     push_calls: list[list[str]] = []
     original = adapter._run
 
@@ -866,12 +889,12 @@ def test_reconcile_authorized_fences_missing_plan_before_remote(
     monkeypatch.setattr(
         adapter,
         "reconcile",
-        lambda _publication_id: pytest.fail("reconcile reached for missing plan"),
+        _unexpected_reconcile,
     )
     with pytest.raises(GitRepositoryError, match="plan was not found"):
         adapter.reconcile_authorized(
             "sha256:" + "f" * 64,
-            object(),
+            cast(Any, object()),
             authorization_journal=fence,
         )
     assert fence.values == [fence.values[0]]
@@ -897,7 +920,7 @@ def test_reconcile_rejects_tampered_content_addressed_evidence(
     monkeypatch.setattr(
         journal,
         "record_evidence",
-        lambda data: SimpleNamespace(digest="sha256:" + "0" * 64, size_bytes=len(data)),
+        _bad_record_evidence,
     )
     with pytest.raises(GitRepositoryError, match="not content-addressed"):
         adapter.reconcile(plan.publication_id)
@@ -920,9 +943,18 @@ def test_remote_ref_observation_failures_are_fail_closed(
 ) -> None:
     remote, _seed, _candidate, _base_commit, _base_tree, digest = git_fixture
     adapter = publisher(remote, digest)
-    adapter._run = lambda *_args, **_kwargs: subprocess.CompletedProcess(
-        ["git"], returncode, stdout, stderr
-    )
+
+    def failed_run(
+        arguments: list[str],
+        *,
+        cwd: Path | None = None,
+        environment: Mapping[str, str] | None = None,
+        check: bool = True,
+    ) -> subprocess.CompletedProcess[str]:
+        del cwd, environment, check
+        return subprocess.CompletedProcess(["git", *arguments], returncode, stdout, stderr)
+
+    adapter._run = failed_run
     with pytest.raises(GitRepositoryError, match=message):
         adapter._remote_ref_commit_optional(Path("."), "refs/heads/x")
 
@@ -933,7 +965,11 @@ def test_publish_detects_candidate_change_between_vcs_free_scans(
     remote, _seed, candidate, base_commit, base_tree, digest = git_fixture
     adapter = publisher(remote, digest)
     values = [SimpleNamespace(digest=digest), SimpleNamespace(digest="sha256:" + "f" * 64)]
-    monkeypatch.setattr(adapter, "_scan_candidate", lambda *_args: values.pop(0))
+
+    def next_scan(_reader: GitRepositoryReader, _candidate: Path) -> Any:
+        return values.pop(0)
+
+    monkeypatch.setattr(adapter, "_scan_candidate", next_scan)
     with pytest.raises(GitRepositoryError, match="changed during publication"):
         adapter.publish(candidate, base_commit, base_tree, digest)
 
