@@ -1,0 +1,50 @@
+{
+  "additionalProperties": false,
+  "description": "Durable, provider-returned identity for the opened campaign PR.",
+  "properties": {
+    "base_commit": {
+      "title": "Base Commit",
+      "type": "string"
+    },
+    "base_tree": {
+      "title": "Base Tree",
+      "type": "string"
+    },
+    "open_identity": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Open Identity",
+      "type": "string"
+    },
+    "pull_request_number": {
+      "exclusiveMinimum": 0,
+      "title": "Pull Request Number",
+      "type": "integer"
+    },
+    "pull_request_url": {
+      "minLength": 1,
+      "title": "Pull Request Url",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "target_ref": {
+      "minLength": 1,
+      "title": "Target Ref",
+      "type": "string"
+    }
+  },
+  "required": [
+    "pull_request_number",
+    "pull_request_url",
+    "target_ref",
+    "base_commit",
+    "base_tree",
+    "open_identity"
+  ],
+  "title": "CampaignOpenedEvidence",
+  "type": "object"
+}

@@ -1,0 +1,71 @@
+{
+  "additionalProperties": false,
+  "description": "Trusted proof that the candidate was published from the evaluated source.\n\nA PR observation is not sufficient provenance: the provider could be showing a\ndifferent head than the controller evaluated.  This record is produced by the\ncontroller's trusted publication path and is independently verified before any\nprovider mutation is allowed.",
+  "properties": {
+    "base_commit": {
+      "title": "Base Commit",
+      "type": "string"
+    },
+    "base_tree": {
+      "title": "Base Tree",
+      "type": "string"
+    },
+    "candidate_commit": {
+      "title": "Candidate Commit",
+      "type": "string"
+    },
+    "candidate_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Candidate Digest",
+      "type": "string"
+    },
+    "candidate_ref": {
+      "minLength": 1,
+      "title": "Candidate Ref",
+      "type": "string"
+    },
+    "candidate_tree": {
+      "title": "Candidate Tree",
+      "type": "string"
+    },
+    "controller_publisher_identity": {
+      "minLength": 1,
+      "title": "Controller Publisher Identity",
+      "type": "string"
+    },
+    "publication_evidence_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Publication Evidence Digest",
+      "type": "string"
+    },
+    "repository_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Repository Digest",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "verified": {
+      "title": "Verified",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "repository_digest",
+    "base_commit",
+    "base_tree",
+    "candidate_digest",
+    "candidate_ref",
+    "candidate_commit",
+    "candidate_tree",
+    "controller_publisher_identity",
+    "publication_evidence_digest",
+    "verified"
+  ],
+  "title": "CandidatePublicationBinding",
+  "type": "object"
+}

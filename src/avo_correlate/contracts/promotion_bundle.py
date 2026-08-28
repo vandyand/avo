@@ -1,7 +1,8 @@
 """Immutable records used by the dry-run promotion controller."""
 
 import re
-from typing import Literal
+from collections.abc import Sequence
+from typing import Literal, cast
 
 from pydantic import Field, StrictBool, field_validator, model_validator
 
@@ -16,6 +17,7 @@ from avo_correlate.contracts.promotion_policy import (
     is_valid_promotion_path,
     path_manifest_digest,
 )
+from avo_correlate.domain.canonical import canonical_bytes, canonical_digest
 
 _GIT_OBJECT = re.compile(r"^[0-9a-f]{40}(?:[0-9a-f]{24})?$")
 
@@ -181,6 +183,57 @@ class PromotionReplayReport(StrictModel):
     errors: list[NonEmptyString] = Field(default_factory=list)
 
 
+def promotion_policy_payload(config: PromotionControllerConfig) -> dict[str, object]:
+    """Return the canonical, order-independent controller-policy payload."""
+
+    payload = cast(dict[str, object], config.model_dump(mode="json"))
+    policy = cast(dict[str, object], payload["policy"])
+    for key in ("low_gates", "ordinary_gates"):
+        policy[key] = sorted(cast(Sequence[str], policy[key]))
+    for key in (
+        "trusted_base_issuers",
+        "trusted_reviewer_issuers",
+        "trusted_path_issuers",
+        "rollback_issuer_ids",
+    ):
+        policy[key] = sorted(cast(Sequence[str], policy[key]))
+    trusted_gate_issuers = cast(dict[str, list[str]], policy["trusted_gate_issuers"])
+    policy["trusted_gate_issuers"] = {
+        gate: sorted(issuers) for gate, issuers in trusted_gate_issuers.items()
+    }
+    return payload
+
+
+def promotion_bundle_payload(bundle: PromotionBundle) -> dict[str, object]:
+    """Return the authoritative canonical payload for a promotion bundle."""
+
+    payload = cast(dict[str, object], bundle.model_dump(mode="json"))
+    request = cast(dict[str, object], payload["request"])
+    request["gate_attestations"] = sorted(
+        cast(list[dict[str, object]], request["gate_attestations"]),
+        key=canonical_bytes,
+    )
+    request["reviewer_attestations"] = sorted(
+        cast(list[dict[str, object]], request["reviewer_attestations"]),
+        key=canonical_bytes,
+    )
+    payload["controller_config"] = promotion_policy_payload(bundle.controller_config)
+    payload["evidence_digests"] = sorted(cast(list[str], payload["evidence_digests"]))
+    return payload
+
+
+def promotion_bundle_bytes(bundle: PromotionBundle) -> bytes:
+    """Return the exact canonical bytes whose digest identifies ``bundle``."""
+
+    return canonical_bytes(promotion_bundle_payload(bundle))
+
+
+def promotion_bundle_digest(bundle: PromotionBundle) -> Sha256Digest:
+    """Return the authoritative content digest for ``bundle``."""
+
+    return canonical_digest(promotion_bundle_payload(bundle))
+
+
 __all__ = [
     "GitRefSnapshot",
     "PromotionBundle",
@@ -190,4 +243,8 @@ __all__ = [
     "PromotionProvenanceBinding",
     "PromotionReplayReport",
     "WorkspaceComparison",
+    "promotion_bundle_bytes",
+    "promotion_bundle_digest",
+    "promotion_bundle_payload",
+    "promotion_policy_payload",
 ]

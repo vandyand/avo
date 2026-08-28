@@ -1,0 +1,246 @@
+{
+  "$defs": {
+    "IntegrationMergeResult": {
+      "additionalProperties": false,
+      "description": "Provider merge response; ambiguous responses cannot be treated as success.",
+      "properties": {
+        "error": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Error"
+        },
+        "first_parent_commit": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "First Parent Commit"
+        },
+        "main_protection_evidence_digest": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Main Protection Evidence Digest"
+        },
+        "outcome": {
+          "enum": [
+            "applied",
+            "rejected",
+            "ambiguous"
+          ],
+          "title": "Outcome",
+          "type": "string"
+        },
+        "response_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Response Digest",
+          "type": "string"
+        },
+        "result_commit": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Result Commit"
+        },
+        "result_tree": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Result Tree"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "outcome",
+        "response_digest"
+      ],
+      "title": "IntegrationMergeResult",
+      "type": "object"
+    },
+    "IntegrationProviderReconciliation": {
+      "additionalProperties": false,
+      "description": "The single bounded observation used to resolve an ambiguous PR request.",
+      "properties": {
+        "main_protection_evidence_digest": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Main Protection Evidence Digest"
+        },
+        "merge_commit": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Merge Commit"
+        },
+        "merged": {
+          "title": "Merged",
+          "type": "boolean"
+        },
+        "protection_evidence_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Protection Evidence Digest",
+          "type": "string"
+        },
+        "provider_api_version": {
+          "minLength": 1,
+          "title": "Provider Api Version",
+          "type": "string"
+        },
+        "provider_identity": {
+          "minLength": 1,
+          "title": "Provider Identity",
+          "type": "string"
+        },
+        "pull_request_number": {
+          "exclusiveMinimum": 0,
+          "title": "Pull Request Number",
+          "type": "integer"
+        },
+        "pull_request_url": {
+          "minLength": 1,
+          "title": "Pull Request Url",
+          "type": "string"
+        },
+        "repository_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Repository Digest",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "state": {
+          "enum": [
+            "open",
+            "closed"
+          ],
+          "title": "State",
+          "type": "string"
+        },
+        "target_first_parent": {
+          "title": "Target First Parent",
+          "type": "string"
+        },
+        "target_head_commit": {
+          "title": "Target Head Commit",
+          "type": "string"
+        },
+        "target_head_tree": {
+          "title": "Target Head Tree",
+          "type": "string"
+        },
+        "target_parents": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Target Parents",
+          "type": "array"
+        },
+        "target_ref": {
+          "minLength": 1,
+          "title": "Target Ref",
+          "type": "string"
+        }
+      },
+      "required": [
+        "repository_digest",
+        "pull_request_number",
+        "pull_request_url",
+        "provider_identity",
+        "provider_api_version",
+        "state",
+        "merged",
+        "target_ref",
+        "target_head_commit",
+        "target_head_tree",
+        "target_first_parent",
+        "target_parents",
+        "protection_evidence_digest"
+      ],
+      "title": "IntegrationProviderReconciliation",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Durable post-merge provider evidence, saved before package assembly.",
+  "properties": {
+    "merge_result": {
+      "$ref": "#/$defs/IntegrationMergeResult"
+    },
+    "operation_id": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Operation Id",
+      "type": "string"
+    },
+    "reconciliation": {
+      "$ref": "#/$defs/IntegrationProviderReconciliation"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "operation_id",
+    "reconciliation",
+    "merge_result"
+  ],
+  "title": "CampaignFinalEvidenceRecord",
+  "type": "object"
+}

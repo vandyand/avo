@@ -1,0 +1,157 @@
+{
+  "$defs": {
+    "IntegrationProviderObservation": {
+      "additionalProperties": false,
+      "description": "Provider-side PR observation used before requesting a merge.",
+      "properties": {
+        "base_commit": {
+          "title": "Base Commit",
+          "type": "string"
+        },
+        "base_ref": {
+          "minLength": 1,
+          "title": "Base Ref",
+          "type": "string"
+        },
+        "base_tree": {
+          "title": "Base Tree",
+          "type": "string"
+        },
+        "candidate_repository_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Candidate Repository Digest",
+          "type": "string"
+        },
+        "candidate_tree": {
+          "title": "Candidate Tree",
+          "type": "string"
+        },
+        "check_evidence_manifest_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Check Evidence Manifest Digest",
+          "type": "string"
+        },
+        "draft": {
+          "const": false,
+          "default": false,
+          "title": "Draft",
+          "type": "boolean"
+        },
+        "head_commit": {
+          "title": "Head Commit",
+          "type": "string"
+        },
+        "head_ref": {
+          "minLength": 1,
+          "title": "Head Ref",
+          "type": "string"
+        },
+        "open_state": {
+          "const": "open",
+          "title": "Open State",
+          "type": "string"
+        },
+        "protection_evidence_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Protection Evidence Digest",
+          "type": "string"
+        },
+        "provider_api_version": {
+          "minLength": 1,
+          "title": "Provider Api Version",
+          "type": "string"
+        },
+        "provider_identity": {
+          "minLength": 1,
+          "title": "Provider Identity",
+          "type": "string"
+        },
+        "pull_request_number": {
+          "exclusiveMinimum": 0,
+          "title": "Pull Request Number",
+          "type": "integer"
+        },
+        "pull_request_url": {
+          "minLength": 1,
+          "title": "Pull Request Url",
+          "type": "string"
+        },
+        "repository_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Repository Digest",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "synthetic_merge_commit": {
+          "title": "Synthetic Merge Commit",
+          "type": "string"
+        },
+        "synthetic_merge_tree": {
+          "title": "Synthetic Merge Tree",
+          "type": "string"
+        },
+        "target_repository_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Target Repository Digest",
+          "type": "string"
+        }
+      },
+      "required": [
+        "repository_digest",
+        "pull_request_number",
+        "pull_request_url",
+        "candidate_repository_digest",
+        "target_repository_digest",
+        "base_ref",
+        "base_commit",
+        "base_tree",
+        "head_ref",
+        "head_commit",
+        "candidate_tree",
+        "synthetic_merge_commit",
+        "synthetic_merge_tree",
+        "protection_evidence_digest",
+        "check_evidence_manifest_digest",
+        "provider_identity",
+        "provider_api_version",
+        "open_state"
+      ],
+      "title": "IntegrationProviderObservation",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Durable provider discovery captured before the promotion attempt.",
+  "properties": {
+    "main_before_commit": {
+      "title": "Main Before Commit",
+      "type": "string"
+    },
+    "observation": {
+      "$ref": "#/$defs/IntegrationProviderObservation"
+    },
+    "open_identity": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Open Identity",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "observation",
+    "main_before_commit",
+    "open_identity"
+  ],
+  "title": "CampaignDiscoveryEvidence",
+  "type": "object"
+}

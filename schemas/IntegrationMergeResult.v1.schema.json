@@ -1,0 +1,94 @@
+{
+  "additionalProperties": false,
+  "description": "Provider merge response; ambiguous responses cannot be treated as success.",
+  "properties": {
+    "error": {
+      "anyOf": [
+        {
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Error"
+    },
+    "first_parent_commit": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "First Parent Commit"
+    },
+    "main_protection_evidence_digest": {
+      "anyOf": [
+        {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Main Protection Evidence Digest"
+    },
+    "outcome": {
+      "enum": [
+        "applied",
+        "rejected",
+        "ambiguous"
+      ],
+      "title": "Outcome",
+      "type": "string"
+    },
+    "response_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Response Digest",
+      "type": "string"
+    },
+    "result_commit": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Result Commit"
+    },
+    "result_tree": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Result Tree"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "outcome",
+    "response_digest"
+  ],
+  "title": "IntegrationMergeResult",
+  "type": "object"
+}
