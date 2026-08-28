@@ -334,6 +334,7 @@ def test_cleanup_ambiguity_replays_cleanup_to_success(tmp_path: Path) -> None:
     assert isinstance(second, SyntheticValidationOutcome)
     assert second.outcome == "cleaned"
     assert provider.delete_calls == 2
+    assert provider.create_calls == 1
 
 
 def test_cleanup_after_restart_reuses_durable_plan_and_package_proof(tmp_path: Path) -> None:

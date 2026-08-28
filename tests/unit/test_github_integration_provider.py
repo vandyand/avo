@@ -1670,8 +1670,11 @@ def test_validation_ref_create_delete_have_exact_shape_and_scope() -> None:
         configured.api_base + "/repos/acme/widget/git/refs",
         {"ref": VALIDATION_REF, "sha": C},
     )
-    assert calls[1][0] == "DELETE"
-    assert calls[1][1].endswith("/git/ref/heads/avo%2Fvalidation%2F" + "d" * 64)
+    assert calls[1] == (
+        "DELETE",
+        configured.api_base + "/repos/acme/widget/git/refs/avo%2Fvalidation%2F" + "d" * 64,
+        None,
+    )
 
 
 @pytest.mark.parametrize("method", ["read", "create", "delete"])

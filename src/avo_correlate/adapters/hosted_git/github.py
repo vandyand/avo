@@ -1303,7 +1303,13 @@ class GitHubIntegrationProvider:
 
     def delete_validation_ref(self, repository_digest: str, ref: str) -> JsonValue:
         """Delete exactly one validation ref."""
-        path = self._validation_ref_path(repository_digest, ref)
+        # Reads use GitHub's singular ``git/ref/heads/...`` route, while the
+        # delete endpoint is the plural ``git/refs/{ref}`` route.  Reuse the
+        # validator for the complete repository/ref binding, then construct
+        # the endpoint required by GitHub's DELETE API.
+        self._validation_ref_path(repository_digest, ref)
+        branch = ref.removeprefix("refs/heads/")
+        path = f"git/refs/{quote(branch, safe='')}"
         return self._call("DELETE", self._path(path))
 
 
