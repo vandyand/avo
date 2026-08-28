@@ -17,8 +17,8 @@ from avo_correlate.contracts.base import ArtifactRef
 from avo_correlate.contracts.integration_campaign import IntegrationCampaignEvidencePackage
 from avo_correlate.contracts.integration_drill import IntegrationRollbackRequest
 from avo_correlate.contracts.integration_promotion import CandidatePublicationBinding
+from avo_correlate.contracts.integration_soak import FailedSoakAttestation
 from avo_correlate.contracts.prepublication import (
-    FailedSoakAttestation,
     RollbackPublicationAuthorityConfig,
     RollbackPublicationAuthorization,
     RollbackSnapshotRestoreFacts,
@@ -111,7 +111,12 @@ class RollbackBundleAuthority:
             or canary.intent.base_tree != operation.restore_to_tree
             or canary.receipt.applied_result_commit != facts.failed_head_commit
             or canary.receipt.applied_result_tree != facts.failed_head_tree
-            or self._soak_value(failed_soak, "operation_id") != operation.operation_id
+            or failed_soak.integration_commit != facts.failed_head_commit
+            or failed_soak.integration_tree != facts.failed_head_tree
+            or failed_soak.integration_parent_commit != facts.restore_commit
+            or failed_soak.restore_commit != facts.restore_commit
+            or failed_soak.restore_tree != facts.restore_tree
+            or failed_soak.main_commit != operation.main_before_commit
             or plan.repository_digest != config.repository_digest
             or plan.base_commit != facts.failed_head_commit
             or plan.base_tree != facts.failed_head_tree
@@ -123,8 +128,8 @@ class RollbackBundleAuthority:
             raise ValueError("rollback operation, canary, facts, or prepared plan are mixed")
         if not plan.changed_paths:
             raise ValueError("prepared publication has no authenticated changed paths")
-        soak_id = self._soak_id(failed_soak)
-        soak_digest = self._soak_digest(failed_soak)
+        soak_id = failed_soak.attestation_id
+        soak_digest = canonical_digest(failed_soak)
         values: dict[str, Any] = {
             "schema_version": 1,
             "operation_id": operation.operation_id,
@@ -244,46 +249,20 @@ class RollbackBundleAuthority:
     def _validate_soak(self, soak: FailedSoakAttestation) -> None:
         if not isinstance(soak, FailedSoakAttestation):
             raise TypeError("failed soak must implement FailedSoakAttestation")
+        if soak.attestation_id != canonical_digest(
+            soak.model_dump(exclude={"attestation_id"}, mode="json")
+        ):
+            raise ValueError("failed soak attestation digest is not canonical")
+        if soak.repository_digest != self.config.repository_digest:
+            raise ValueError("failed soak repository is not trusted")
+        if soak.integration_ref != self.config.target_ref or soak.app_id != self.config.soak_app_id:
+            raise ValueError("failed soak repository or app is not trusted")
         if (
-            not self._soak_id(soak).startswith("sha256:")
-            or not self._soak_digest(soak).startswith("sha256:")
+            soak.context != self.config.soak_context
+            or soak.workflow_path != self.config.soak_workflow_path
         ):
-            raise ValueError("failed soak attestation identities must be digests")
-        issuer = self._soak_value(soak, "issuer_id", "issuer")
-        if not self._soak_value(soak, "operation_id") or issuer != self.config.soak_issuer_id:
-            raise ValueError("failed soak issuer or operation is not trusted")
-        outcome = self._soak_value(soak, "outcome")
-        if outcome not in {"failed", "timeout", "partial_success"}:
-            raise ValueError("rollback authorization requires a failed soak")
-        for name, expected in (
-            ("repository_digest", self.config.repository_digest),
-            ("target_ref", self.config.target_ref),
-            ("app_id", self.config.soak_app_id),
-            ("context", self.config.soak_context),
-            ("workflow_path", self.config.soak_workflow_path),
-        ):
-            actual = getattr(soak, name, None)
-            if actual is not None and actual != expected:
-                raise ValueError("failed soak authority context is not trusted")
-
-    @staticmethod
-    def _soak_id(soak: FailedSoakAttestation) -> str:
-        return RollbackBundleAuthority._soak_value(
-            soak, "attestation_id", "observation_id"
-        )
-
-    @staticmethod
-    def _soak_digest(soak: FailedSoakAttestation) -> str:
-        value = getattr(soak, "attestation_digest", None)
-        return str(value if value is not None else canonical_digest(soak))
-
-    @staticmethod
-    def _soak_value(soak: FailedSoakAttestation, *names: str) -> str:
-        for name in names:
-            value = getattr(soak, name, None)
-            if value is not None:
-                return str(value)
-        return ""
-
+            raise ValueError("failed soak context or workflow is not trusted")
+        if soak.status != "completed" or soak.conclusion != "failure":
+            raise ValueError("rollback authorization requires a failed completed soak")
 
 __all__ = ["RollbackBundleAuthority", "prepared_publication_evidence_digest"]

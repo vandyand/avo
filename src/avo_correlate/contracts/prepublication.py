@@ -3,14 +3,15 @@
 from __future__ import annotations
 
 import re
-from typing import Literal, Protocol, runtime_checkable
+from typing import Literal
 
-from pydantic import AliasChoices, Field, field_validator, model_validator
+from pydantic import AliasChoices, Field, StrictInt, field_validator, model_validator
 
 from avo_correlate.contracts.base import NonEmptyString, Sha256Digest, StrictModel
 from avo_correlate.domain.canonical import canonical_digest
 
 _GIT = re.compile(r"^[0-9a-f]{40}(?:[0-9a-f]{24})?$")
+SOAK_ISSUER_ID = "github-app:15368/integration-soak"
 
 
 def _git(value: str) -> str:
@@ -36,9 +37,11 @@ class RollbackPublicationAuthorityConfig(StrictModel):
     repository_digest: Sha256Digest
     target_ref: Literal["refs/heads/integration"] = "refs/heads/integration"
     soak_issuer_id: NonEmptyString = Field(
+        default=SOAK_ISSUER_ID,
         validation_alias=AliasChoices("soak_issuer_id", "soak_issuer")
     )
-    soak_app_id: NonEmptyString = Field(
+    soak_app_id: StrictInt = Field(
+        default=15368,
         validation_alias=AliasChoices("soak_app_id", "soak_app")
     )
     soak_context: NonEmptyString
@@ -57,8 +60,10 @@ class RollbackPublicationAuthorityConfig(StrictModel):
             raise ValueError("trusted authority configuration digest mismatch")
         if self.controller_identity == self.publisher_identity:
             raise ValueError("controller and publisher identities must be separate")
-        if self.soak_issuer_id in {self.controller_identity, self.publisher_identity}:
-            raise ValueError("soak issuer must be separate from controller and publisher")
+        if self.soak_issuer_id != SOAK_ISSUER_ID:
+            raise ValueError("soak issuer must be the fixed GitHub App/check identity")
+        if self.soak_app_id != 15368:
+            raise ValueError("soak app is not the fixed GitHub App")
         return self
 
 
@@ -87,26 +92,6 @@ class RollbackSnapshotRestoreFacts(StrictModel):
         if self.failed_head_parents != [self.restore_commit]:
             raise ValueError("restore commit is not the immediate sole parent")
         return self
-
-
-@runtime_checkable
-class FailedSoakAttestation(Protocol):
-    """Narrow compatibility protocol for the attestation added by the soak branch."""
-
-    @property
-    def attestation_id(self) -> str: ...
-
-    @property
-    def attestation_digest(self) -> str: ...
-
-    @property
-    def operation_id(self) -> str: ...
-
-    @property
-    def issuer_id(self) -> str: ...
-
-    @property
-    def outcome(self) -> str: ...
 
 
 class RollbackPublicationAuthorization(StrictModel):
@@ -175,13 +160,8 @@ class RollbackPublicationAuthorization(StrictModel):
 
 
 __all__ = [
-    "FailedSoakAttestation",
-    "FixedRollbackAuthorityConfig",
-    "RollbackAuthorityConfig",
+    "SOAK_ISSUER_ID",
     "RollbackPublicationAuthorityConfig",
     "RollbackPublicationAuthorization",
     "RollbackSnapshotRestoreFacts",
 ]
-
-FixedRollbackAuthorityConfig = RollbackPublicationAuthorityConfig
-RollbackAuthorityConfig = RollbackPublicationAuthorityConfig

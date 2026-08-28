@@ -34,9 +34,9 @@
       "type": "integer"
     },
     "soak_app_id": {
-      "minLength": 1,
+      "default": 15368,
       "title": "Soak App Id",
-      "type": "string"
+      "type": "integer"
     },
     "soak_context": {
       "minLength": 1,
@@ -44,6 +44,7 @@
       "type": "string"
     },
     "soak_issuer_id": {
+      "default": "github-app:15368/integration-soak",
       "minLength": 1,
       "title": "Soak Issuer Id",
       "type": "string"
@@ -67,8 +68,6 @@
   },
   "required": [
     "repository_digest",
-    "soak_issuer_id",
-    "soak_app_id",
     "soak_context",
     "soak_workflow_path",
     "base_issuer_id",
