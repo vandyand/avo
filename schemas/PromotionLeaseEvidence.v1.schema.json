@@ -1,0 +1,58 @@
+{
+  "additionalProperties": false,
+  "description": "Immutable evidence for the controller lease that fenced a campaign.\n\n``digest`` is the digest of the lease payload (the same digest exposed by\n:class:`PromotionLease`).  The surrounding ``ArtifactRef`` addresses this\ncomplete record, so timestamps and identity remain auditable after the\nephemeral lease file is released.",
+  "properties": {
+    "acquired_at": {
+      "format": "date-time",
+      "title": "Acquired At",
+      "type": "string"
+    },
+    "digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Digest",
+      "type": "string"
+    },
+    "expires_at": {
+      "format": "date-time",
+      "title": "Expires At",
+      "type": "string"
+    },
+    "identity": {
+      "minLength": 1,
+      "title": "Identity",
+      "type": "string"
+    },
+    "operation_id": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Operation Id",
+      "type": "string"
+    },
+    "repository_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Repository Digest",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "target_ref": {
+      "minLength": 1,
+      "title": "Target Ref",
+      "type": "string"
+    }
+  },
+  "required": [
+    "operation_id",
+    "repository_digest",
+    "target_ref",
+    "identity",
+    "acquired_at",
+    "expires_at",
+    "digest"
+  ],
+  "title": "PromotionLeaseEvidence",
+  "type": "object"
+}

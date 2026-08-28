@@ -1,0 +1,46 @@
+{
+  "additionalProperties": false,
+  "description": "Durable authorization crossing the provider mutation boundary.",
+  "properties": {
+    "authorized_at": {
+      "format": "date-time",
+      "title": "Authorized At",
+      "type": "string"
+    },
+    "intent_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Intent Digest",
+      "type": "string"
+    },
+    "lease_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Lease Digest",
+      "type": "string"
+    },
+    "lease_identity": {
+      "minLength": 1,
+      "title": "Lease Identity",
+      "type": "string"
+    },
+    "operation_id": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Operation Id",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "operation_id",
+    "intent_digest",
+    "lease_identity",
+    "lease_digest",
+    "authorized_at"
+  ],
+  "title": "PromotionMutationAuthorization",
+  "type": "object"
+}

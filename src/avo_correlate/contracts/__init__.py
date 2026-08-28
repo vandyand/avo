@@ -4,6 +4,26 @@ from avo_correlate.contracts.base import ActorRef, ArtifactRef, StrictModel, Ver
 from avo_correlate.contracts.budgets import BudgetSpec, UsageRecord
 from avo_correlate.contracts.evaluation import AdmissionDecision, EvaluationRecord
 from avo_correlate.contracts.experiment import ExperimentSpec
+from avo_correlate.contracts.integration_campaign import (
+    CampaignCompletionPlan,
+    CampaignDiscoveryEvidence,
+    CampaignFinalEvidenceRecord,
+    CampaignOpenedEvidence,
+    CampaignPreparationEvidence,
+    IntegrationCampaignEvidencePackage,
+    IntegrationIntentTemplate,
+)
+from avo_correlate.contracts.integration_promotion import (
+    CandidatePublicationBinding,
+    IntegrationMergeResult,
+    IntegrationPromotionIntent,
+    IntegrationPromotionReceipt,
+    IntegrationPromotionReport,
+    IntegrationProviderObservation,
+    IntegrationProviderReconciliation,
+    PromotionLeaseEvidence,
+    PromotionMutationAuthorization,
+)
 from avo_correlate.contracts.policy import PolicyDecision
 from avo_correlate.contracts.promotion_bundle import (
     GitRefSnapshot,
@@ -44,13 +64,27 @@ __all__ = [
     "AgentCompletion",
     "ArtifactRef",
     "BudgetSpec",
+    "CampaignCompletionPlan",
+    "CampaignDiscoveryEvidence",
+    "CampaignFinalEvidenceRecord",
+    "CampaignOpenedEvidence",
+    "CampaignPreparationEvidence",
     "CandidateManifest",
+    "CandidatePublicationBinding",
     "EconomicUsageRecord",
     "EvaluationRecord",
     "ExperimentSpec",
     "GitRefSnapshot",
     "HarnessInvocationRecord",
     "HarnessRuntimeProfile",
+    "IntegrationCampaignEvidencePackage",
+    "IntegrationIntentTemplate",
+    "IntegrationMergeResult",
+    "IntegrationPromotionIntent",
+    "IntegrationPromotionReceipt",
+    "IntegrationPromotionReport",
+    "IntegrationProviderObservation",
+    "IntegrationProviderReconciliation",
     "PolicyDecision",
     "PromotionBundle",
     "PromotionConfig",
@@ -58,6 +92,8 @@ __all__ = [
     "PromotionDecision",
     "PromotionDryRunInput",
     "PromotionDryRunResult",
+    "PromotionLeaseEvidence",
+    "PromotionMutationAuthorization",
     "PromotionProvenanceBinding",
     "PromotionReplayReport",
     "PromotionRequest",

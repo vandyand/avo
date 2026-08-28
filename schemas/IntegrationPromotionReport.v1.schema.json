@@ -1,0 +1,80 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "checks": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Checks",
+      "type": "array"
+    },
+    "errors": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "title": "Errors",
+      "type": "array"
+    },
+    "intent_digest": {
+      "anyOf": [
+        {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Intent Digest"
+    },
+    "operation_id": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Operation Id",
+      "type": "string"
+    },
+    "outcome": {
+      "enum": [
+        "ready",
+        "intent_recorded",
+        "applied",
+        "already_applied",
+        "stale_base",
+        "not_applicable",
+        "invalid",
+        "reconciliation_required"
+      ],
+      "title": "Outcome",
+      "type": "string"
+    },
+    "receipt_digest": {
+      "anyOf": [
+        {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Receipt Digest"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "operation_id",
+    "outcome",
+    "checks"
+  ],
+  "title": "IntegrationPromotionReport",
+  "type": "object"
+}
