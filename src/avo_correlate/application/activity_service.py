@@ -93,6 +93,8 @@ class ActivityService:
         lease_seconds: int,
         now: datetime | None = None,
     ) -> ActivityRow | None:
+        if lease_seconds <= 0:
+            raise ValueError("lease_seconds must be positive")
         claimed_at = now or datetime.now(UTC)
         expires_at = claimed_at + timedelta(seconds=lease_seconds)
         with self._database.session() as session:
