@@ -32,4 +32,3 @@ def test_trusted_workflow_verification_precedes_marker_evaluation() -> None:
     workflow_check = text.index("Verify trusted base workflow blob")
     marker_check = text.index("Fail only for the exact AVO live-rollback marker")
     assert workflow_check < marker_check
-
