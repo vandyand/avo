@@ -693,7 +693,7 @@ def _roots_overlap(left: Path, right: Path) -> bool:
 
 
 def _check_operation_id(value: str) -> None:
-    if not isinstance(value, str) or _SHA256_ID.fullmatch(value) is None:
+    if _SHA256_ID.fullmatch(value) is None:
         raise ValueError("operation ID must be a lowercase SHA-256 digest")
 
 
