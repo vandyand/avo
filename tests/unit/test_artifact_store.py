@@ -1,3 +1,4 @@
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
@@ -34,3 +35,24 @@ def test_tampering_is_detected(tmp_path: Path) -> None:
     paths[0].write_bytes(b"evil")
     with pytest.raises(ArtifactIntegrityError):
         store.read_bytes(reference)
+
+
+def test_same_digest_concurrent_insertion_is_idempotent(tmp_path: Path) -> None:
+    store = FilesystemArtifactStore(tmp_path)
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        futures = [
+            pool.submit(
+                store.put_bytes,
+                b"concurrent-evidence",
+                media_type="text/plain",
+                role="test",
+                max_bytes=100,
+            )
+            for _ in range(8)
+        ]
+        references = [future.result() for future in futures]
+    assert {reference.digest for reference in references} == {
+        references[0].digest
+    }
+    assert store.read_bytes(references[0]) == b"concurrent-evidence"
+    assert not list((tmp_path / "temporary").iterdir())

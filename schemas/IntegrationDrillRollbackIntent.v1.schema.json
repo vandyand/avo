@@ -1,0 +1,134 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "attester_identity": {
+      "minLength": 1,
+      "title": "Attester Identity",
+      "type": "string"
+    },
+    "authorization_id": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Authorization Id",
+      "type": "string"
+    },
+    "authorized": {
+      "title": "Authorized",
+      "type": "boolean"
+    },
+    "deploy_performed": {
+      "const": false,
+      "default": false,
+      "title": "Deploy Performed",
+      "type": "boolean"
+    },
+    "failed_integration_head_commit": {
+      "title": "Failed Integration Head Commit",
+      "type": "string"
+    },
+    "failed_integration_head_tree": {
+      "title": "Failed Integration Head Tree",
+      "type": "string"
+    },
+    "intent_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Intent Digest",
+      "type": "string"
+    },
+    "main_after_commit": {
+      "title": "Main After Commit",
+      "type": "string"
+    },
+    "main_before_commit": {
+      "title": "Main Before Commit",
+      "type": "string"
+    },
+    "operation_id": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Operation Id",
+      "type": "string"
+    },
+    "promotion_operation_id": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Promotion Operation Id",
+      "type": "string"
+    },
+    "reason": {
+      "minLength": 1,
+      "title": "Reason",
+      "type": "string"
+    },
+    "repository_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Repository Digest",
+      "type": "string"
+    },
+    "restore_to_commit": {
+      "title": "Restore To Commit",
+      "type": "string"
+    },
+    "restore_to_tree": {
+      "title": "Restore To Tree",
+      "type": "string"
+    },
+    "rollback_candidate_commit": {
+      "title": "Rollback Candidate Commit",
+      "type": "string"
+    },
+    "rollback_candidate_parent_commit": {
+      "title": "Rollback Candidate Parent Commit",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "target_head_commit": {
+      "title": "Target Head Commit",
+      "type": "string"
+    },
+    "target_head_tree": {
+      "title": "Target Head Tree",
+      "type": "string"
+    },
+    "target_parents": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 2,
+      "minItems": 0,
+      "title": "Target Parents",
+      "type": "array"
+    },
+    "target_ref": {
+      "minLength": 1,
+      "title": "Target Ref",
+      "type": "string"
+    }
+  },
+  "required": [
+    "repository_digest",
+    "target_ref",
+    "main_before_commit",
+    "main_after_commit",
+    "target_head_commit",
+    "target_head_tree",
+    "target_parents",
+    "operation_id",
+    "promotion_operation_id",
+    "intent_digest",
+    "authorization_id",
+    "attester_identity",
+    "authorized",
+    "reason",
+    "failed_integration_head_commit",
+    "failed_integration_head_tree",
+    "restore_to_commit",
+    "restore_to_tree",
+    "rollback_candidate_commit",
+    "rollback_candidate_parent_commit"
+  ],
+  "title": "IntegrationDrillRollbackIntent",
+  "type": "object"
+}

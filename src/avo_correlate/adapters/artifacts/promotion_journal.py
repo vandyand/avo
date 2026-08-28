@@ -12,6 +12,7 @@ import errno
 import json
 import os
 import secrets
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -73,6 +74,8 @@ class IntegrationPromotionJournal:
     def __init__(
         self, root: Path, *, artifact_store: FilesystemArtifactStore | None = None,
         max_record_bytes: int = 2_000_000,
+        clock: Callable[[], datetime] | None = None,
+        identity_factory: Callable[[], str] | None = None,
     ) -> None:
         if max_record_bytes <= 0:
             raise ValueError("max_record_bytes must be positive")
@@ -81,6 +84,8 @@ class IntegrationPromotionJournal:
         self._records = self._root / "promotion-record-index"
         self._store = artifact_store or FilesystemArtifactStore(self._root / "artifacts")
         self._max_record_bytes = max_record_bytes
+        self._clock = clock or (lambda: datetime.now(UTC))
+        self._identity_factory = identity_factory or (lambda: secrets.token_urlsafe(32))
 
     @property
     def root(self) -> Path:
@@ -96,9 +101,9 @@ class IntegrationPromotionJournal:
         self._check_digest(operation_id, "operation_id")
         if not target_ref or target_ref.strip() != target_ref:
             raise ValueError("target_ref must be non-empty and trimmed")
-        acquired = self._aware(now or datetime.now(UTC))
+        acquired = self._aware(now or self._clock())
         expires = acquired + timedelta(seconds=lease_seconds)
-        identity = secrets.token_urlsafe(32)
+        identity = self._identity_factory()
         payload = {
             "schema_version": 1, "operation_id": operation_id,
             "repository_digest": repository_digest, "target_ref": target_ref,

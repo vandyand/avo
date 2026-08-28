@@ -20,8 +20,8 @@ import os
 import stat
 import sys
 import time
-from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, cast
@@ -29,17 +29,24 @@ from typing import Any, cast
 from avo_correlate.adapters.artifacts import FilesystemArtifactStore
 from avo_correlate.adapters.artifacts.campaign_journal import CampaignCompletionJournal
 from avo_correlate.adapters.artifacts.promotion_journal import IntegrationPromotionJournal
+from avo_correlate.adapters.artifacts.synthetic_validation_journal import (
+    SyntheticValidationJournal,
+)
 from avo_correlate.adapters.evidence.campaign_quality import TrustedCampaignQualityAdapter
 from avo_correlate.adapters.git import GitCandidatePublisher, GitRepositoryReader
 from avo_correlate.adapters.hosted_git import GitHubCampaignProvider, GitHubIntegrationProvider
 from avo_correlate.application.integration_campaign_service import (
+    CampaignOpened,
     IntegrationCampaignRequest,
     IntegrationCampaignResult,
     IntegrationCampaignService,
+    campaign_open_identity,
 )
 from avo_correlate.application.integration_promotion_service import IntegrationPromotionService
 from avo_correlate.application.promotion_service import PromotionController
+from avo_correlate.application.synthetic_validation_service import SyntheticValidationService
 from avo_correlate.contracts.base import ArtifactRef, Sha256Digest
+from avo_correlate.contracts.integration_campaign import IntegrationCampaignEvidencePackage
 from avo_correlate.contracts.integration_promotion import CandidatePublicationBinding
 from avo_correlate.contracts.promotion_bundle import (
     GitRefSnapshot,
@@ -47,7 +54,16 @@ from avo_correlate.contracts.promotion_bundle import (
     PromotionControllerConfig,
     PromotionDryRunInput,
 )
-from avo_correlate.contracts.promotion_policy import path_manifest_digest
+from avo_correlate.contracts.promotion_policy import (
+    PromotionPolicy,
+    RiskClass,
+    path_manifest_digest,
+)
+from avo_correlate.contracts.synthetic_validation import (
+    SyntheticValidationCompletionProof,
+    SyntheticValidationOutcome,
+    SyntheticValidationPlan,
+)
 from avo_correlate.domain.canonical import canonical_bytes
 
 REMOTE = "https://github.com/vandyand/avo.git"
@@ -55,6 +71,11 @@ TARGET_REF = "refs/heads/integration"
 MAIN_REF = "refs/heads/main"
 MAX_WAIT_SECONDS = 30 * 60
 MAX_POLL_SECONDS = 60
+TRUSTED_SYNTHETIC_CHECKS: tuple[tuple[str, int], ...] = (
+    ("avo synthetic validate (ubuntu-latest)", 15368),
+    ("avo synthetic validate (windows-latest)", 15368),
+)
+SYNTHETIC_VALIDATION_MAX_AGE = timedelta(hours=1)
 EVIDENCE_ROLES = (
     "private-regression",
     "provenance-reconstruction",
@@ -78,14 +99,25 @@ class CampaignRunnerConfig:
     controller_config: Path
     candidate_id: str
     proposer_id: str
-    trusted_checks: tuple[tuple[str, int], ...]
-    freshness_cutoff: datetime
+    trusted_checks: tuple[tuple[str, int], ...] = field(
+        default=TRUSTED_SYNTHETIC_CHECKS, init=False
+    )
+    freshness_cutoff: datetime = field(init=False)
     wait_seconds: int = MAX_WAIT_SECONDS
     poll_seconds: int = 15
     dry_run: bool = False
     preflight: bool = False
     remote: str = REMOTE
     target_ref: str = TARGET_REF
+    _trusted_clock: Callable[[], datetime] = field(
+        default=lambda: datetime.now(UTC), repr=False, compare=False
+    )
+
+    def __post_init__(self) -> None:
+        now = self._trusted_clock()
+        if now.tzinfo is None:
+            raise CampaignRunnerError("trusted clock must be timezone-aware")
+        object.__setattr__(self, "freshness_cutoff", now - SYNTHETIC_VALIDATION_MAX_AGE)
 
     def validate(self) -> None:
         if self.remote != REMOTE:
@@ -94,14 +126,14 @@ class CampaignRunnerConfig:
             raise CampaignRunnerError("target is fixed to refs/heads/integration")
         if not self.candidate_id.strip() or not self.proposer_id.strip():
             raise CampaignRunnerError("candidate and proposer IDs are required")
-        if not self.trusted_checks:
-            raise CampaignRunnerError("at least one trusted hosted check is required")
+        if self.trusted_checks != TRUSTED_SYNTHETIC_CHECKS:
+            raise CampaignRunnerError("trusted synthetic checks are controller-pinned")
         if self.wait_seconds < 0 or self.wait_seconds > MAX_WAIT_SECONDS:
             raise CampaignRunnerError("wait_seconds is outside the bounded limit")
         if self.poll_seconds <= 0 or self.poll_seconds > MAX_POLL_SECONDS:
             raise CampaignRunnerError("poll_seconds is outside the bounded limit")
         if self.freshness_cutoff.tzinfo is None:
-            raise CampaignRunnerError("freshness cutoff must be timezone-aware")
+            raise CampaignRunnerError("derived freshness cutoff must be timezone-aware")
         roots = {
             "state": self.state_root.resolve(),
             "repository": self.repository_root.resolve(),
@@ -370,12 +402,22 @@ def preflight(config: CampaignRunnerConfig) -> PreflightResult:
     )
     snapshot = reader.snapshot()
     comparison = reader.compare_candidate(config.candidate_root, snapshot)
+    comparison_any = cast(Any, comparison)
+    try:
+        risk = PromotionPolicy.derive_risk(list(comparison_any.changed_paths))
+    except ValueError as exc:
+        raise CampaignRunnerError("candidate changed paths failed canonical validation") from exc
+    if risk in {RiskClass.CONSTITUTIONAL, RiskClass.PRODUCTION}:
+        raise CampaignRunnerError(
+            "candidate changes trusted authority paths; live campaign is blocked "
+            f"before hosted writes (risk={risk.value})"
+        )
     return PreflightResult(
-        candidate_digest=comparison.candidate_digest,
+        candidate_digest=comparison_any.candidate_digest,
         base_digest=snapshot.source_tree_digest,
         base_commit=snapshot.commit,
         base_tree=snapshot.tree,
-        changed_paths=tuple(comparison.changed_paths),
+        changed_paths=tuple(comparison_any.changed_paths),
         evidence_files=(),
     )
 
@@ -390,23 +432,6 @@ def _load_config(path: Path) -> PromotionControllerConfig:
         raise CampaignRunnerError("controller config is invalid") from exc
 
 
-def _parse_check(raw: str) -> tuple[str, int]:
-    name, separator, app = raw.partition("=")
-    if not separator or not name.strip() or not app.isdecimal():
-        raise argparse.ArgumentTypeError("checks must use NAME=APP_ID")
-    return name.strip(), int(app)
-
-
-def _parse_time(value: str) -> datetime:
-    try:
-        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
-    except ValueError as exc:
-        raise argparse.ArgumentTypeError("cutoff must be an ISO-8601 timestamp") from exc
-    if parsed.tzinfo is None:
-        raise argparse.ArgumentTypeError("cutoff must include a timezone")
-    return parsed
-
-
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--state-root", type=Path, required=True)
@@ -416,10 +441,6 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--controller-config", type=Path, required=True)
     parser.add_argument("--candidate-id", required=True)
     parser.add_argument("--proposer-id", required=True)
-    parser.add_argument("--trusted-check", type=_parse_check, action="append", required=True)
-    parser.add_argument(
-        "--freshness-cutoff", type=_parse_time, default=datetime.now(UTC) - timedelta(hours=1)
-    )
     parser.add_argument("--wait-seconds", type=int, default=MAX_WAIT_SECONDS)
     parser.add_argument("--poll-seconds", type=int, default=15)
     parser.add_argument("--dry-run", action="store_true")
@@ -436,8 +457,6 @@ def _config_from_args(args: argparse.Namespace) -> CampaignRunnerConfig:
         controller_config=args.controller_config,
         candidate_id=args.candidate_id,
         proposer_id=args.proposer_id,
-        trusted_checks=tuple(args.trusted_check),
-        freshness_cutoff=args.freshness_cutoff,
         wait_seconds=args.wait_seconds,
         poll_seconds=args.poll_seconds,
         dry_run=args.dry_run,
@@ -475,18 +494,233 @@ def _wait_static_evidence(
             time.sleep(min(config.poll_seconds, max(0.0, deadline - time.monotonic())))
 
 
-def _result_payload(result: IntegrationCampaignResult) -> dict[str, object]:
+def _result_payload(
+    result: IntegrationCampaignResult,
+    cleanup: SyntheticValidationOutcome | Mapping[str, object] | None = None,
+) -> dict[str, object]:
+    result_any = cast(Any, result)
     payload: dict[str, object] = {
         "schema_version": 1,
-        "state": "completed" if result.package is not None else "report",
-        "report": result.report.model_dump(mode="json"),
+        "state": "completed" if result_any.package is not None else "report",
+        "report": result_any.report.model_dump(mode="json"),
     }
-    if result.package is not None:
-        payload["operation_id"] = result.package.intent.operation_id
+    if result_any.package is not None:
+        payload["operation_id"] = result_any.package.intent.operation_id
         payload["package_digest"] = (
-            result.package_artifact.digest if result.package_artifact else None
+            result_any.package_artifact.digest if result_any.package_artifact else None
+        )
+    if cleanup is not None:
+        payload["synthetic_validation_cleanup"] = (
+            cast(Any, cleanup).model_dump(mode="json")
+            if isinstance(cleanup, SyntheticValidationOutcome)
+            else dict(cleanup)
         )
     return payload
+
+
+def _record_cleanup_state(
+    config: CampaignRunnerConfig, cleanup: SyntheticValidationOutcome | Mapping[str, object]
+) -> None:
+    cleanup_any = cast(Any, cleanup)
+    _write_result(
+        config.state_root / "synthetic-validation-cleanup.json",
+        {
+            "schema_version": 1,
+            "synthetic_validation_cleanup": (
+                cleanup_any.model_dump(mode="json")
+                if isinstance(cleanup, SyntheticValidationOutcome)
+                else dict(cleanup)
+            ),
+        },
+    )
+
+
+def _read_cleanup_state(config: CampaignRunnerConfig) -> Mapping[str, object] | None:
+    path = config.state_root / "synthetic-validation-cleanup.json"
+    if not path.is_file():
+        return None
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError, UnicodeError) as exc:
+        raise CampaignRunnerError("synthetic validation cleanup state is malformed") from exc
+    if not isinstance(raw, dict):
+        raise CampaignRunnerError("synthetic validation cleanup state is malformed")
+    raw_mapping = cast(dict[str, object], raw)
+    if not isinstance(raw_mapping.get("synthetic_validation_cleanup"), dict):
+        raise CampaignRunnerError("synthetic validation cleanup state is malformed")
+    return cast(Mapping[str, object], raw_mapping["synthetic_validation_cleanup"])
+
+
+def _validation_plan_for_package(
+    journal: SyntheticValidationJournal, package: Any
+) -> SyntheticValidationPlan | None:
+    """Find the one validation plan bound to a durable campaign package."""
+    plan_root = journal.root / "synthetic-validation-index" / "plan"
+    if not plan_root.is_dir():
+        return None
+    matches: list[SyntheticValidationPlan] = []
+    package_any = package
+    observation = package_any.observation
+    expected_identity = campaign_open_identity(
+        package_any.publication,
+        CampaignOpened(
+            pull_request_number=observation.pull_request_number,
+            pull_request_url=observation.pull_request_url,
+            target_ref=observation.base_ref,
+            base_commit=observation.base_commit,
+            base_tree=observation.base_tree,
+            open_identity="sha256:" + "0" * 64,
+        ),
+    )
+    for index in plan_root.glob("*.json"):
+        operation_id = "sha256:" + index.stem
+        if len(index.stem) != 64:
+            continue
+        try:
+            loaded = journal.read_plan(operation_id)
+        except (ValueError, RuntimeError, OSError):
+            continue
+        if loaded is None:
+            continue
+        plan, _reference = loaded
+        plan_any = cast(Any, plan)
+        request = plan_any.request
+        observed = request.observation
+        if (
+            observed.repository_digest == package_any.publication.repository_digest
+            and observed.base_ref == observation.base_ref
+            and observed.base_commit == observation.base_commit
+            and observed.base_tree == observation.base_tree
+            and observed.head_ref == observation.head_ref
+            and observed.head_commit == observation.head_commit
+            and observed.head_tree == observation.candidate_tree
+            and observed.synthetic_commit == observation.synthetic_merge_commit
+            and observed.synthetic_tree == observation.synthetic_merge_tree
+            and request.target_ref == observation.base_ref
+            and request.target_identity == expected_identity
+        ):
+            matches.append(plan)
+    if len(matches) > 1:
+        raise CampaignRunnerError("multiple synthetic validation plans match completed campaign")
+    return matches[0] if matches else None
+
+
+class _DurableCompletionProofVerifier:
+    """Bind validation cleanup to a verified campaign package artifact."""
+
+    def __init__(self, journal: CampaignCompletionJournal) -> None:
+        self._journal = journal
+
+    def verify(
+        self,
+        plan: SyntheticValidationPlan,
+        proof: SyntheticValidationCompletionProof,
+    ) -> None:
+        matches: list[IntegrationCampaignEvidencePackage] = []
+        for operation_id in self._journal.list_plan_operations():
+            loaded = self._journal.read_package(operation_id)
+            if loaded is None:
+                continue
+            package, package_ref = loaded
+            if package_ref.digest != proof.completion_digest:
+                continue
+            if _package_binds_validation_plan(package, plan):
+                matches.append(package)
+        if len(matches) != 1:
+            raise CampaignRunnerError(
+                "completion proof does not identify exactly one matching durable package"
+            )
+
+
+def _package_binds_validation_plan(
+    package: IntegrationCampaignEvidencePackage, plan: SyntheticValidationPlan
+) -> bool:
+    observation = package.observation
+    expected = plan.request.observation
+    if (
+        observation.repository_digest != plan.request.target_repository_digest
+        or observation.base_ref != plan.request.target_ref
+        or observation.base_commit != expected.base_commit
+        or observation.base_tree != expected.base_tree
+        or observation.head_ref != expected.head_ref
+        or observation.head_commit != expected.head_commit
+        or observation.candidate_tree != expected.head_tree
+        or observation.synthetic_merge_commit != plan.expected_commit
+        or observation.synthetic_merge_tree != plan.expected_tree
+        or package.publication.repository_digest != plan.request.target_repository_digest
+        or package.publication.base_commit != expected.base_commit
+        or package.publication.base_tree != expected.base_tree
+        or package.publication.candidate_ref != expected.head_ref
+        or package.publication.candidate_commit != expected.head_commit
+        or package.publication.candidate_tree != expected.head_tree
+        or package.intent.target_ref != plan.request.target_ref
+        or package.intent.synthetic_merge_commit != plan.expected_commit
+        or package.intent.synthetic_merge_tree != plan.expected_tree
+    ):
+        return False
+    opened = CampaignOpened(
+        pull_request_number=package.intent.pull_request_number,
+        pull_request_url=package.intent.pull_request_url,
+        target_ref=package.intent.target_ref,
+        base_commit=package.intent.base_commit,
+        base_tree=package.intent.base_tree,
+        open_identity="sha256:" + "0" * 64,
+    )
+    return plan.request.target_identity == campaign_open_identity(package.publication, opened)
+
+
+def _cleanup_completed_validation(
+    config: CampaignRunnerConfig,
+    validation_service: SyntheticValidationService,
+    plan: SyntheticValidationPlan | None,
+    result: IntegrationCampaignResult,
+) -> SyntheticValidationOutcome | Mapping[str, object] | None:
+    """Clean only after the package artifact is durably indexed."""
+    result_any = cast(Any, result)
+    if result_any.package is None or result_any.package_artifact is None or plan is None:
+        return None
+    proof = SyntheticValidationCompletionProof(
+        operation_id=plan.operation_id,
+        plan_digest=plan.plan_digest,
+        completion_digest=result_any.package_artifact.digest,
+    )
+    try:
+        cleanup = validation_service.cleanup(plan, proof)
+    except (ValueError, RuntimeError, OSError) as exc:
+        cleanup = {
+            "state": "cleanup_required",
+            "operation_id": plan.operation_id,
+            "plan_digest": plan.plan_digest,
+            "error": str(exc),
+        }
+        _record_cleanup_state(config, cleanup)
+        return cleanup
+    _record_cleanup_state(config, cleanup)
+    return cleanup
+
+
+def _cleanup_recovered_validation(
+    config: CampaignRunnerConfig,
+    service: IntegrationCampaignService,
+    result: IntegrationCampaignResult,
+) -> SyntheticValidationOutcome | Mapping[str, object] | None:
+    wiring = cast(
+        tuple[object, object] | None, getattr(service, "_synthetic_validation", None)
+    )
+    if not isinstance(wiring, tuple) or len(wiring) != 2:
+        return None
+    validation_service, validation_journal = wiring
+    if not isinstance(validation_service, SyntheticValidationService) or not isinstance(
+        validation_journal, SyntheticValidationJournal
+    ):
+        raise CampaignRunnerError("synthetic validation recovery wiring is malformed")
+    result_any = cast(Any, result)
+    plan = (
+        _validation_plan_for_package(validation_journal, result_any.package)
+        if result_any.package
+        else None
+    )
+    return _cleanup_completed_validation(config, validation_service, plan, result)
 
 
 def _build_recovery_service(
@@ -517,7 +751,17 @@ def _build_recovery_service(
         freshness_cutoff=config.freshness_cutoff,
         token=token,
     )
-    campaign_provider = GitHubCampaignProvider(provider)
+    validation_journal = SyntheticValidationJournal(
+        config.state_root / "synthetic-validation", artifact_store=artifact_store
+    )
+    validation_service = SyntheticValidationService(
+        provider,
+        validation_journal,
+        completion_proof_verifier=_DurableCompletionProofVerifier(completion),
+    )
+    campaign_provider = GitHubCampaignProvider(
+        provider, validation_service=validation_service
+    )
 
     def recovery_publication_verifier(
         binding: CandidatePublicationBinding, bundle: PromotionBundle
@@ -536,7 +780,7 @@ def _build_recovery_service(
         cast(Any, journal),
         recovery_publication_verifier,
     )
-    return IntegrationCampaignService(
+    service = IntegrationCampaignService(
         controller=cast(Any, object()),
         promotion=promotion,
         journal=cast(Any, journal),
@@ -550,6 +794,11 @@ def _build_recovery_service(
         trusted_config=cast(Any, object()),
         completion_journal=completion,
     )
+    # Recovery has no PR-open stage from which to recover the plan in memory;
+    # the runner resolves it from the durable validation journal after package
+    # finalization.  Keep the read-only cleanup wiring beside the service.
+    cast(Any, service)._synthetic_validation = validation_service, validation_journal
+    return service
 
 
 def _recover_before_preflight(config: CampaignRunnerConfig) -> IntegrationCampaignResult | None:
@@ -568,13 +817,19 @@ def _recover_before_preflight(config: CampaignRunnerConfig) -> IntegrationCampai
     service = _build_recovery_service(config)
     operation_id = operations[0]
     if completion.read_package(operation_id) is not None:
-        return service.finalize(operation_id)
+        result = service.finalize(operation_id)
+        _cleanup_recovered_validation(config, service, result)
+        return result
     if completion.read_final_evidence(operation_id) is not None:
         # Final evidence is written before the package index.  A crash in that
         # interval is a normal recovery state, and finalize() deliberately
         # reuses the durable evidence without another hosted mutation.
-        return service.finalize(operation_id)
-    return service.resume(operation_id)
+        result = service.finalize(operation_id)
+        _cleanup_recovered_validation(config, service, result)
+        return result
+    result = service.resume(operation_id)
+    _cleanup_recovered_validation(config, service, result)
+    return result
 
 
 recover_before_preflight = _recover_before_preflight
@@ -630,7 +885,20 @@ def _build_live(config: CampaignRunnerConfig, pre: PreflightResult) -> Integrati
         freshness_cutoff=config.freshness_cutoff,
         token=token,
     )
-    campaign_provider = GitHubCampaignProvider(provider)
+    validation_journal = SyntheticValidationJournal(
+        config.state_root / "synthetic-validation", artifact_store=artifact_store
+    )
+    completion = CampaignCompletionJournal(
+        config.state_root / "completion", artifact_store=artifact_store
+    )
+    validation_service = SyntheticValidationService(
+        provider,
+        validation_journal,
+        completion_proof_verifier=_DurableCompletionProofVerifier(completion),
+    )
+    campaign_provider = GitHubCampaignProvider(
+        provider, validation_service=validation_service
+    )
     bounded_provider = _BoundedCampaignProvider(campaign_provider, config, artifact_store)
     authorized_evidence: set[str] = set()
     protection_digest: str | None = None
@@ -757,7 +1025,14 @@ def _build_live(config: CampaignRunnerConfig, pre: PreflightResult) -> Integrati
         proposer_id=config.proposer_id,
         source_provenance_digest=publication.publication_evidence_digest,
     )
-    return service.run(request, publication=publication)
+    result = service.run(request, publication=publication)
+    _cleanup_completed_validation(
+        config,
+        validation_service,
+        cast(SyntheticValidationPlan | None, getattr(campaign_provider, "validation_plan", None)),
+        result,
+    )
+    return result
 
 
 class _BoundedCampaignProvider:
@@ -879,7 +1154,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         if not config.preflight and not config.dry_run:
             recovered = _recover_before_preflight(config)
             if recovered is not None:
-                payload = _result_payload(recovered)
+                payload = _result_payload(recovered, _read_cleanup_state(config))
                 _write_result(config.state_root / "result.json", payload)
                 print(json.dumps(payload, sort_keys=True))
                 return 0
@@ -890,7 +1165,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             print(json.dumps(pre.payload(), sort_keys=True))
             return 0
         result = _build_live(config, pre)
-        payload = _result_payload(result)
+        payload = _result_payload(result, _read_cleanup_state(config))
         _write_result(result_path, payload)
         print(json.dumps(payload, sort_keys=True))
         return 0
