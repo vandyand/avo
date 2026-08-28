@@ -14,17 +14,16 @@ from collections.abc import Callable, Collection
 from dataclasses import dataclass
 from typing import Any, Literal, Protocol, cast
 
-from pydantic import AliasChoices, Field
-
 from avo_correlate.adapters.artifacts.drill_journal import IntegrationDrillJournal
 from avo_correlate.application.integration_promotion_service import IntegrationPromotionService
-from avo_correlate.contracts.base import ArtifactRef, Sha256Digest, StrictModel
+from avo_correlate.contracts.base import ArtifactRef, Sha256Digest
 from avo_correlate.contracts.integration_drill import (
     IntegrationDrillCaseResult,
     IntegrationDrillRollbackAuthorization,
     IntegrationDrillRollbackIntent,
     IntegrationDrillRollbackReceipt,
     IntegrationDrillSoakObservation,
+    IntegrationRollbackRequest,
 )
 from avo_correlate.contracts.integration_promotion import (
     CandidatePublicationBinding,
@@ -85,27 +84,6 @@ class DeterministicFailedIntegrationSoak:
         values["observation_id"] = canonical_digest(values)
         return IntegrationDrillSoakObservation.model_validate(values)
 
-
-class IntegrationRollbackRequest(StrictModel):
-    """Exact topology and identities for one case-7 rollback attempt."""
-
-    operation_id: Sha256Digest
-    promotion_operation_id: Sha256Digest
-    repository_digest: Sha256Digest
-    target_ref: str
-    main_before_commit: str
-    failed_integration_head_commit: str
-    failed_integration_head_tree: str
-    restore_to_commit: str
-    restore_to_tree: str
-    rollback_candidate_commit: str = Field(
-        validation_alias=AliasChoices("rollback_candidate_commit", "candidate_commit")
-    )
-    rollback_candidate_parent_commit: str = Field(
-        validation_alias=AliasChoices(
-            "rollback_candidate_parent_commit", "candidate_parent_commit"
-        )
-    )
 
 @dataclass(frozen=True, slots=True)
 class IntegrationRollbackDrillExecution:
