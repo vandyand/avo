@@ -93,7 +93,7 @@ def test_askpass_contains_no_token(tmp_path: Path, monkeypatch: pytest.MonkeyPat
     assert "x-access-token" in content
     lowered = content.lower()
     assert "username" in lowered or "[uu]sername" in lowered
-    assert "password" in content.lower()
+    assert "password" in lowered or "[pp]assword" in lowered
 
 
 def test_redact_secret_is_used_for_diagnostics() -> None:
