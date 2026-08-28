@@ -100,6 +100,34 @@ def test_publish_creates_exact_candidate_commit_and_ref(
     assert binding.repository_digest.startswith("sha256:")
 
 
+def test_prepare_has_no_remote_mutation_and_authorized_publish_fences_push(
+    git_fixture: tuple[Path, Path, Path, str, str, str],
+) -> None:
+    remote, _seed, candidate, base_commit, base_tree, digest = git_fixture
+    adapter = publisher(remote, digest)
+    prepared = adapter.prepare(candidate, base_commit, base_tree, digest)
+    assert prepared.plan.candidate_commit
+    assert run_git(remote, "for-each-ref", "refs/heads/avo/candidate/") == ""
+
+    class Fence:
+        def __init__(self) -> None:
+            self.values: list[object] = []
+
+        def require(self, authorization: object) -> None:
+            self.values.append(authorization)
+
+    fence = Fence()
+    result = adapter.publish_prepared(
+        prepared,
+        authorization="typed-preauth",
+        authorization_journal=fence,
+    )
+    assert fence.values == ["typed-preauth"]
+    assert run_git(
+        remote, "rev-parse", result.binding.candidate_ref
+    ) == result.binding.candidate_commit
+
+
 def test_publication_retry_reconciles_durable_ref(
     git_fixture: tuple[Path, Path, Path, str, str, str],
 ) -> None:

@@ -38,6 +38,11 @@ from avo_correlate.contracts.integration_promotion import (
 )
 from avo_correlate.contracts.integration_soak import FailedSoakAttestation
 from avo_correlate.contracts.policy import PolicyDecision
+from avo_correlate.contracts.prepublication import (
+    RollbackPublicationAuthorityConfig,
+    RollbackPublicationAuthorization,
+    RollbackSnapshotRestoreFacts,
+)
 from avo_correlate.contracts.promotion_bundle import (
     GitRefSnapshot,
     PromotionBundle,
@@ -124,6 +129,9 @@ __all__ = [
     "PromotionRequest",
     "ReconciliationCaseRecord",
     "RollbackPromotionBundleAuthorization",
+    "RollbackPublicationAuthorityConfig",
+    "RollbackPublicationAuthorization",
+    "RollbackSnapshotRestoreFacts",
     "RuntimeCapabilityReport",
     "RuntimeEvent",
     "RuntimeInspection",

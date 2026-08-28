@@ -72,6 +72,23 @@ class CandidatePublicationBinding(StrictModel):
     controller_publisher_identity: NonEmptyString
     publication_evidence_digest: Sha256Digest
     verified: StrictBool
+    changed_paths: list[NonEmptyString] = Field(default_factory=list)
+
+    @field_validator("changed_paths")
+    @classmethod
+    def sorted_changed_paths(cls, paths: list[str]) -> list[str]:
+        if any(
+            not value
+            or value.startswith(("/", "\\"))
+            or ".." in value.split("/")
+            for value in paths
+        ):
+            raise ValueError("changed paths must be normalized relative paths")
+        if paths != sorted(paths, key=lambda value: (value.casefold(), value)):
+            raise ValueError("changed paths must be sorted")
+        if len({value.casefold() for value in paths}) != len(paths):
+            raise ValueError("changed paths must be unique")
+        return paths
 
     @model_validator(mode="after")
     def validate_publication(self) -> "CandidatePublicationBinding":
