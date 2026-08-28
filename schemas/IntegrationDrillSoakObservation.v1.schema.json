@@ -1,0 +1,153 @@
+{
+  "$defs": {
+    "ArtifactRef": {
+      "additionalProperties": false,
+      "properties": {
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Digest",
+          "type": "string"
+        },
+        "media_type": {
+          "minLength": 1,
+          "title": "Media Type",
+          "type": "string"
+        },
+        "role": {
+          "minLength": 1,
+          "title": "Role",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "size_bytes": {
+          "minimum": 0,
+          "title": "Size Bytes",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "digest",
+        "size_bytes",
+        "media_type",
+        "role",
+        "created_at"
+      ],
+      "title": "ArtifactRef",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "deploy_performed": {
+      "const": false,
+      "default": false,
+      "title": "Deploy Performed",
+      "type": "boolean"
+    },
+    "error": {
+      "anyOf": [
+        {
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Error"
+    },
+    "evidence_artifacts": {
+      "items": {
+        "$ref": "#/$defs/ArtifactRef"
+      },
+      "title": "Evidence Artifacts",
+      "type": "array"
+    },
+    "main_after_commit": {
+      "title": "Main After Commit",
+      "type": "string"
+    },
+    "main_before_commit": {
+      "title": "Main Before Commit",
+      "type": "string"
+    },
+    "observation_id": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Observation Id",
+      "type": "string"
+    },
+    "operation_id": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Operation Id",
+      "type": "string"
+    },
+    "outcome": {
+      "enum": [
+        "passed",
+        "failed",
+        "timeout",
+        "partial_success"
+      ],
+      "title": "Outcome",
+      "type": "string"
+    },
+    "repository_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Repository Digest",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "target_head_commit": {
+      "title": "Target Head Commit",
+      "type": "string"
+    },
+    "target_head_tree": {
+      "title": "Target Head Tree",
+      "type": "string"
+    },
+    "target_parents": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 2,
+      "minItems": 0,
+      "title": "Target Parents",
+      "type": "array"
+    },
+    "target_ref": {
+      "minLength": 1,
+      "title": "Target Ref",
+      "type": "string"
+    }
+  },
+  "required": [
+    "repository_digest",
+    "target_ref",
+    "main_before_commit",
+    "main_after_commit",
+    "target_head_commit",
+    "target_head_tree",
+    "target_parents",
+    "observation_id",
+    "operation_id",
+    "outcome"
+  ],
+  "title": "IntegrationDrillSoakObservation",
+  "type": "object"
+}

@@ -1,0 +1,63 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "deploy_performed": {
+      "const": false,
+      "default": false,
+      "title": "Deploy Performed",
+      "type": "boolean"
+    },
+    "main_after_commit": {
+      "title": "Main After Commit",
+      "type": "string"
+    },
+    "main_before_commit": {
+      "title": "Main Before Commit",
+      "type": "string"
+    },
+    "repository_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Repository Digest",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "target_head_commit": {
+      "title": "Target Head Commit",
+      "type": "string"
+    },
+    "target_head_tree": {
+      "title": "Target Head Tree",
+      "type": "string"
+    },
+    "target_parents": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 2,
+      "minItems": 0,
+      "title": "Target Parents",
+      "type": "array"
+    },
+    "target_ref": {
+      "minLength": 1,
+      "title": "Target Ref",
+      "type": "string"
+    }
+  },
+  "required": [
+    "repository_digest",
+    "target_ref",
+    "main_before_commit",
+    "main_after_commit",
+    "target_head_commit",
+    "target_head_tree",
+    "target_parents"
+  ],
+  "title": "DrillEvidenceBinding",
+  "type": "object"
+}

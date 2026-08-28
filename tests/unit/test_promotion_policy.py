@@ -169,6 +169,26 @@ def test_risk_classification_is_case_insensitive(paths: list[str], risk: RiskCla
 
 
 @pytest.mark.parametrize(
+    ("path", "risk"),
+    [
+        ("src/avo_correlate/application/integration_campaign_service.py", RiskClass.CONSTITUTIONAL),
+        ("scripts/run_sanitized_integration_campaign.py", RiskClass.CONSTITUTIONAL),
+        (
+            "src/avo_correlate/application/integration_promotion_service.py",
+            RiskClass.CONSTITUTIONAL,
+        ),
+        ("src/avo_correlate/adapters/hosted_git/campaign.py", RiskClass.CONSTITUTIONAL),
+        ("src/avo_correlate/contracts/integration_promotion.py", RiskClass.CONSTITUTIONAL),
+        ("src/avo_correlate/adapters/artifacts/promotion_journal.py", RiskClass.CONSTITUTIONAL),
+        ("src/avo_correlate/application/synthetic_validation_service.py", RiskClass.CONSTITUTIONAL),
+        ("src/avo_correlate/application/search_strategies.py", RiskClass.ORDINARY),
+    ],
+)
+def test_campaign_promotion_authority_plane_is_explicit(path: str, risk: RiskClass) -> None:
+    assert PromotionPolicy.derive_risk([path]) is risk
+
+
+@pytest.mark.parametrize(
     "path",
     [
         "C:/unsafe",

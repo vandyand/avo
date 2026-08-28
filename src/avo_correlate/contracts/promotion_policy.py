@@ -220,6 +220,37 @@ class PromotionPolicy:
         "src/avo_correlate/adapters/policy/",
         "src/avo_correlate/adapters/persistence/migrations/",
     )
+    # The campaign/promotion controller plane is authority-bearing even when
+    # a filename does not contain a constitutional keyword. Keep this list
+    # explicit so unrelated application code remains ordinary-risk.
+    CONSTITUTIONAL_AUTHORITY_PATHS = frozenset(
+        {
+            "scripts/run_sanitized_integration_campaign.py",
+            "src/avo_correlate/application/campaign.py",
+            "src/avo_correlate/application/integration_campaign_service.py",
+            "src/avo_correlate/application/integration_attester_drill_service.py",
+            "src/avo_correlate/application/integration_drill_service.py",
+            "src/avo_correlate/application/integration_promotion_service.py",
+            "src/avo_correlate/application/integration_rollback_service.py",
+            "src/avo_correlate/application/promotion_service.py",
+            "src/avo_correlate/application/synthetic_validation_service.py",
+            "src/avo_correlate/adapters/artifacts/campaign_journal.py",
+            "src/avo_correlate/adapters/artifacts/drill_journal.py",
+            "src/avo_correlate/adapters/artifacts/promotion_journal.py",
+            "src/avo_correlate/adapters/artifacts/synthetic_validation_journal.py",
+            "src/avo_correlate/contracts/integration_campaign.py",
+            "src/avo_correlate/contracts/integration_drill.py",
+            "src/avo_correlate/contracts/integration_promotion.py",
+            "src/avo_correlate/contracts/policy.py",
+            "src/avo_correlate/contracts/policy_bundle.py",
+            "src/avo_correlate/contracts/promotion_bundle.py",
+            "src/avo_correlate/contracts/synthetic_validation.py",
+            "scripts/run_avo0046_drills.py",
+        }
+    )
+    CONSTITUTIONAL_AUTHORITY_PREFIXES = (
+        "src/avo_correlate/adapters/hosted_git/",
+    )
     CONSTITUTIONAL_TERMS = (
         "admission",
         "budget",
@@ -443,7 +474,9 @@ class PromotionPolicy:
         filename = path.rsplit("/", maxsplit=1)[-1]
         return (
             path in cls.CONSTITUTIONAL_EXACT
+            or path in cls.CONSTITUTIONAL_AUTHORITY_PATHS
             or path.startswith(cls.CONSTITUTIONAL_PREFIXES)
+            or path.startswith(cls.CONSTITUTIONAL_AUTHORITY_PREFIXES)
             or filename in cls.DEPENDENCY_FILENAMES
             or filename.endswith((".lock", ".lockb", "-lock.json"))
             or (filename.startswith("requirements") and filename.endswith((".in", ".txt")))

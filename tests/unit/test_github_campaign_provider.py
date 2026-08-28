@@ -4,6 +4,9 @@ from typing import Any
 import pytest
 import test_integration_campaign_contracts as campaign_fixtures
 
+from avo_correlate.adapters.artifacts.synthetic_validation_journal import (
+    SyntheticValidationJournal,
+)
 from avo_correlate.adapters.hosted_git.campaign import GitHubCampaignProvider
 from avo_correlate.adapters.hosted_git.github import (
     GitHubEvidenceSnapshot,
@@ -11,8 +14,10 @@ from avo_correlate.adapters.hosted_git.github import (
     GitHubPullRequestDiscovery,
 )
 from avo_correlate.application.integration_campaign_service import campaign_open_identity
+from avo_correlate.application.synthetic_validation_service import SyntheticValidationService
 from avo_correlate.contracts.integration_campaign import campaign_marker_digest
 from avo_correlate.contracts.integration_promotion import CandidatePublicationBinding
+from avo_correlate.contracts.synthetic_validation import SyntheticValidationObservation
 
 G = "a" * 40
 H = "b" * 40
@@ -29,11 +34,14 @@ class FakeGitHub:
     target_ref = "refs/heads/integration"
     provider_identity = "github"
     provider_api_version = "2026-01"
+    trusted_checks = (("avo synthetic validate (ubuntu-latest)", 15368),)
 
     def __init__(self, *, head_commit: str = H) -> None:
         self.head_commit = head_commit
         self.marker_updates = 0
         self.open_base: str | None = None
+        self.events: list[str] = []
+        self.validation_ref: dict[str, str] | None = None
 
     def open_or_reconcile_campaign_pull_request(
         self,
@@ -45,6 +53,7 @@ class FakeGitHub:
         body: str,
     ) -> GitHubPullRequestBinding:
         del title, body
+        self.events.append("open")
         self.open_base = base_commit
         return GitHubPullRequestBinding(
             number=7,
@@ -68,6 +77,7 @@ class FakeGitHub:
         campaign_marker: str | None = None,
     ) -> GitHubPullRequestDiscovery:
         del campaign_marker
+        self.events.append("discover")
         return GitHubPullRequestDiscovery(
             pull_request=GitHubPullRequestBinding(
                 number=number,
@@ -121,6 +131,45 @@ class FakeGitHub:
 
     def reconcile(self, intent: Any) -> Any:
         return fixture_package().reconciliation
+
+    def observe_synthetic_validation(
+        self,
+        number: int,
+        *,
+        candidate_ref: str,
+        candidate_commit: str,
+        base_commit: str,
+    ) -> SyntheticValidationObservation:
+        del number
+        self.events.append("observe")
+        return SyntheticValidationObservation(
+            repository_digest=D,
+            base_ref=self.target_ref,
+            base_commit=base_commit,
+            base_tree=G,
+            head_ref=candidate_ref,
+            head_commit=candidate_commit,
+            head_tree=H,
+            synthetic_commit=J,
+            synthetic_tree=H,
+        )
+
+    def read_validation_ref(self, repository_digest: str, ref: str) -> object | None:
+        del repository_digest, ref
+        self.events.append("validation-read")
+        return self.validation_ref
+
+    def create_validation_ref(self, repository_digest: str, ref: str, commit: str) -> object:
+        del repository_digest
+        self.events.append("validation-create")
+        self.validation_ref = {"commit": commit, "tree": H}
+        return {"commit": commit}
+
+    def delete_validation_ref(self, repository_digest: str, ref: str) -> object:
+        del repository_digest, ref
+        self.events.append("validation-delete")
+        self.validation_ref = None
+        return {}
 
 
 class BindingGitHub(FakeGitHub):
@@ -191,6 +240,52 @@ def test_open_binds_exact_publication_base_and_identity() -> None:
     opened = provider.open_or_reconcile(publication())
     assert fake.open_base == G
     assert opened.open_identity == campaign_open_identity(publication(), opened)
+
+
+def test_validation_trigger_is_between_open_and_check_discovery(tmp_path: Any) -> None:
+    fake = FakeGitHub()
+    validation = SyntheticValidationService(fake, SyntheticValidationJournal(tmp_path))
+    provider = GitHubCampaignProvider(
+        fake, main_head_reader=lambda: G, validation_service=validation  # type: ignore[arg-type]
+    )
+    pub = publication()
+    opened = provider.open_or_reconcile(pub)
+    assert fake.events == [
+        "open",
+        "observe",
+        "validation-read",
+        "validation-create",
+        "validation-read",
+    ]
+    plan = provider.validation_plan
+    assert plan is not None
+    assert plan.request.trusted_check_contexts == ["avo synthetic validate (ubuntu-latest)"]
+    provider.discover(opened, pub)
+    assert fake.events[-1] == "discover"
+
+
+def test_non_success_validation_outcome_blocks_check_discovery(tmp_path: Any) -> None:
+    fake = FakeGitHub()
+    fake.validation_ref = {"commit": "d" * 40, "tree": H}
+    validation = SyntheticValidationService(fake, SyntheticValidationJournal(tmp_path))
+    provider = GitHubCampaignProvider(
+        fake, main_head_reader=lambda: G, validation_service=validation  # type: ignore[arg-type]
+    )
+    with pytest.raises(ValueError, match="synthetic validation trigger"):
+        provider.open_or_reconcile(publication())
+    assert "discover" not in fake.events
+
+
+def test_validation_replay_does_not_create_a_duplicate_ref(tmp_path: Any) -> None:
+    fake = FakeGitHub()
+    validation = SyntheticValidationService(fake, SyntheticValidationJournal(tmp_path))
+    provider = GitHubCampaignProvider(
+        fake, main_head_reader=lambda: G, validation_service=validation  # type: ignore[arg-type]
+    )
+    pub = publication()
+    provider.open_or_reconcile(pub)
+    provider.open_or_reconcile(pub)
+    assert fake.events.count("validation-create") == 1
 
 
 def test_discovery_rejects_head_drift_before_marker_mutation() -> None:

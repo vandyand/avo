@@ -91,6 +91,7 @@ class IntegrationPromotionService:
         publication_verifier: PublicationVerifier,
         *,
         lease_seconds: int = 300,
+        clock: Callable[[], datetime] | None = None,
     ) -> None:
         if lease_seconds <= 0:
             raise ValueError("lease_seconds must be positive")
@@ -102,6 +103,7 @@ class IntegrationPromotionService:
         )
         self._lease_seconds = lease_seconds
         self._publication_verifier = publication_verifier
+        self._clock = clock or (lambda: datetime.now(UTC))
 
     def promote(
         self,
@@ -349,7 +351,7 @@ class IntegrationPromotionService:
                 intent_digest=canonical_digest(intent),
                 lease_identity=lease.identity,
                 lease_digest=lease.digest,
-                authorized_at=datetime.now(UTC),
+                authorized_at=self._clock(),
             )
         )
 

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, cast
 from urllib.parse import quote
 
@@ -27,6 +27,7 @@ from avo_correlate.application.integration_campaign_service import (
     CampaignPreparation,
     campaign_open_identity,
 )
+from avo_correlate.application.synthetic_validation_service import SyntheticValidationService
 from avo_correlate.contracts.integration_campaign import (
     IntegrationIntentTemplate,
     campaign_marker_digest,
@@ -39,6 +40,10 @@ from avo_correlate.contracts.integration_promotion import (
     IntegrationProviderObservation,
 )
 from avo_correlate.contracts.promotion_bundle import PromotionBundle, promotion_bundle_digest
+from avo_correlate.contracts.synthetic_validation import (
+    SyntheticValidationOutcome,
+    SyntheticValidationPlan,
+)
 from avo_correlate.domain.canonical import canonical_digest
 
 _GIT_OBJECT = re.compile(r"^[0-9a-f]{40}(?:[0-9a-f]{24})?$")
@@ -65,6 +70,13 @@ class GitHubCampaignProvider:
     main_head_reader: Callable[[], str] | None = None
     pull_request_title: str = "AVO candidate for protected integration"
     pull_request_body: str = "Automated AVO campaign candidate."
+    validation_service: SyntheticValidationService | None = None
+    validation_plan: SyntheticValidationPlan | None = field(
+        default=None, init=False, repr=False, compare=False
+    )
+    validation_outcome: SyntheticValidationOutcome | None = field(
+        default=None, init=False, repr=False, compare=False
+    )
 
     def __post_init__(self) -> None:
         if self.main_ref != "refs/heads/main":
@@ -96,7 +108,7 @@ class GitHubCampaignProvider:
             base_tree=publication.base_tree,
             open_identity="sha256:" + "0" * 64,
         )
-        return CampaignOpened(
+        result = CampaignOpened(
             pull_request_number=opened.pull_request_number,
             pull_request_url=opened.pull_request_url,
             target_ref=opened.target_ref,
@@ -104,6 +116,49 @@ class GitHubCampaignProvider:
             base_tree=opened.base_tree,
             open_identity=campaign_open_identity(publication, opened),
         )
+        self._trigger_validation(result, publication)
+        return result
+
+    def _trigger_validation(
+        self, opened: CampaignOpened, publication: CandidatePublicationBinding
+    ) -> SyntheticValidationOutcome | None:
+        service = self.validation_service
+        if service is None:
+            return None
+        observation = self._provider.observe_synthetic_validation(
+            opened.pull_request_number,
+            candidate_ref=publication.candidate_ref,
+            candidate_commit=publication.candidate_commit,
+            base_commit=publication.base_commit,
+        )
+        if (
+            observation.repository_digest != publication.repository_digest
+            or observation.base_ref != opened.target_ref
+            or observation.base_commit != publication.base_commit
+            or observation.base_tree != publication.base_tree
+            or observation.head_ref != publication.candidate_ref
+            or observation.head_commit != publication.candidate_commit
+            or observation.head_tree != publication.candidate_tree
+        ):
+            raise ValueError("synthetic validation observation is not publication-bound")
+        plan = service.prepare(
+            observation,
+            target_repository_digest=publication.repository_digest,
+            target_ref=opened.target_ref,
+            target_identity=opened.open_identity,
+            trusted_check_contexts=tuple(name for name, _app_id in self._provider.trusted_checks),
+            provider_identity=self._provider.provider_identity,
+            provider_api_version=self._provider.provider_api_version,
+        )
+        outcome = service.trigger(plan)
+        object.__setattr__(self, "validation_plan", plan)
+        object.__setattr__(self, "validation_outcome", outcome)
+        if outcome.outcome not in {"created", "already_present", "reconciled"}:
+            raise ValueError(
+                "synthetic validation trigger did not reach an exact ref: "
+                f"{outcome.outcome}: {outcome.error or 'unknown error'}"
+            )
+        return outcome
 
     def discover(
         self, opened: CampaignOpened, publication: CandidatePublicationBinding

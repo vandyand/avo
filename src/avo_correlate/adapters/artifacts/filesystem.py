@@ -2,11 +2,14 @@
 
 import hashlib
 import os
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
 from avo_correlate.contracts.base import ArtifactRef
+
+_MAX_INSTALL_RACE_ATTEMPTS = 8
 
 
 class ArtifactTooLargeError(ValueError):
@@ -18,10 +21,11 @@ class ArtifactIntegrityError(RuntimeError):
 
 
 class FilesystemArtifactStore:
-    def __init__(self, root: Path) -> None:
+    def __init__(self, root: Path, *, clock: Callable[[], datetime] | None = None) -> None:
         self._root = root.resolve()
         self._objects = self._root / "objects" / "sha256"
         self._temporary = self._root / "temporary"
+        self._clock = clock or (lambda: datetime.now(UTC))
 
     @property
     def root(self) -> Path:
@@ -51,12 +55,7 @@ class FilesystemArtifactStore:
                 handle.write(data)
                 handle.flush()
                 os.fsync(handle.fileno())
-            if destination.exists():
-                if self._digest_file(destination) != hex_digest:
-                    raise ArtifactIntegrityError(f"existing object failed verification: {digest}")
-                temporary.unlink()
-            else:
-                os.replace(temporary, destination)
+            _install_or_reuse(destination, temporary, hex_digest, digest)
         finally:
             temporary.unlink(missing_ok=True)
         return ArtifactRef(
@@ -64,7 +63,7 @@ class FilesystemArtifactStore:
             size_bytes=len(data),
             media_type=media_type,
             role=role,
-            created_at=datetime.now(UTC),
+            created_at=self._clock(),
         )
 
     def read_bytes(self, reference: ArtifactRef, *, verify: bool = True) -> bytes:
@@ -104,8 +103,46 @@ class FilesystemArtifactStore:
 
     @staticmethod
     def _digest_file(path: Path) -> str:
-        digest = hashlib.sha256()
-        with path.open("rb") as handle:
-            while chunk := handle.read(1024 * 1024):
-                digest.update(chunk)
-        return digest.hexdigest()
+        return _compute_digest(path)
+
+
+def _install_or_reuse(
+    destination: Path, temporary: Path, hex_digest: str, digest: str
+) -> None:
+    """Install one object or verify the winner of a same-digest race.
+
+    Windows can report ``PermissionError`` when a concurrent writer wins the
+    destination rename.  A bounded verify-after-race loop makes insertion
+    idempotent without sleeping or treating a partial winner as valid.
+    """
+    last_error: OSError | ArtifactIntegrityError | None = None
+    for _ in range(_MAX_INSTALL_RACE_ATTEMPTS):
+        if destination.exists():
+            try:
+                actual = _compute_digest(destination)
+            except OSError as exc:
+                last_error = exc
+                continue
+            if actual == hex_digest:
+                temporary.unlink(missing_ok=True)
+                return
+            last_error = ArtifactIntegrityError(
+                f"existing object failed verification: {digest}"
+            )
+            continue
+        try:
+            os.replace(temporary, destination)
+            return
+        except (FileExistsError, PermissionError) as exc:
+            last_error = exc
+    if last_error is not None:
+        raise last_error
+    raise ArtifactIntegrityError(f"object could not be installed: {digest}")
+
+
+def _compute_digest(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        while chunk := handle.read(1024 * 1024):
+            digest.update(chunk)
+    return digest.hexdigest()

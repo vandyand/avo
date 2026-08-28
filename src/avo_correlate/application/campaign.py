@@ -33,6 +33,7 @@ from avo_correlate.contracts.budgets import UsageRecord
 from avo_correlate.contracts.evaluation import AdmissionDecision, EvaluationRecord
 from avo_correlate.contracts.lifecycle import RunState, VariationSessionState
 from avo_correlate.contracts.policy import PolicyDecision
+from avo_correlate.contracts.promotion_policy import PromotionPolicy, RiskClass
 from avo_correlate.contracts.runtime import (
     AgentCompletion,
     EconomicUsageRecord,
@@ -47,7 +48,7 @@ from avo_correlate.contracts.variation import (
     VariationSessionResult,
 )
 from avo_correlate.domain.budgets import BudgetExceededError
-from avo_correlate.domain.canonical import canonical_digest, source_tree_digest
+from avo_correlate.domain.canonical import canonical_digest, file_digest, source_tree_digest
 from avo_correlate.domain.workspace import create_vcs_free_binary_patch
 
 
@@ -82,6 +83,10 @@ AdmissionDecider = Callable[
 
 class CampaignRuntimeError(RuntimeError):
     """A campaign activity could not establish an unambiguous durable result."""
+
+
+class CampaignAuthorityPathError(CampaignRuntimeError):
+    """A candidate attempts to modify a trusted authority or control-plane path."""
 
 
 def validate_campaign_workspace(
@@ -494,6 +499,18 @@ class CodingVariationActivityHandler:
             workspace.candidate,
             git_metadata=workspace.git_metadata,
         )
+        changed_paths = _changed_workspace_paths(workspace.baseline, workspace.candidate)
+        try:
+            risk = PromotionPolicy.derive_risk(changed_paths)
+        except ValueError as exc:
+            raise CampaignAuthorityPathError(
+                "candidate changed paths failed canonical validation"
+            ) from exc
+        if risk in {RiskClass.CONSTITUTIONAL, RiskClass.PRODUCTION}:
+            raise CampaignAuthorityPathError(
+                "candidate changes trusted authority paths; completion rejected "
+                f"before candidate staging (risk={risk.value})"
+            )
         candidate_id = str(
             uuid5(NAMESPACE_URL, f"avo:candidate:{activity.activity_id}:{after_digest}")
         )
@@ -767,6 +784,42 @@ def _activity_subject(activity: ActivityRow, expected_kind: str) -> str:
     if kind != expected_kind or not separator or not subject:
         raise CampaignRuntimeError(f"invalid {expected_kind} activity key")
     return subject
+
+
+def _changed_workspace_paths(baseline: Path, candidate: Path) -> list[str]:
+    """Return changed relative paths from the trusted workspace trees.
+
+    Completion must not rely on model-provided path claims. File contents and
+    executable mode are compared directly, while the canonical promotion
+    policy validates the resulting path manifest and derives its risk.
+    """
+
+    def entries(root: Path) -> dict[str, tuple[str, str, int]]:
+        result: dict[str, tuple[str, str, int]] = {}
+        for path in root.rglob("*"):
+            relative = path.relative_to(root).as_posix()
+            stat = path.lstat()
+            mode = stat.st_mode & 0o777
+            if path.is_symlink():
+                result[relative] = ("symlink", path.readlink().as_posix(), mode)
+            elif path.is_file():
+                result[relative] = ("file", file_digest(path), mode)
+            elif path.is_dir():
+                # Empty directories are not represented by the generated patch.
+                continue
+            else:
+                raise CampaignAuthorityPathError(
+                    f"candidate contains unsupported workspace entry: {relative}"
+                )
+        return result
+
+    baseline_entries = entries(baseline)
+    candidate_entries = entries(candidate)
+    return sorted(
+        relative
+        for relative in baseline_entries.keys() | candidate_entries.keys()
+        if baseline_entries.get(relative) != candidate_entries.get(relative)
+    )
 
 
 def _runtime_usage(events: list[RuntimeEvent]) -> dict[str, int]:
