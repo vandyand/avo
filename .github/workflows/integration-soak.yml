@@ -1,0 +1,50 @@
+name: integration-soak
+
+on:
+  push:
+    branches:
+      - integration
+
+permissions:
+  contents: read
+
+env:
+  # This value is the GitHub App installation ID for the trusted soak check.
+  # The provider binds the check run to this ID; the workflow cannot choose its
+  # own check-run app identity.
+  AVO_INTEGRATION_SOAK_APP_ID: "15368"
+  AVO_TRUSTED_SOAK_WORKFLOW_SHA256: ${{ vars.AVO_TRUSTED_SOAK_WORKFLOW_SHA256 }}
+
+jobs:
+  integration-soak:
+    name: avo integration soak
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 2
+          persist-credentials: false
+      - name: Verify trusted base workflow blob
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected="${AVO_TRUSTED_SOAK_WORKFLOW_SHA256:-}"
+          if [[ ! "$expected" =~ ^[0-9a-f]{64}$ ]]; then
+            echo "AVO_TRUSTED_SOAK_WORKFLOW_SHA256 must be a lowercase 64-hex repository variable" >&2
+            exit 1
+          fi
+          actual="$(git show "$GITHUB_SHA:.github/workflows/integration-soak.yml" | sha256sum | awk '{print $1}')"
+          test "$actual" = "$expected"
+      - name: Fail only for the exact AVO live-rollback marker
+        shell: bash
+        run: |
+          set -euo pipefail
+          marker='AVO-Live-Rollback-Marker: fail-soak'
+          message="$(git log -1 --format=%B "$GITHUB_SHA")"
+          if grep -Fqx "$marker" <<< "$message"; then
+            echo "deterministic AVO live-rollback soak failure"
+            exit 1
+          fi
+          echo "integration soak passed"

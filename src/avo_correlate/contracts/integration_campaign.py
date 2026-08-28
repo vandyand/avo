@@ -23,25 +23,27 @@ from avo_correlate.domain.canonical import canonical_bytes, canonical_digest
 
 
 def _operation_identity(values: dict[str, object]) -> str:
-    return canonical_digest(
-        {
-            "repository_digest": values["repository_digest"],
-            "pull_request_number": str(values["pull_request_number"]),
-            "candidate_ref": values["candidate_ref"],
-            "target_ref": values["target_ref"],
-            "base_commit": values["base_commit"],
-            "candidate_commit": values["candidate_commit"],
-            "candidate_head_commit": values["candidate_head_commit"],
-            "target_base_commit": values["target_base_commit"],
-            "synthetic_merge_commit": values["synthetic_merge_commit"],
-            "bundle_digest": values["bundle_digest"],
-            "candidate_digest": values["candidate_digest"],
-            "publication_evidence_digest": values["publication_evidence_digest"],
-            "provider_identity": values["provider_identity"],
-            "provider_api_version": values["provider_api_version"],
-            "merge_method": values["merge_method"],
-        }
-    )
+    identity: dict[str, object] = {
+        "repository_digest": values["repository_digest"],
+        "pull_request_number": str(values["pull_request_number"]),
+        "candidate_ref": values["candidate_ref"],
+        "target_ref": values["target_ref"],
+        "base_commit": values["base_commit"],
+        "candidate_commit": values["candidate_commit"],
+        "candidate_head_commit": values["candidate_head_commit"],
+        "target_base_commit": values["target_base_commit"],
+        "synthetic_merge_commit": values["synthetic_merge_commit"],
+        "bundle_digest": values["bundle_digest"],
+        "candidate_digest": values["candidate_digest"],
+        "publication_evidence_digest": values["publication_evidence_digest"],
+        "provider_identity": values["provider_identity"],
+        "provider_api_version": values["provider_api_version"],
+        "merge_method": values["merge_method"],
+    }
+    expected_main = values.get("expected_main_commit")
+    if expected_main is not None:
+        identity["expected_main_commit"] = expected_main
+    return canonical_digest(identity)
 
 
 def campaign_marker_digest(intent: IntegrationPromotionIntent) -> Sha256Digest:
@@ -93,6 +95,7 @@ class IntegrationIntentTemplate(StrictModel):
     provider_identity: NonEmptyString
     provider_api_version: NonEmptyString
     merge_method: Literal["squash"]
+    expected_main_commit: str | None = None
 
     @model_validator(mode="after")
     def validate_identity(self) -> IntegrationIntentTemplate:

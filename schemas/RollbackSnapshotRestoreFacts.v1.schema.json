@@ -1,0 +1,52 @@
+{
+  "additionalProperties": false,
+  "description": "Authenticated failed-head and restore topology supplied by the observer.",
+  "properties": {
+    "failed_head_commit": {
+      "title": "Failed Head Commit",
+      "type": "string"
+    },
+    "failed_head_parents": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 1,
+      "minItems": 1,
+      "title": "Failed Head Parents",
+      "type": "array"
+    },
+    "failed_head_tree": {
+      "title": "Failed Head Tree",
+      "type": "string"
+    },
+    "repository_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Repository Digest",
+      "type": "string"
+    },
+    "restore_commit": {
+      "title": "Restore Commit",
+      "type": "string"
+    },
+    "restore_tree": {
+      "title": "Restore Tree",
+      "type": "string"
+    },
+    "target_ref": {
+      "const": "refs/heads/integration",
+      "default": "refs/heads/integration",
+      "title": "Target Ref",
+      "type": "string"
+    }
+  },
+  "required": [
+    "repository_digest",
+    "failed_head_commit",
+    "failed_head_tree",
+    "failed_head_parents",
+    "restore_commit",
+    "restore_tree"
+  ],
+  "title": "RollbackSnapshotRestoreFacts",
+  "type": "object"
+}

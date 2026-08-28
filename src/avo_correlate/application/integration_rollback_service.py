@@ -585,7 +585,9 @@ def rollback_authorization_digest(
 ) -> Sha256Digest:
     """Return the canonical identity of an authorization payload."""
     return canonical_digest(
-        authorization.model_dump(exclude={"authorization_id"}, mode="json")
+        authorization.model_dump(
+            exclude={"authorization_id"}, exclude_none=True, mode="json"
+        )
     )
 
 

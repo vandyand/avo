@@ -15,6 +15,7 @@ from avo_correlate.contracts import (
     CandidatePublicationBinding,
     EvaluationRecord,
     ExperimentSpec,
+    FailedSoakAttestation,
     GitRefSnapshot,
     IntegrationCampaignEvidencePackage,
     IntegrationIntentTemplate,
@@ -36,6 +37,10 @@ from avo_correlate.contracts import (
     PromotionProvenanceBinding,
     PromotionReplayReport,
     PromotionRequest,
+    RollbackPromotionBundleAuthorization,
+    RollbackPublicationAuthorityConfig,
+    RollbackPublicationAuthorization,
+    RollbackSnapshotRestoreFacts,
     VariationAttemptRecord,
     VariationSessionRequest,
     VariationSessionResult,
@@ -70,6 +75,16 @@ from avo_correlate.contracts.integration_drill import (
     IntegrationRollbackRequest,
 )
 from avo_correlate.contracts.integration_live_rollback import LiveRollbackEvidencePackage
+from avo_correlate.contracts.integration_live_rollback_completion import (
+    LiveRollbackCheckEntry,
+    LiveRollbackCompletionPackage,
+    LiveRollbackManifestEvidence,
+    LiveRollbackProtectionEntry,
+    LiveRollbackPublicationEvidence,
+    LiveRollbackPublicationOutcome,
+    LiveRollbackPublicationPlan,
+    LiveRollbackWorkflowEvidence,
+)
 from avo_correlate.contracts.model import ModelInvocationRecord, ModelRequest, ModelResponse
 from avo_correlate.contracts.operations import (
     DryRunReport,
@@ -128,6 +143,7 @@ MODELS: tuple[type[StrictModel], ...] = (
     PromotionBundle,
     PromotionDryRunResult,
     PromotionReplayReport,
+    RollbackPromotionBundleAuthorization,
     PromotionRequest,
     PromotionDecision,
     IntegrationCampaignEvidencePackage,
@@ -137,6 +153,9 @@ MODELS: tuple[type[StrictModel], ...] = (
     CampaignOpenedEvidence,
     CampaignPreparationEvidence,
     CandidatePublicationBinding,
+    RollbackPublicationAuthorityConfig,
+    RollbackPublicationAuthorization,
+    RollbackSnapshotRestoreFacts,
     IntegrationIntentTemplate,
     IntegrationMergeResult,
     IntegrationPromotionIntent,
@@ -212,6 +231,15 @@ MODELS: tuple[type[StrictModel], ...] = (
     IntegrationDrillResult,
     IntegrationRollbackRequest,
     LiveRollbackEvidencePackage,
+    LiveRollbackCompletionPackage,
+    LiveRollbackCheckEntry,
+    LiveRollbackManifestEvidence,
+    LiveRollbackProtectionEntry,
+    LiveRollbackPublicationEvidence,
+    LiveRollbackPublicationOutcome,
+    LiveRollbackPublicationPlan,
+    LiveRollbackWorkflowEvidence,
+    FailedSoakAttestation,
 )
 
 

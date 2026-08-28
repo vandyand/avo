@@ -72,6 +72,23 @@ class CandidatePublicationBinding(StrictModel):
     controller_publisher_identity: NonEmptyString
     publication_evidence_digest: Sha256Digest
     verified: StrictBool
+    changed_paths: list[NonEmptyString] = Field(default_factory=list)
+
+    @field_validator("changed_paths")
+    @classmethod
+    def sorted_changed_paths(cls, paths: list[str]) -> list[str]:
+        if any(
+            not value
+            or value.startswith(("/", "\\"))
+            or ".." in value.split("/")
+            for value in paths
+        ):
+            raise ValueError("changed paths must be normalized relative paths")
+        if paths != sorted(paths, key=lambda value: (value.casefold(), value)):
+            raise ValueError("changed paths must be sorted")
+        if len({value.casefold() for value in paths}) != len(paths):
+            raise ValueError("changed paths must be unique")
+        return paths
 
     @model_validator(mode="after")
     def validate_publication(self) -> "CandidatePublicationBinding":
@@ -168,6 +185,10 @@ class IntegrationPromotionIntent(StrictModel):
     provider_identity: NonEmptyString
     provider_api_version: NonEmptyString
     merge_method: Literal["squash"]
+    # Rollback promotions bind the protected main ref observed immediately
+    # before the provider PUT. Ordinary promotions may omit this legacy-safe
+    # fence; rollback callers must populate it.
+    expected_main_commit: str | None = None
     state: Literal["intent_recorded"] = "intent_recorded"
 
     @model_validator(mode="after")
@@ -202,6 +223,8 @@ class IntegrationPromotionIntent(StrictModel):
             raise ValueError("candidate binding differs from PR head")
         if self.synthetic_merge_tree != self.candidate_tree:
             raise ValueError("synthetic merge tree differs from candidate tree")
+        if self.expected_main_commit is not None:
+            _git_object(self.expected_main_commit)
         if self.candidate_repository_digest != self.repository_digest:
             raise ValueError("candidate repository binding differs")
         if self.target_repository_digest != self.repository_digest:
@@ -210,25 +233,26 @@ class IntegrationPromotionIntent(StrictModel):
             raise ValueError("PR base/head ref binding differs")
         if not self.pull_request_url.startswith("https://"):
             raise ValueError("pull request URL must use HTTPS")
-        expected = canonical_digest(
-            {
-                "repository_digest": self.repository_digest,
-                "pull_request_number": str(self.pull_request_number),
-                "candidate_ref": self.candidate_ref,
-                "target_ref": self.target_ref,
-                "base_commit": self.base_commit,
-                "candidate_commit": self.candidate_commit,
-                "candidate_head_commit": self.candidate_head_commit,
-                "target_base_commit": self.target_base_commit,
-                "synthetic_merge_commit": self.synthetic_merge_commit,
-                "bundle_digest": self.bundle_digest,
-                "candidate_digest": self.candidate_digest,
-                "publication_evidence_digest": self.publication_evidence_digest,
-                "provider_identity": self.provider_identity,
-                "provider_api_version": self.provider_api_version,
-                "merge_method": self.merge_method,
-            }
-        )
+        identity = {
+            "repository_digest": self.repository_digest,
+            "pull_request_number": str(self.pull_request_number),
+            "candidate_ref": self.candidate_ref,
+            "target_ref": self.target_ref,
+            "base_commit": self.base_commit,
+            "candidate_commit": self.candidate_commit,
+            "candidate_head_commit": self.candidate_head_commit,
+            "target_base_commit": self.target_base_commit,
+            "synthetic_merge_commit": self.synthetic_merge_commit,
+            "bundle_digest": self.bundle_digest,
+            "candidate_digest": self.candidate_digest,
+            "publication_evidence_digest": self.publication_evidence_digest,
+            "provider_identity": self.provider_identity,
+            "provider_api_version": self.provider_api_version,
+            "merge_method": self.merge_method,
+        }
+        if self.expected_main_commit is not None:
+            identity["expected_main_commit"] = self.expected_main_commit
+        expected = canonical_digest(identity)
         if self.operation_id != expected:
             raise ValueError("operation ID does not match deterministic promotion identity")
         return self
@@ -250,6 +274,7 @@ class IntegrationPromotionReceipt(StrictModel):
     expected_provider_identity: NonEmptyString
     expected_provider_api_version: NonEmptyString
     merge_method: Literal["squash"]
+    expected_main_commit: str | None = None
     applied_result_commit: str | None = None
     applied_result_tree: str | None = None
     applied_result_parent_commit: str | None = None
@@ -280,6 +305,8 @@ class IntegrationPromotionReceipt(StrictModel):
         _git_object(self.expected_candidate_commit)
         _git_object(self.expected_candidate_tree)
         _git_object(self.expected_base_commit)
+        if self.expected_main_commit is not None:
+            _git_object(self.expected_main_commit)
         if self.observed_head_commit is not None:
             _git_object(self.observed_head_commit)
         if self.observed_head_tree is not None:

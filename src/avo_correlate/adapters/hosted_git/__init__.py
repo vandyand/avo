@@ -8,7 +8,9 @@ from .github import (
     GitHubProvider,
     GitHubPullRequestBinding,
     GitHubPullRequestDiscovery,
+    GitHubRefObservation,
     GitHubRESTProvider,
+    GitHubRollbackTopology,
     github_repository_digest,
 )
 
@@ -21,5 +23,7 @@ __all__ = [
     "GitHubPullRequestBinding",
     "GitHubPullRequestDiscovery",
     "GitHubRESTProvider",
+    "GitHubRefObservation",
+    "GitHubRollbackTopology",
     "github_repository_digest",
 ]

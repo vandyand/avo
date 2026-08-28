@@ -1,0 +1,34 @@
+{
+  "additionalProperties": false,
+  "description": "Reconstructable required branch-protection context.",
+  "properties": {
+    "app_id": {
+      "exclusiveMinimum": 0,
+      "title": "App Id",
+      "type": "integer"
+    },
+    "context": {
+      "minLength": 1,
+      "title": "Context",
+      "type": "string"
+    },
+    "enforced": {
+      "const": true,
+      "default": true,
+      "title": "Enforced",
+      "type": "boolean"
+    },
+    "required": {
+      "const": true,
+      "default": true,
+      "title": "Required",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "app_id",
+    "context"
+  ],
+  "title": "LiveRollbackProtectionEntry",
+  "type": "object"
+}
