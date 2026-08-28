@@ -3,8 +3,6 @@ from pathlib import Path
 from scripts.run_avo0046_live_rollback import (
     LiveRollbackHostedRunner,
     LiveRollbackOperator,
-    RollbackBundleAuthority,
-    RollbackBundleAuthorityInput,
     build_parser,
     redact_secret,
 )
@@ -58,14 +56,3 @@ def test_completed_outer_package_prevents_lifecycle_execution(tmp_path: Path) ->
     assert not called
     assert result.replayed
     assert result.package == package
-
-
-def test_rollback_bundle_authority_is_typed_not_cli_json() -> None:
-    assert hasattr(RollbackBundleAuthority, "authorize")
-    assert set(RollbackBundleAuthorityInput.__dataclass_fields__) >= {
-        "canary_package",
-        "canary_package_artifact",
-        "publication",
-        "failed_head_commit",
-        "restore_to_tree",
-    }

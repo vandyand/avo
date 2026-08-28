@@ -1813,11 +1813,6 @@
           "title": "Operation Id",
           "type": "string"
         },
-        "promotion_operation_id": {
-          "pattern": "^sha256:[0-9a-f]{64}$",
-          "title": "Promotion Operation Id",
-          "type": "string"
-        },
         "publication_evidence_digest": {
           "pattern": "^sha256:[0-9a-f]{64}$",
           "title": "Publication Evidence Digest",
@@ -1877,7 +1872,6 @@
       },
       "required": [
         "operation_id",
-        "promotion_operation_id",
         "canary_operation_id",
         "canary_package_digest",
         "repository_digest",

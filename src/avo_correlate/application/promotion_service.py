@@ -511,7 +511,6 @@ class PromotionController:
         authorization_values = {
             "schema_version": 1,
             "operation_id": rollback_request.operation_id,
-            "promotion_operation_id": rollback_request.promotion_operation_id,
             "canary_operation_id": canary.intent.operation_id,
             "canary_package_digest": canonical_digest(canary),
             "drill_authorization_id": canonical_digest(drill),

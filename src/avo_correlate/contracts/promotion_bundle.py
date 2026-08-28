@@ -124,7 +124,6 @@ class RollbackPromotionBundleAuthorization(StrictModel):
 
     schema_version: Literal[1] = 1
     operation_id: Sha256Digest
-    promotion_operation_id: Sha256Digest
     canary_operation_id: Sha256Digest
     canary_package_digest: Sha256Digest
     drill_authorization_id: Sha256Digest | None = None

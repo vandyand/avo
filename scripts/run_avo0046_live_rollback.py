@@ -11,18 +11,27 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import stat
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, cast
 
 from avo_correlate.adapters.artifacts import FilesystemArtifactStore
 from avo_correlate.adapters.artifacts.campaign_journal import CampaignCompletionJournal
+from avo_correlate.adapters.artifacts.drill_journal import IntegrationDrillJournal
 from avo_correlate.adapters.artifacts.live_rollback_completion_journal import (
     LiveRollbackCompletionJournal,
 )
-from avo_correlate.adapters.git import GitCandidatePublisher
+from avo_correlate.adapters.artifacts.live_rollback_journal import LiveRollbackJournal
+from avo_correlate.adapters.artifacts.promotion_journal import IntegrationPromotionJournal
+from avo_correlate.adapters.artifacts.synthetic_validation_journal import SyntheticValidationJournal
+from avo_correlate.adapters.git import (
+    FilesystemPublicationJournal,
+    GitCandidatePublisher,
+    GitRepositoryReader,
+)
 from avo_correlate.adapters.hosted_git import (
     GitHubCampaignProvider,
     GitHubIntegrationProvider,
@@ -32,13 +41,19 @@ from avo_correlate.application.integration_live_rollback_completion_service impo
     LiveRollbackCompletionExecution,
     LiveRollbackCompletionInputs,
     LiveRollbackCompletionService,
+    LiveRollbackCoreJournalCompletionProofVerifier,
 )
 from avo_correlate.application.integration_live_rollback_service import (
     LiveIntegrationRollbackService,
     LiveRollbackExecution,
+    LiveRollbackTargetObservation,
 )
 from avo_correlate.application.integration_promotion_service import IntegrationPromotionService
-from avo_correlate.application.integration_rollback_service import IntegrationDrillRollbackService
+from avo_correlate.application.integration_rollback_service import (
+    IntegrationDrillRollbackService,
+    rollback_authorization_digest,
+)
+from avo_correlate.application.promotion_service import PromotionController
 from avo_correlate.application.synthetic_validation_service import SyntheticValidationService
 from avo_correlate.contracts.base import ArtifactRef
 from avo_correlate.contracts.integration_campaign import IntegrationCampaignEvidencePackage
@@ -48,12 +63,17 @@ from avo_correlate.contracts.integration_drill import (
 )
 from avo_correlate.contracts.integration_live_rollback_completion import (
     LiveRollbackCompletionPackage,
+    LiveRollbackPublicationEvidence,
+    LiveRollbackPublicationOutcome,
+    LiveRollbackPublicationPlan,
 )
 from avo_correlate.contracts.integration_promotion import (
     CandidatePublicationBinding,
     IntegrationPromotionIntent,
 )
-from avo_correlate.contracts.promotion_bundle import PromotionBundle
+from avo_correlate.contracts.promotion_bundle import PromotionBundle, promotion_bundle_digest
+from avo_correlate.contracts.synthetic_validation import SyntheticValidationCreateAuthorization
+from avo_correlate.domain.canonical import canonical_digest
 
 REMOTE = "https://github.com/vandyand/avo.git"
 OWNER = "vandyand"
@@ -90,52 +110,8 @@ class LiveRollbackPreflight:
     failed_head_tree: str
     main_commit: str
     workflow_digest: str
-
-
-@dataclass(frozen=True, slots=True)
-class RollbackBundleAuthorityInput:
-    """Authenticated facts a controller-owned rollback authority must bind.
-
-    This is intentionally not a JSON CLI shape.  In particular, the canary
-    package, its artifact reference, and the candidate publication are typed
-    durable records; substituting a caller assertion for any of them is not a
-    valid authorization request.
-    """
-
-    operation_id: str
     canary_package: IntegrationCampaignEvidencePackage
     canary_package_artifact: ArtifactRef
-    repository_digest: str
-    target_ref: str
-    main_commit: str
-    failed_head_commit: str
-    failed_head_tree: str
-    restore_to_commit: str
-    restore_to_tree: str
-    publication: CandidatePublicationBinding
-    candidate_digest: str
-    changed_paths: tuple[str, ...]
-
-
-@dataclass(frozen=True, slots=True)
-class AuthorizedRollbackBundle:
-    """The only admissible policy/authorization input for live rollback.
-
-    The authority, not a CLI caller, must create a bundle whose policy evidence
-    is valid for this restore candidate and a rollback authorization whose
-    issuer is allowed by that same policy.  The runner revalidates every
-    topology binding before handing either record to the mutation services.
-    """
-
-    bundle: PromotionBundle
-    bundle_digest: str
-    authorization: IntegrationDrillRollbackAuthorization
-
-
-class RollbackBundleAuthority(Protocol):
-    """Controller-owned source of fresh, candidate-bound rollback authority."""
-
-    def authorize(self, request: RollbackBundleAuthorityInput) -> AuthorizedRollbackBundle: ...
 
 
 class LiveRollbackHostedRunner:
@@ -154,7 +130,7 @@ class LiveRollbackHostedRunner:
         loaded = journal.read_package(canary_operation_id)
         if loaded is None:
             raise RuntimeError("successful canary package is missing from durable state")
-        canary, _canary_ref = loaded
+        canary, canary_ref = loaded
         target = self.provider.read_authority_ref(TARGET_REF)
         main = self.provider.read_authority_ref(MAIN_REF)
         if (
@@ -174,6 +150,8 @@ class LiveRollbackHostedRunner:
             failed_head_tree=target.tree,
             main_commit=main.commit,
             workflow_digest=workflow.workflow_blob_digest,
+            canary_package=canary,
+            canary_package_artifact=canary_ref,
         )
 
     def completed(
@@ -253,6 +231,396 @@ class LiveRollbackOperator:
             intent_factory=intent_factory,
             inputs=inputs,
         )
+
+
+class _TokenPublisher(GitCandidatePublisher):
+    """Keep the GitHub credential process-local while Git uses askpass."""
+
+    def _environment(self) -> dict[str, str]:
+        environment = super()._environment()
+        token = os.environ.get("GITHUB_TOKEN")
+        if not token:
+            raise RuntimeError("GITHUB_TOKEN is required for live publication")
+        environment["GITHUB_TOKEN"] = token
+        return environment
+
+
+def _askpass_path(state_root: Path) -> Path:
+    """Write a credential helper containing no credential bytes."""
+
+    state_root.mkdir(parents=True, exist_ok=True)
+    if os.name == "nt":
+        path = state_root / "github-askpass.cmd"
+        data = (
+            "@echo off\r\n"
+            "set \"AVO_ASKPASS_PROMPT=%~1\"\r\n"
+            "powershell.exe -NoProfile -NonInteractive -Command \"$p = "
+            "[Environment]::GetEnvironmentVariable('AVO_ASKPASS_PROMPT'); if ($p "
+            "-match '(?i)username') { [Console]::Out.WriteLine('x-access-token'); "
+            "exit 0 }; if ($p -match '(?i)password') { "
+            "[Console]::Out.WriteLine([Environment]::GetEnvironmentVariable('GITHUB_TOKEN')); "
+            "exit 0 }; exit 1\"\r\n"
+            "exit /b %errorlevel%\r\n"
+        )
+    else:
+        path = state_root / "github-askpass.sh"
+        data = (
+            "#!/bin/sh\ncase \"$1\" in\n"
+            "  *[Uu]sername*) printf '%s\\n' 'x-access-token' ;;\n"
+            "  *[Pp]assword*) printf '%s\\n' \"$GITHUB_TOKEN\" ;;\n"
+            "  *) exit 1 ;;\nesac\n"
+        )
+    path.write_text(data, encoding="utf-8", newline="")
+    if os.name != "nt":
+        path.chmod(stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR)
+    return path
+
+
+def _main_head(provider: GitHubIntegrationProvider) -> str:
+    return provider.read_authority_ref(MAIN_REF).commit
+
+
+def _target_observation(provider: GitHubIntegrationProvider) -> LiveRollbackTargetObservation:
+    target = provider.read_authority_ref(TARGET_REF)
+    return LiveRollbackTargetObservation(
+        repository_digest=target.repository_digest,
+        target_ref=target.ref,
+        commit=target.commit,
+        tree=target.tree,
+        parent_commits=target.parents,
+    )
+
+
+def _drill_authorization(
+    preflight: LiveRollbackPreflight, publication: CandidatePublicationBinding
+) -> IntegrationDrillRollbackAuthorization:
+    issuers = preflight.canary_package.bundle.controller_config.policy.rollback_issuer_ids
+    if len(issuers) != 1:
+        raise RuntimeError("rollback policy must name exactly one controller authorization issuer")
+    values: dict[str, object] = {
+        "operation_id": preflight.operation_id,
+        "repository_digest": preflight.repository_digest,
+        "target_ref": TARGET_REF,
+        "main_before_commit": preflight.main_commit,
+        "main_after_commit": preflight.main_commit,
+        "target_head_commit": preflight.failed_head_commit,
+        "target_head_tree": preflight.failed_head_tree,
+        "target_parents": [],
+        "failed_integration_head_commit": preflight.failed_head_commit,
+        "failed_integration_head_tree": preflight.failed_head_tree,
+        "restore_to_commit": preflight.canary_package.intent.base_commit,
+        "restore_to_tree": preflight.canary_package.intent.base_tree,
+        "rollback_candidate_commit": publication.candidate_commit,
+        "rollback_candidate_parent_commit": preflight.failed_head_commit,
+        "issuer": issuers[0],
+        "reason": "authenticated failed integration canary rollback",
+        "authorized": True,
+    }
+    unsigned = IntegrationDrillRollbackAuthorization.model_construct(**cast(Any, values))
+    return IntegrationDrillRollbackAuthorization.model_validate(
+        {**values, "authorization_id": rollback_authorization_digest(unsigned)}
+    )
+
+
+def _rollback_request(
+    preflight: LiveRollbackPreflight,
+    publication: CandidatePublicationBinding,
+    promotion_operation_id: str,
+) -> IntegrationRollbackRequest:
+    return IntegrationRollbackRequest(
+        operation_id=preflight.operation_id,
+        promotion_operation_id=promotion_operation_id,
+        repository_digest=preflight.repository_digest,
+        target_ref=TARGET_REF,
+        main_before_commit=preflight.main_commit,
+        failed_integration_head_commit=preflight.failed_head_commit,
+        failed_integration_head_tree=preflight.failed_head_tree,
+        restore_to_commit=preflight.canary_package.intent.base_commit,
+        restore_to_tree=preflight.canary_package.intent.base_tree,
+        rollback_candidate_commit=publication.candidate_commit,
+        rollback_candidate_parent_commit=preflight.failed_head_commit,
+    )
+
+
+def _publication_inputs(
+    publication: CandidatePublicationBinding,
+) -> tuple[
+    LiveRollbackPublicationPlan,
+    LiveRollbackPublicationOutcome,
+    LiveRollbackPublicationEvidence,
+]:
+    raw = {
+        "repository_digest": publication.repository_digest,
+        "base_commit": publication.base_commit,
+        "base_tree": publication.base_tree,
+        "candidate_digest": publication.candidate_digest,
+        "candidate_ref": publication.candidate_ref,
+        "candidate_commit": publication.candidate_commit,
+        "candidate_tree": publication.candidate_tree,
+        "controller_identity": publication.controller_publisher_identity,
+        "target_ref": TARGET_REF,
+    }
+    plan = LiveRollbackPublicationPlan.model_validate(
+        {**raw, "publication_id": canonical_digest({"schema_version": 1, **raw})}
+    )
+    evidence = LiveRollbackPublicationEvidence(
+        publication_id=plan.publication_id,
+        repository_digest=publication.repository_digest,
+        remote=REMOTE,
+        candidate_ref=publication.candidate_ref,
+        candidate_commit=publication.candidate_commit,
+        candidate_tree=publication.candidate_tree,
+        base_commit=publication.base_commit,
+        base_tree=publication.base_tree,
+        candidate_digest=publication.candidate_digest,
+    )
+    outcome = LiveRollbackPublicationOutcome(
+        publication_id=plan.publication_id,
+        repository_digest=publication.repository_digest,
+        base_commit=publication.base_commit,
+        base_tree=publication.base_tree,
+        candidate_ref=publication.candidate_ref,
+        candidate_commit=publication.candidate_commit,
+        candidate_tree=publication.candidate_tree,
+        candidate_digest=publication.candidate_digest,
+        outcome="verified",
+        evidence_digest=canonical_digest(evidence),
+    )
+    return plan, outcome, evidence
+
+
+def execute_live(
+    preflight: LiveRollbackPreflight,
+    *,
+    provider: GitHubIntegrationProvider,
+    state_root: Path,
+    repository_root: Path,
+    candidate_root: Path,
+) -> LiveRollbackCompletionExecution:
+    """Run the one hosted rollback lifecycle from controller-owned records."""
+
+    artifact_store = FilesystemArtifactStore(state_root / "artifacts")
+    hosted_target = provider.observe_integration(TARGET_REF)
+    if (
+        hosted_target.commit != preflight.failed_head_commit
+        or hosted_target.tree != preflight.failed_head_tree
+        or _main_head(provider) != preflight.main_commit
+    ):
+        raise RuntimeError("authenticated target or main changed before rollback publication")
+    repository = GitRepositoryReader(
+        repository_root,
+        TARGET_REF,
+        REMOTE,
+        hosted_target.protection_evidence_digest,
+        10 * 1024 * 1024,
+        100 * 1024 * 1024,
+    )
+    snapshot = repository.snapshot()
+    if (
+        snapshot.repository_digest != preflight.repository_digest
+        or snapshot.commit != preflight.failed_head_commit
+        or snapshot.tree != preflight.failed_head_tree
+    ):
+        raise RuntimeError("local trusted repository differs from authenticated failed target")
+    comparison = repository.compare_candidate(candidate_root, snapshot)
+    if comparison.candidate_digest == snapshot.source_tree_digest:
+        raise RuntimeError("restore candidate does not differ from failed integration target")
+
+    publication_journal = FilesystemPublicationJournal(state_root / "publication")
+    publisher = _TokenPublisher(
+        expected_remote=REMOTE,
+        repository_digest=preflight.repository_digest,
+        controller_publisher_identity=preflight.canary_package.bundle.controller_config.controller_identity,
+        publication_journal=publication_journal,
+        credential_helper=_askpass_path(state_root),
+    )
+    published = publisher.publish_result(
+        candidate_root, snapshot.commit, snapshot.tree, comparison.candidate_digest
+    )
+    publication = published.binding
+    publication_evidence = artifact_store.put_bytes(
+        published.evidence_bytes,
+        media_type=published.evidence_artifact.media_type,
+        role=published.evidence_artifact.role,
+        max_bytes=2 * 1024 * 1024,
+    )
+    if publication_evidence.digest != publication.publication_evidence_digest:
+        raise RuntimeError("published candidate evidence was not durably materialized")
+
+    def provenance_verifier(digest: str, candidate: str, base: str) -> bool:
+        return (
+            digest == publication.publication_evidence_digest
+            and candidate == publication.candidate_digest
+            and base == snapshot.source_tree_digest
+        )
+
+    def evidence_verifier(digest: str, issuer: str, candidate: str, base: str) -> bool:
+        config = preflight.canary_package.bundle.controller_config
+        return (
+            candidate == publication.candidate_digest
+            and base == snapshot.source_tree_digest
+            and (
+                (digest == publication.publication_evidence_digest
+                 and issuer == publication.controller_publisher_identity)
+                or (
+                    digest == snapshot.protection_evidence_digest
+                    and issuer == config.base_issuer_id
+                )
+            )
+        )
+
+    controller = PromotionController(
+        repository,
+        provenance_verifier,
+        evidence_verifier,
+        artifact_store,
+        trusted_config=preflight.canary_package.bundle.controller_config,
+        trusted_repository_root=repository_root,
+        trusted_artifact_root=artifact_store.root,
+    )
+    provisional_request = _rollback_request(
+        preflight, publication, canonical_digest({"rollback": preflight.operation_id})
+    )
+    drill_authorization = _drill_authorization(preflight, publication)
+    bundle_result = controller.create_rollback_bundle(
+        provisional_request,
+        canary_package=preflight.canary_package,
+        canary_package_artifact=preflight.canary_package_artifact,
+        drill_authorization=drill_authorization,
+        candidate_root=candidate_root,
+        publication=publication,
+    )
+    bundle = bundle_result.bundle
+    bundle_digest = bundle_result.bundle_digest
+    if bundle_digest != promotion_bundle_digest(bundle):
+        raise RuntimeError("rollback bundle digest differs from controller result")
+
+    validation_journal = SyntheticValidationJournal(
+        state_root / "synthetic-validation", artifact_store=artifact_store
+    )
+    promotion_journal = IntegrationPromotionJournal(
+        state_root / "promotion", artifact_store=artifact_store
+    )
+    rollback_journal = IntegrationDrillJournal(
+        state_root / "rollback", artifact_store=artifact_store
+    )
+    core_journal = LiveRollbackJournal(state_root / "live-rollback", artifact_store=artifact_store)
+    completion_journal = LiveRollbackCompletionJournal(
+        state_root / "live-rollback-completion", artifact_store=artifact_store
+    )
+    validation = SyntheticValidationService(
+        provider,
+        validation_journal,
+        completion_proof_verifier=cast(
+            Any,
+            LiveRollbackCoreJournalCompletionProofVerifier(
+                lambda: core_journal.read_package(preflight.operation_id)
+            ),
+        ),
+    )
+    campaign_provider = GitHubCampaignProvider(provider, validation_service=validation)
+    opened = campaign_provider.open_or_reconcile(publication)
+    discovery, evidence_snapshot = campaign_provider.discover_with_evidence(opened, publication)
+    preparation = campaign_provider.bind(publication, bundle, bundle_digest, opened, discovery)
+    request = _rollback_request(preflight, publication, preparation.template.operation_id)
+
+    class RepositoryVerifier:
+        def verify(self, request: IntegrationRollbackRequest) -> None:
+            provider.verify_live_rollback_topology(
+                failed_integration_head_commit=request.failed_integration_head_commit,
+                failed_integration_head_tree=request.failed_integration_head_tree,
+                restore_to_commit=request.restore_to_commit,
+                restore_to_tree=request.restore_to_tree,
+                rollback_candidate_commit=request.rollback_candidate_commit,
+                rollback_candidate_tree=request.restore_to_tree,
+                rollback_candidate_parent_commit=request.rollback_candidate_parent_commit,
+                current_target_commit=request.failed_integration_head_commit,
+                current_target_tree=request.failed_integration_head_tree,
+                current_target_parents=tuple(preflight.canary_package.reconciliation.target_parents),
+                main_commit=request.main_before_commit,
+            )
+
+    promotion = IntegrationPromotionService(
+        controller,
+        repository,
+        provider,
+        cast(Any, promotion_journal),
+        lambda binding, bundle: (
+            binding == publication
+            and bundle.request.candidate_digest == binding.candidate_digest
+        ),
+    )
+    drill = IntegrationDrillRollbackService(
+        rollback_journal,
+        promotion,
+        promotion_journal,
+        main_head_reader=lambda: _main_head(provider),
+        repository_verifier=RepositoryVerifier(),
+        trusted_rollback_issuers=preflight.canary_package.bundle.controller_config.policy.rollback_issuer_ids,
+    )
+    core = LiveIntegrationRollbackService(
+        drill,
+        rollback_journal,
+        core_journal,
+        promotion_journal,
+        main_head_reader=lambda: _main_head(provider),
+        target_observation_reader=lambda: _target_observation(provider),
+    )
+    completion = LiveRollbackCompletionService(
+        core,
+        validation,
+        cast(Any, completion_journal),
+        current_target_observation=lambda: _target_observation(provider),
+        main_head_reader=lambda: _main_head(provider),
+        provider_reconciliation_reader=provider.reconcile,
+    )
+    check_manifest, protection_manifest = provider.live_rollback_manifests(
+        evidence_snapshot, protection_source_commit=preflight.failed_head_commit
+    )
+    workflow = provider.observe_workflow_authority(preflight.failed_head_commit)
+    validation_plan = campaign_provider.validation_plan
+    if validation_plan is None:
+        raise RuntimeError("exact validation plan was not durably created")
+    validation_authorization = validation.read_durable_authorization(
+        SyntheticValidationCreateAuthorization(
+            operation_id=validation_plan.operation_id,
+            plan_digest=validation_plan.plan_digest,
+            validation_ref=validation_plan.validation_ref,
+            expected_commit=validation_plan.expected_commit,
+            expected_tree=validation_plan.expected_tree,
+        )
+    )
+    if validation_authorization is None:
+        raise RuntimeError("exact validation authorization is missing")
+    plan, outcome, publication_proof = _publication_inputs(publication)
+    inputs = LiveRollbackCompletionInputs(
+        publication_plan=plan,
+        publication_outcome=outcome,
+        publication_evidence=publication_proof,
+        provider_observation=discovery.observation,
+        provider_reconciliation=provider.reconcile(
+            preparation.template.bind_lease("rollback-observation", "sha256:" + "0" * 64)
+        ),
+        check_manifest=check_manifest,
+        protection_manifest=protection_manifest,
+        workflow_evidence=workflow,
+        validation_plan=validation_plan,
+        validation_authorization=validation_authorization,
+    )
+    wiring = LiveRollbackHostedWiring(
+        publisher, campaign_provider, promotion, drill, core, validation
+    )
+    return LiveRollbackOperator(wiring, completion).execute(
+        request,
+        canary_package=preflight.canary_package,
+        canary_package_artifact=preflight.canary_package_artifact,
+        authorization=drill_authorization,
+        bundle=bundle,
+        publication=publication,
+        bundle_digest=bundle_digest,
+        intent_factory=lambda lease: preparation.template.bind_lease(lease.identity, lease.digest),
+        inputs=inputs,
+    )
 
 
 def run(
@@ -341,15 +709,39 @@ def main() -> int:
         "failed_head_tree": preflight.failed_head_tree,
         "main_commit": preflight.main_commit,
         "workflow_digest": preflight.workflow_digest,
-        "status": "preflight_ok" if args.dry_run else "blocked",
-        "reason": (
-            None
-            if args.dry_run
-            else "live lifecycle wiring requires controller-owned rollback policy inputs"
-        ),
+        "status": "preflight_ok",
     }
-    print(json.dumps(summary, sort_keys=True, separators=(",", ":")))
-    return 0 if args.dry_run else 2
+    if args.dry_run:
+        print(json.dumps(summary, sort_keys=True, separators=(",", ":")))
+        return 0
+    try:
+        execution = execute_live(
+            preflight,
+            provider=provider,
+            state_root=args.state_root,
+            repository_root=args.repository_root,
+            candidate_root=args.candidate_root,
+        )
+    except (OSError, RuntimeError, ValueError) as exc:
+        print(json.dumps({"status": "blocked", "error": redact_secret(str(exc))}))
+        return 2
+    if execution.package is None or execution.package_artifact is None:
+        print(json.dumps({"operation_id": args.operation_id, "status": "reconciliation_required"}))
+        return 2
+    print(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "operation_id": execution.package.operation_id,
+                "completion_digest": execution.package_artifact.digest,
+                "core_digest": execution.package.core_package_artifact.digest,
+                "status": "completed" if not execution.replayed else "already_completed",
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+    )
+    return 0
 
 
 if __name__ == "__main__":

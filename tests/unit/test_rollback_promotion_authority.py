@@ -19,7 +19,6 @@ def _authorization(
     values = {
         "schema_version": 1,
         "operation_id": D,
-        "promotion_operation_id": "sha256:" + "b" * 64,
         "canary_operation_id": "sha256:" + "c" * 64,
         "canary_package_digest": "sha256:" + "d" * 64,
         "drill_authorization_id": "sha256:" + "e" * 64,
@@ -52,6 +51,12 @@ def test_authorization_is_content_addressed_and_aliases_issuer() -> None:
     assert authorization.authorization_id == canonical_digest(
         authorization.model_dump(exclude={"authorization_id"}, mode="json")
     )
+
+
+def test_authorization_does_not_choose_the_post_bind_promotion_operation() -> None:
+    authorization = _authorization()
+    payload = authorization.model_dump(mode="json")
+    assert "promotion_operation_id" not in payload
 
 
 def test_authorization_journal_is_create_once_and_rejects_conflicts(tmp_path: Path) -> None:
