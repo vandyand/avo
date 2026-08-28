@@ -493,6 +493,7 @@ class PromotionController:
         canary_package_artifact: ArtifactRef,
         drill_authorization: object | None = None,
         authorization: object | None = None,
+        rollback_authorization: object | None = None,
         candidate_root: Path,
         publication: object,
         config: PromotionControllerConfig | None = None,
@@ -526,6 +527,10 @@ class PromotionController:
             raise TypeError("drill authorization must be a trusted durable authorization")
         if not isinstance(publication, CandidatePublicationBinding):
             raise TypeError("publication must be a trusted CandidatePublicationBinding")
+        if rollback_authorization is not None and not isinstance(
+            rollback_authorization, RollbackPromotionBundleAuthorization
+        ):
+            raise TypeError("rollback authorization must be controller-owned authority")
         rollback_request = IntegrationRollbackRequest.model_validate(
             request.model_dump(mode="json")
         )
@@ -611,12 +616,15 @@ class PromotionController:
             "reason": drill.reason,
             "authorized": True,
         }
-        authorization = RollbackPromotionBundleAuthorization.model_validate(
+        derived_authorization = RollbackPromotionBundleAuthorization.model_validate(
             {
                 **authorization_values,
                 "authorization_id": canonical_digest(authorization_values),
             }
         )
+        if rollback_authorization is not None and rollback_authorization != derived_authorization:
+            raise ValueError("finalized rollback authority differs from controller facts")
+        authorization = rollback_authorization or derived_authorization
         self._rollback_authorizations.record(
             authorization,
             canary_package_artifact=canary_package_artifact,
@@ -764,7 +772,11 @@ class PromotionController:
             != request.rollback_candidate_parent_commit
             or authorization.issuer not in config.policy.rollback_issuer_ids
             or authorization.authorization_id
-            != canonical_digest(authorization.model_dump(exclude={"authorization_id"}, mode="json"))
+            != canonical_digest(
+                authorization.model_dump(
+                    exclude={"authorization_id"}, exclude_none=True, mode="json"
+                )
+            )
         ):
             raise ValueError("drill rollback authorization is stale or untrusted")
 

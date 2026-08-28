@@ -410,8 +410,11 @@ class IntegrationPromotionService:
             or publication.base_tree != bundle.snapshot.tree
             or publication.candidate_digest != bundle.request.candidate_digest
             or publication.publication_evidence_digest != bundle.provenance.source_provenance_digest
-            or publication.controller_publisher_identity
-            != bundle.controller_config.controller_identity
+            or (
+                bundle.rollback_authorization is None
+                and publication.controller_publisher_identity
+                != bundle.controller_config.controller_identity
+            )
             or publication.publication_evidence_digest not in bundle.evidence_digests
         ):
             raise ValueError("candidate publication does not match bundle provenance")

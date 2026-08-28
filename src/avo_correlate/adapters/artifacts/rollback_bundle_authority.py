@@ -87,6 +87,11 @@ class RollbackBundleAuthorityJournal:
         except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
             raise ValueError("rollback publication authorization is not durably recorded") from exc
 
+    def read_artifact(self, reference: ArtifactRef) -> bytes:
+        """Read a referenced authority artifact with content-address verification."""
+
+        return self._store.read_bytes(reference)
+
 
 RollbackPublicationAuthorizationJournal = RollbackBundleAuthorityJournal
 

@@ -645,6 +645,26 @@ class GitCandidatePublisher:
     ) -> PreparedPublication:
         """Prepare and durably journal a candidate without updating any ref."""
 
+        if self.publication_journal is None:
+            raise GitRepositoryError("a durable publication journal is required")
+        existing = self.publication_journal.find_matching_plan(
+            self.repository_digest,
+            self.expected_remote,
+            base_commit,
+            base_tree,
+            expected_candidate_digest,
+            self.controller_publisher_identity,
+        )
+        if existing is not None:
+            # A restart must reuse the exact pre-push plan so it can recover a
+            # durable preauthorization and reconcile the remote before ever
+            # considering another push.
+            return PreparedPublication(
+                existing,
+                Path(candidate_root).resolve(strict=True),
+                self.publication_journal.record_plan(existing),
+            )
+
         prepared = self.publish_result(
             candidate_root,
             base_commit,
@@ -844,6 +864,7 @@ class GitCandidatePublisher:
             "candidate_commit": plan.candidate_commit,
             "candidate_tree": plan.candidate_tree,
             "controller_publisher_identity": plan.controller_publisher_identity,
+            "changed_paths": list(plan.changed_paths),
             "verified": True,
         }
         evidence_bytes = canonical_bytes(evidence_payload)

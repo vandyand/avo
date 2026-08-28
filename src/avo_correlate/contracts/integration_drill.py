@@ -109,6 +109,11 @@ class IntegrationRollbackRequest(StrictModel):
 class IntegrationDrillRollbackAuthorization(DrillEvidenceBinding):
     operation_id: Sha256Digest
     authorization_id: Sha256Digest
+    # Present for the hosted rollback path.  They identify the independent
+    # provider failed-soak observation and the durable pre-push authority that
+    # produced this projection; legacy journal records omit both fields.
+    prepublication_authorization_id: Sha256Digest | None = None
+    failed_soak_attestation_id: Sha256Digest | None = None
     failed_integration_head_commit: str
     failed_integration_head_tree: str
     restore_to_commit: str

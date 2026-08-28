@@ -20,10 +20,16 @@ from avo_correlate.contracts.integration_live_rollback_completion import (
 )
 from avo_correlate.domain.canonical import canonical_bytes, canonical_digest
 from scripts.run_avo0046_live_rollback import (
+    ROLLBACK_BASE_ISSUER,
+    ROLLBACK_CONTROLLER_ID,
+    ROLLBACK_PATH_ISSUER,
+    ROLLBACK_PUBLISHER_ID,
     LiveRollbackHostedRunner,
     LiveRollbackOperator,
     _assert_safe_roots,
+    _authority_config,
     _check_operation_id,
+    _rollback_controller_config,
     _validate_completed_canary,
     build_parser,
     redact_secret,
@@ -128,6 +134,17 @@ def test_runner_redacts_tokens() -> None:
     assert redact_secret("ghp_secret") == "<redacted>"
     assert "ghp_secret" not in redact_secret("ghp_secret")
     assert redact_secret("") == "<absent>"
+
+
+def test_runner_uses_a_distinct_base_controlled_rollback_authority() -> None:
+    authority = _authority_config()
+    controller = _rollback_controller_config()
+    assert authority.controller_identity == ROLLBACK_CONTROLLER_ID
+    assert authority.publisher_identity == ROLLBACK_PUBLISHER_ID
+    assert authority.base_issuer_id == ROLLBACK_BASE_ISSUER
+    assert authority.path_issuer_id == ROLLBACK_PATH_ISSUER
+    assert controller.controller_identity == ROLLBACK_CONTROLLER_ID
+    assert controller.policy.rollback_issuer_ids == [ROLLBACK_CONTROLLER_ID]
 
 
 def test_runner_parser_requires_explicit_state_and_operation() -> None:

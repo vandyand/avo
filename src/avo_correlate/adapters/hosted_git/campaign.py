@@ -202,6 +202,8 @@ class GitHubCampaignProvider:
         bundle_digest: str,
         opened: CampaignOpened,
         discovery: CampaignDiscovery,
+        *,
+        expected_main_commit: str | None = None,
     ) -> CampaignPreparation:
         """Bind the immutable bundle to exact hosted evidence and one marker."""
         self._validate_opened_identity(opened, publication)
@@ -243,6 +245,8 @@ class GitHubCampaignProvider:
             "provider_api_version": observation.provider_api_version,
             "merge_method": "squash",
         }
+        if expected_main_commit is not None:
+            template_values["expected_main_commit"] = expected_main_commit
         operation_identity = {
             "repository_digest": str(template_values["repository_digest"]),
             "pull_request_number": str(template_values["pull_request_number"]),

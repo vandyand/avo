@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Callable
 from typing import Any
 
@@ -15,7 +16,10 @@ from avo_correlate.adapters.artifacts.rollback_bundle_authority import (
 from avo_correlate.adapters.git.publisher import PreparedPublication
 from avo_correlate.contracts.base import ArtifactRef
 from avo_correlate.contracts.integration_campaign import IntegrationCampaignEvidencePackage
-from avo_correlate.contracts.integration_drill import IntegrationRollbackRequest
+from avo_correlate.contracts.integration_drill import (
+    IntegrationDrillRollbackAuthorization,
+    IntegrationRollbackRequest,
+)
 from avo_correlate.contracts.integration_promotion import CandidatePublicationBinding
 from avo_correlate.contracts.integration_soak import FailedSoakAttestation
 from avo_correlate.contracts.prepublication import (
@@ -25,6 +29,8 @@ from avo_correlate.contracts.prepublication import (
 )
 from avo_correlate.contracts.promotion_bundle import RollbackPromotionBundleAuthorization
 from avo_correlate.domain.canonical import canonical_bytes, canonical_digest
+
+_CANDIDATE_REF = re.compile(r"^refs/heads/avo/candidate/[0-9a-f]{32}$")
 
 
 def prepared_publication_evidence_digest(prepared: PreparedPublication) -> str:
@@ -122,7 +128,7 @@ class RollbackBundleAuthority:
             or plan.base_tree != facts.failed_head_tree
             or plan.candidate_commit != operation.rollback_candidate_commit
             or plan.candidate_tree != operation.restore_to_tree
-            or plan.candidate_ref == config.target_ref
+            or _CANDIDATE_REF.fullmatch(plan.candidate_ref) is None
             or plan.controller_publisher_identity != config.publisher_identity
         ):
             raise ValueError("rollback operation, canary, facts, or prepared plan are mixed")
@@ -177,8 +183,9 @@ class RollbackBundleAuthority:
         authorization: RollbackPublicationAuthorization,
         publication: CandidatePublicationBinding,
         *,
-        evidence: bytes | ArtifactRef | None = None,
-    ) -> object:
+        evidence: bytes | ArtifactRef,
+        drill_authorization: IntegrationDrillRollbackAuthorization,
+    ) -> RollbackPromotionBundleAuthorization:
         """Verify post-push evidence and produce controller-owned authority."""
 
         if not isinstance(authorization, RollbackPublicationAuthorization):
@@ -186,6 +193,29 @@ class RollbackBundleAuthority:
         self.journal.require(authorization)
         if not isinstance(publication, CandidatePublicationBinding):
             raise TypeError("publication must be a trusted CandidatePublicationBinding")
+        if not isinstance(drill_authorization, IntegrationDrillRollbackAuthorization):
+            raise TypeError("drill authorization must be an authority projection")
+        if (
+            drill_authorization.operation_id != authorization.operation_id
+            or drill_authorization.prepublication_authorization_id
+            != authorization.authorization_id
+            or drill_authorization.failed_soak_attestation_id
+            != authorization.failed_soak_attestation_id
+            or drill_authorization.repository_digest != authorization.repository_digest
+            or drill_authorization.target_ref != authorization.target_ref
+            or drill_authorization.main_before_commit != authorization.main_before_commit
+            or drill_authorization.failed_integration_head_commit
+            != authorization.failed_integration_head_commit
+            or drill_authorization.failed_integration_head_tree
+            != authorization.failed_integration_head_tree
+            or drill_authorization.restore_to_commit != authorization.restore_to_commit
+            or drill_authorization.restore_to_tree != authorization.restore_to_tree
+            or drill_authorization.rollback_candidate_commit
+            != authorization.rollback_candidate_commit
+            or drill_authorization.rollback_candidate_parent_commit
+            != authorization.rollback_candidate_parent_commit
+        ):
+            raise ValueError("drill authorization is not bound to pre-publication authority")
         if (
             publication.repository_digest != authorization.repository_digest
             or publication.base_commit != authorization.failed_integration_head_commit
@@ -200,30 +230,49 @@ class RollbackBundleAuthority:
             or not publication.verified
         ):
             raise ValueError("candidate publication does not match pre-publication authority")
-        if evidence is not None:
-            if isinstance(evidence, bytes):
-                try:
-                    raw = json.loads(evidence)
-                except (TypeError, ValueError, json.JSONDecodeError) as exc:
-                    raise ValueError("publication evidence is malformed") from exc
-                if (
-                    canonical_bytes(raw) != evidence
-                    or canonical_digest(raw) != authorization.publication_evidence_digest
-                ):
-                    raise ValueError("publication evidence differs from pre-authorization")
-            elif isinstance(evidence, ArtifactRef):
-                if evidence.digest != authorization.publication_evidence_digest:
-                    raise ValueError("publication evidence artifact differs from authorization")
-            else:
-                raise TypeError("evidence must be canonical bytes or ArtifactRef")
+        if isinstance(evidence, ArtifactRef):
+            if evidence.digest != authorization.publication_evidence_digest:
+                raise ValueError("publication evidence artifact differs from authorization")
+            evidence_bytes = self.journal.read_artifact(evidence)
+        elif isinstance(evidence, bytes):
+            evidence_bytes = evidence
+        else:
+            raise TypeError("evidence must be canonical bytes or ArtifactRef")
+        try:
+            raw = json.loads(evidence_bytes)
+        except (TypeError, ValueError, json.JSONDecodeError) as exc:
+            raise ValueError("publication evidence is malformed") from exc
+        expected_evidence = {
+            "schema_version": 1,
+            "publication_id": authorization.publication_plan_digest,
+            "repository_digest": authorization.repository_digest,
+            "base_commit": authorization.failed_integration_head_commit,
+            "base_tree": authorization.failed_integration_head_tree,
+            "candidate_digest": authorization.candidate_digest,
+            "candidate_ref": authorization.candidate_ref,
+            "candidate_commit": authorization.rollback_candidate_commit,
+            "candidate_tree": authorization.rollback_candidate_tree,
+            "controller_publisher_identity": authorization.publisher_identity,
+            "changed_paths": authorization.changed_paths,
+            "verified": True,
+        }
+        if (
+            canonical_bytes(raw) != evidence_bytes
+            or raw != expected_evidence
+            or canonical_digest(raw) != authorization.publication_evidence_digest
+        ):
+            raise ValueError("publication evidence differs from pre-authorization")
         if self._finalizer is not None:
-            return self._finalizer(authorization, publication)
+            finalized = self._finalizer(authorization, publication)
+            if not isinstance(finalized, RollbackPromotionBundleAuthorization):
+                raise TypeError("rollback authority finalizer returned an invalid authorization")
+            return finalized
         values = {
             "schema_version": 1,
             "operation_id": authorization.operation_id,
             "canary_operation_id": authorization.canary_operation_id,
             "canary_package_digest": authorization.canary_package_digest,
-            "drill_authorization_id": authorization.failed_soak_attestation_id,
+            "drill_authorization_id": canonical_digest(drill_authorization),
             "repository_digest": authorization.repository_digest,
             "target_ref": authorization.target_ref,
             "main_before_commit": authorization.main_before_commit,
@@ -244,6 +293,62 @@ class RollbackBundleAuthority:
         }
         return RollbackPromotionBundleAuthorization.model_validate(
             {**values, "authorization_id": canonical_digest(values)}
+        )
+
+    def drill_authorization(
+        self,
+        authorization: RollbackPublicationAuthorization,
+        failed_soak: FailedSoakAttestation,
+    ) -> IntegrationDrillRollbackAuthorization:
+        """Project only durable preauthorization plus provider soak into drill auth."""
+
+        if not isinstance(authorization, RollbackPublicationAuthorization):
+            raise TypeError("authorization must be a trusted RollbackPublicationAuthorization")
+        self.journal.require(authorization)
+        self._validate_soak(failed_soak)
+        if (
+            authorization.failed_soak_attestation_id != failed_soak.attestation_id
+            or authorization.failed_soak_attestation_digest != canonical_digest(failed_soak)
+            or authorization.repository_digest != failed_soak.repository_digest
+            or authorization.failed_integration_head_commit != failed_soak.integration_commit
+            or authorization.failed_integration_head_tree != failed_soak.integration_tree
+            or authorization.restore_to_commit != failed_soak.restore_commit
+            or authorization.restore_to_tree != failed_soak.restore_tree
+            or authorization.main_before_commit != failed_soak.main_commit
+        ):
+            raise ValueError("stored preauthorization is not bound to failed soak authority")
+        values: dict[str, Any] = {
+            "schema_version": 1,
+            "operation_id": authorization.operation_id,
+            "prepublication_authorization_id": authorization.authorization_id,
+            "failed_soak_attestation_id": failed_soak.attestation_id,
+            "repository_digest": authorization.repository_digest,
+            "target_ref": authorization.target_ref,
+            "main_before_commit": authorization.main_before_commit,
+            "main_after_commit": authorization.main_before_commit,
+            "target_head_commit": authorization.failed_integration_head_commit,
+            "target_head_tree": authorization.failed_integration_head_tree,
+            "target_parents": [],
+            "failed_integration_head_commit": authorization.failed_integration_head_commit,
+            "failed_integration_head_tree": authorization.failed_integration_head_tree,
+            "restore_to_commit": authorization.restore_to_commit,
+            "restore_to_tree": authorization.restore_to_tree,
+            "rollback_candidate_commit": authorization.rollback_candidate_commit,
+            "rollback_candidate_parent_commit": authorization.rollback_candidate_parent_commit,
+            "issuer": self.config.controller_identity,
+            "reason": authorization.reason,
+            "authorized": True,
+        }
+        unsigned = IntegrationDrillRollbackAuthorization.model_construct(**values)
+        return IntegrationDrillRollbackAuthorization.model_validate(
+            {
+                **values,
+                "authorization_id": canonical_digest(
+                    unsigned.model_dump(
+                        exclude={"authorization_id"}, exclude_none=True, mode="json"
+                    )
+                ),
+            },
         )
 
     def _validate_soak(self, soak: FailedSoakAttestation) -> None:
