@@ -1,0 +1,2805 @@
+{
+  "$defs": {
+    "ArtifactRef": {
+      "additionalProperties": false,
+      "properties": {
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Digest",
+          "type": "string"
+        },
+        "media_type": {
+          "minLength": 1,
+          "title": "Media Type",
+          "type": "string"
+        },
+        "role": {
+          "minLength": 1,
+          "title": "Role",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "size_bytes": {
+          "minimum": 0,
+          "title": "Size Bytes",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "digest",
+        "size_bytes",
+        "media_type",
+        "role",
+        "created_at"
+      ],
+      "title": "ArtifactRef",
+      "type": "object"
+    },
+    "CandidatePublicationBinding": {
+      "additionalProperties": false,
+      "description": "Trusted proof that the candidate was published from the evaluated source.\n\nA PR observation is not sufficient provenance: the provider could be showing a\ndifferent head than the controller evaluated.  This record is produced by the\ncontroller's trusted publication path and is independently verified before any\nprovider mutation is allowed.",
+      "properties": {
+        "base_commit": {
+          "title": "Base Commit",
+          "type": "string"
+        },
+        "base_tree": {
+          "title": "Base Tree",
+          "type": "string"
+        },
+        "candidate_commit": {
+          "title": "Candidate Commit",
+          "type": "string"
+        },
+        "candidate_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Candidate Digest",
+          "type": "string"
+        },
+        "candidate_ref": {
+          "minLength": 1,
+          "title": "Candidate Ref",
+          "type": "string"
+        },
+        "candidate_tree": {
+          "title": "Candidate Tree",
+          "type": "string"
+        },
+        "controller_publisher_identity": {
+          "minLength": 1,
+          "title": "Controller Publisher Identity",
+          "type": "string"
+        },
+        "publication_evidence_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Publication Evidence Digest",
+          "type": "string"
+        },
+        "repository_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Repository Digest",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "verified": {
+          "title": "Verified",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "repository_digest",
+        "base_commit",
+        "base_tree",
+        "candidate_digest",
+        "candidate_ref",
+        "candidate_commit",
+        "candidate_tree",
+        "controller_publisher_identity",
+        "publication_evidence_digest",
+        "verified"
+      ],
+      "title": "CandidatePublicationBinding",
+      "type": "object"
+    },
+    "GateAttestation": {
+      "additionalProperties": false,
+      "properties": {
+        "base_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Base Digest",
+          "type": "string"
+        },
+        "candidate_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Candidate Digest",
+          "type": "string"
+        },
+        "evidence_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Evidence Digest",
+          "type": "string"
+        },
+        "gate_name": {
+          "minLength": 1,
+          "title": "Gate Name",
+          "type": "string"
+        },
+        "issuer_id": {
+          "minLength": 1,
+          "title": "Issuer Id",
+          "type": "string"
+        },
+        "passed": {
+          "title": "Passed",
+          "type": "boolean"
+        },
+        "valid_from_epoch": {
+          "minimum": 0,
+          "title": "Valid From Epoch",
+          "type": "integer"
+        },
+        "valid_until_epoch": {
+          "minimum": 0,
+          "title": "Valid Until Epoch",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "gate_name",
+        "candidate_digest",
+        "base_digest",
+        "evidence_digest",
+        "issuer_id",
+        "passed",
+        "valid_from_epoch",
+        "valid_until_epoch"
+      ],
+      "title": "GateAttestation",
+      "type": "object"
+    },
+    "GitRefSnapshot": {
+      "additionalProperties": false,
+      "description": "The trusted Git state against which a dry-run was evaluated.",
+      "properties": {
+        "commit": {
+          "title": "Commit",
+          "type": "string"
+        },
+        "protection_evidence_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Protection Evidence Digest",
+          "type": "string"
+        },
+        "repository_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Repository Digest",
+          "type": "string"
+        },
+        "source_tree_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Source Tree Digest",
+          "type": "string"
+        },
+        "target_ref": {
+          "minLength": 1,
+          "title": "Target Ref",
+          "type": "string"
+        },
+        "tree": {
+          "title": "Tree",
+          "type": "string"
+        }
+      },
+      "required": [
+        "repository_digest",
+        "target_ref",
+        "commit",
+        "tree",
+        "source_tree_digest",
+        "protection_evidence_digest"
+      ],
+      "title": "GitRefSnapshot",
+      "type": "object"
+    },
+    "IntegrationCampaignEvidencePackage": {
+      "additionalProperties": false,
+      "description": "Immutable, replayable evidence for one sanitized live campaign.",
+      "properties": {
+        "bundle": {
+          "$ref": "#/$defs/PromotionBundle"
+        },
+        "bundle_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Bundle Digest",
+          "type": "string"
+        },
+        "campaign_marker_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Campaign Marker Digest",
+          "type": "string"
+        },
+        "deploy_performed": {
+          "const": false,
+          "default": false,
+          "title": "Deploy Performed",
+          "type": "boolean"
+        },
+        "evidence_artifacts": {
+          "items": {
+            "$ref": "#/$defs/ArtifactRef"
+          },
+          "minItems": 1,
+          "title": "Evidence Artifacts",
+          "type": "array"
+        },
+        "intent": {
+          "$ref": "#/$defs/IntegrationPromotionIntent"
+        },
+        "intent_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Intent Digest",
+          "type": "string"
+        },
+        "lease_evidence": {
+          "$ref": "#/$defs/PromotionLeaseEvidence"
+        },
+        "lease_evidence_artifact": {
+          "$ref": "#/$defs/ArtifactRef"
+        },
+        "main_after_commit": {
+          "title": "Main After Commit",
+          "type": "string"
+        },
+        "main_before_commit": {
+          "title": "Main Before Commit",
+          "type": "string"
+        },
+        "merge_result": {
+          "$ref": "#/$defs/IntegrationMergeResult"
+        },
+        "observation": {
+          "$ref": "#/$defs/IntegrationProviderObservation"
+        },
+        "publication": {
+          "$ref": "#/$defs/CandidatePublicationBinding"
+        },
+        "receipt": {
+          "$ref": "#/$defs/IntegrationPromotionReceipt"
+        },
+        "receipt_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Receipt Digest",
+          "type": "string"
+        },
+        "reconciliation": {
+          "$ref": "#/$defs/IntegrationProviderReconciliation"
+        },
+        "report": {
+          "$ref": "#/$defs/IntegrationPromotionReport"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "bundle",
+        "publication",
+        "evidence_artifacts",
+        "intent",
+        "observation",
+        "merge_result",
+        "reconciliation",
+        "receipt",
+        "report",
+        "bundle_digest",
+        "intent_digest",
+        "receipt_digest",
+        "campaign_marker_digest",
+        "lease_evidence",
+        "lease_evidence_artifact",
+        "main_before_commit",
+        "main_after_commit"
+      ],
+      "title": "IntegrationCampaignEvidencePackage",
+      "type": "object"
+    },
+    "IntegrationDrillCaseResult": {
+      "additionalProperties": false,
+      "properties": {
+        "attester_identity": {
+          "minLength": 1,
+          "title": "Attester Identity",
+          "type": "string"
+        },
+        "case_id": {
+          "maximum": 8,
+          "minimum": 1,
+          "title": "Case Id",
+          "type": "integer"
+        },
+        "deploy_performed": {
+          "const": false,
+          "default": false,
+          "title": "Deploy Performed",
+          "type": "boolean"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Error"
+        },
+        "evidence_artifacts": {
+          "items": {
+            "$ref": "#/$defs/ArtifactRef"
+          },
+          "title": "Evidence Artifacts",
+          "type": "array"
+        },
+        "main_after_commit": {
+          "title": "Main After Commit",
+          "type": "string"
+        },
+        "main_before_commit": {
+          "title": "Main Before Commit",
+          "type": "string"
+        },
+        "operation_id": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Operation Id",
+          "type": "string"
+        },
+        "outcome": {
+          "enum": [
+            "passed",
+            "failed",
+            "rejected",
+            "applied",
+            "already_applied",
+            "reconciliation_required"
+          ],
+          "title": "Outcome",
+          "type": "string"
+        },
+        "repository_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Repository Digest",
+          "type": "string"
+        },
+        "rollback_intent": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rollback Intent"
+        },
+        "rollback_receipt": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rollback Receipt"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "soak_observation": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Soak Observation"
+        },
+        "target_head_commit": {
+          "title": "Target Head Commit",
+          "type": "string"
+        },
+        "target_head_tree": {
+          "title": "Target Head Tree",
+          "type": "string"
+        },
+        "target_parents": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 2,
+          "minItems": 0,
+          "title": "Target Parents",
+          "type": "array"
+        },
+        "target_ref": {
+          "minLength": 1,
+          "title": "Target Ref",
+          "type": "string"
+        }
+      },
+      "required": [
+        "repository_digest",
+        "target_ref",
+        "main_before_commit",
+        "main_after_commit",
+        "target_head_commit",
+        "target_head_tree",
+        "target_parents",
+        "case_id",
+        "operation_id",
+        "outcome",
+        "attester_identity"
+      ],
+      "title": "IntegrationDrillCaseResult",
+      "type": "object"
+    },
+    "IntegrationDrillRollbackAuthorization": {
+      "additionalProperties": false,
+      "properties": {
+        "authorization_id": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Authorization Id",
+          "type": "string"
+        },
+        "authorized": {
+          "default": true,
+          "title": "Authorized",
+          "type": "boolean"
+        },
+        "deploy_performed": {
+          "const": false,
+          "default": false,
+          "title": "Deploy Performed",
+          "type": "boolean"
+        },
+        "failed_integration_head_commit": {
+          "title": "Failed Integration Head Commit",
+          "type": "string"
+        },
+        "failed_integration_head_tree": {
+          "title": "Failed Integration Head Tree",
+          "type": "string"
+        },
+        "issuer": {
+          "minLength": 1,
+          "title": "Issuer",
+          "type": "string"
+        },
+        "main_after_commit": {
+          "title": "Main After Commit",
+          "type": "string"
+        },
+        "main_before_commit": {
+          "title": "Main Before Commit",
+          "type": "string"
+        },
+        "operation_id": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Operation Id",
+          "type": "string"
+        },
+        "reason": {
+          "minLength": 1,
+          "title": "Reason",
+          "type": "string"
+        },
+        "repository_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Repository Digest",
+          "type": "string"
+        },
+        "restore_to_commit": {
+          "title": "Restore To Commit",
+          "type": "string"
+        },
+        "restore_to_tree": {
+          "title": "Restore To Tree",
+          "type": "string"
+        },
+        "rollback_candidate_commit": {
+          "title": "Rollback Candidate Commit",
+          "type": "string"
+        },
+        "rollback_candidate_parent_commit": {
+          "title": "Rollback Candidate Parent Commit",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "target_head_commit": {
+          "title": "Target Head Commit",
+          "type": "string"
+        },
+        "target_head_tree": {
+          "title": "Target Head Tree",
+          "type": "string"
+        },
+        "target_parents": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 2,
+          "minItems": 0,
+          "title": "Target Parents",
+          "type": "array"
+        },
+        "target_ref": {
+          "minLength": 1,
+          "title": "Target Ref",
+          "type": "string"
+        }
+      },
+      "required": [
+        "repository_digest",
+        "target_ref",
+        "main_before_commit",
+        "main_after_commit",
+        "target_head_commit",
+        "target_head_tree",
+        "target_parents",
+        "operation_id",
+        "authorization_id",
+        "failed_integration_head_commit",
+        "failed_integration_head_tree",
+        "restore_to_commit",
+        "restore_to_tree",
+        "rollback_candidate_commit",
+        "rollback_candidate_parent_commit",
+        "issuer",
+        "reason"
+      ],
+      "title": "IntegrationDrillRollbackAuthorization",
+      "type": "object"
+    },
+    "IntegrationDrillRollbackIntent": {
+      "additionalProperties": false,
+      "properties": {
+        "attester_identity": {
+          "minLength": 1,
+          "title": "Attester Identity",
+          "type": "string"
+        },
+        "authorization_id": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Authorization Id",
+          "type": "string"
+        },
+        "authorized": {
+          "title": "Authorized",
+          "type": "boolean"
+        },
+        "deploy_performed": {
+          "const": false,
+          "default": false,
+          "title": "Deploy Performed",
+          "type": "boolean"
+        },
+        "failed_integration_head_commit": {
+          "title": "Failed Integration Head Commit",
+          "type": "string"
+        },
+        "failed_integration_head_tree": {
+          "title": "Failed Integration Head Tree",
+          "type": "string"
+        },
+        "intent_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Intent Digest",
+          "type": "string"
+        },
+        "main_after_commit": {
+          "title": "Main After Commit",
+          "type": "string"
+        },
+        "main_before_commit": {
+          "title": "Main Before Commit",
+          "type": "string"
+        },
+        "operation_id": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Operation Id",
+          "type": "string"
+        },
+        "promotion_operation_id": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Promotion Operation Id",
+          "type": "string"
+        },
+        "reason": {
+          "minLength": 1,
+          "title": "Reason",
+          "type": "string"
+        },
+        "repository_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Repository Digest",
+          "type": "string"
+        },
+        "restore_to_commit": {
+          "title": "Restore To Commit",
+          "type": "string"
+        },
+        "restore_to_tree": {
+          "title": "Restore To Tree",
+          "type": "string"
+        },
+        "rollback_candidate_commit": {
+          "title": "Rollback Candidate Commit",
+          "type": "string"
+        },
+        "rollback_candidate_parent_commit": {
+          "title": "Rollback Candidate Parent Commit",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "target_head_commit": {
+          "title": "Target Head Commit",
+          "type": "string"
+        },
+        "target_head_tree": {
+          "title": "Target Head Tree",
+          "type": "string"
+        },
+        "target_parents": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 2,
+          "minItems": 0,
+          "title": "Target Parents",
+          "type": "array"
+        },
+        "target_ref": {
+          "minLength": 1,
+          "title": "Target Ref",
+          "type": "string"
+        }
+      },
+      "required": [
+        "repository_digest",
+        "target_ref",
+        "main_before_commit",
+        "main_after_commit",
+        "target_head_commit",
+        "target_head_tree",
+        "target_parents",
+        "operation_id",
+        "promotion_operation_id",
+        "intent_digest",
+        "authorization_id",
+        "attester_identity",
+        "authorized",
+        "reason",
+        "failed_integration_head_commit",
+        "failed_integration_head_tree",
+        "restore_to_commit",
+        "restore_to_tree",
+        "rollback_candidate_commit",
+        "rollback_candidate_parent_commit"
+      ],
+      "title": "IntegrationDrillRollbackIntent",
+      "type": "object"
+    },
+    "IntegrationDrillRollbackReceipt": {
+      "additionalProperties": false,
+      "properties": {
+        "attester_identity": {
+          "minLength": 1,
+          "title": "Attester Identity",
+          "type": "string"
+        },
+        "deploy_performed": {
+          "const": false,
+          "default": false,
+          "title": "Deploy Performed",
+          "type": "boolean"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Error"
+        },
+        "failed_integration_head_commit": {
+          "title": "Failed Integration Head Commit",
+          "type": "string"
+        },
+        "failed_integration_head_tree": {
+          "title": "Failed Integration Head Tree",
+          "type": "string"
+        },
+        "intent_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Intent Digest",
+          "type": "string"
+        },
+        "main_after_commit": {
+          "title": "Main After Commit",
+          "type": "string"
+        },
+        "main_before_commit": {
+          "title": "Main Before Commit",
+          "type": "string"
+        },
+        "operation_id": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Operation Id",
+          "type": "string"
+        },
+        "outcome": {
+          "enum": [
+            "applied",
+            "already_applied",
+            "rejected",
+            "ambiguous",
+            "stale_target",
+            "reconciliation_required"
+          ],
+          "title": "Outcome",
+          "type": "string"
+        },
+        "promotion_operation_id": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Promotion Operation Id",
+          "type": "string"
+        },
+        "receipt_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Receipt Digest",
+          "type": "string"
+        },
+        "repository_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Repository Digest",
+          "type": "string"
+        },
+        "restore_to_commit": {
+          "title": "Restore To Commit",
+          "type": "string"
+        },
+        "restore_to_tree": {
+          "title": "Restore To Tree",
+          "type": "string"
+        },
+        "result_commit": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Result Commit"
+        },
+        "result_tree": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Result Tree"
+        },
+        "rollback_candidate_commit": {
+          "title": "Rollback Candidate Commit",
+          "type": "string"
+        },
+        "rollback_candidate_parent_commit": {
+          "title": "Rollback Candidate Parent Commit",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "target_head_commit": {
+          "title": "Target Head Commit",
+          "type": "string"
+        },
+        "target_head_tree": {
+          "title": "Target Head Tree",
+          "type": "string"
+        },
+        "target_parents": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 2,
+          "minItems": 0,
+          "title": "Target Parents",
+          "type": "array"
+        },
+        "target_ref": {
+          "minLength": 1,
+          "title": "Target Ref",
+          "type": "string"
+        }
+      },
+      "required": [
+        "repository_digest",
+        "target_ref",
+        "main_before_commit",
+        "main_after_commit",
+        "target_head_commit",
+        "target_head_tree",
+        "target_parents",
+        "operation_id",
+        "promotion_operation_id",
+        "intent_digest",
+        "receipt_digest",
+        "outcome",
+        "attester_identity",
+        "failed_integration_head_commit",
+        "failed_integration_head_tree",
+        "restore_to_commit",
+        "restore_to_tree",
+        "rollback_candidate_commit",
+        "rollback_candidate_parent_commit"
+      ],
+      "title": "IntegrationDrillRollbackReceipt",
+      "type": "object"
+    },
+    "IntegrationDrillSoakObservation": {
+      "additionalProperties": false,
+      "properties": {
+        "deploy_performed": {
+          "const": false,
+          "default": false,
+          "title": "Deploy Performed",
+          "type": "boolean"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Error"
+        },
+        "evidence_artifacts": {
+          "items": {
+            "$ref": "#/$defs/ArtifactRef"
+          },
+          "title": "Evidence Artifacts",
+          "type": "array"
+        },
+        "main_after_commit": {
+          "title": "Main After Commit",
+          "type": "string"
+        },
+        "main_before_commit": {
+          "title": "Main Before Commit",
+          "type": "string"
+        },
+        "observation_id": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Observation Id",
+          "type": "string"
+        },
+        "operation_id": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Operation Id",
+          "type": "string"
+        },
+        "outcome": {
+          "enum": [
+            "passed",
+            "failed",
+            "timeout",
+            "partial_success"
+          ],
+          "title": "Outcome",
+          "type": "string"
+        },
+        "repository_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Repository Digest",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "target_head_commit": {
+          "title": "Target Head Commit",
+          "type": "string"
+        },
+        "target_head_tree": {
+          "title": "Target Head Tree",
+          "type": "string"
+        },
+        "target_parents": {
+          "items": {
+            "type": "string"
+          },
+          "maxItems": 2,
+          "minItems": 0,
+          "title": "Target Parents",
+          "type": "array"
+        },
+        "target_ref": {
+          "minLength": 1,
+          "title": "Target Ref",
+          "type": "string"
+        }
+      },
+      "required": [
+        "repository_digest",
+        "target_ref",
+        "main_before_commit",
+        "main_after_commit",
+        "target_head_commit",
+        "target_head_tree",
+        "target_parents",
+        "observation_id",
+        "operation_id",
+        "outcome"
+      ],
+      "title": "IntegrationDrillSoakObservation",
+      "type": "object"
+    },
+    "IntegrationMergeResult": {
+      "additionalProperties": false,
+      "description": "Provider merge response; ambiguous responses cannot be treated as success.",
+      "properties": {
+        "error": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Error"
+        },
+        "first_parent_commit": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "First Parent Commit"
+        },
+        "main_protection_evidence_digest": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Main Protection Evidence Digest"
+        },
+        "outcome": {
+          "enum": [
+            "applied",
+            "rejected",
+            "ambiguous"
+          ],
+          "title": "Outcome",
+          "type": "string"
+        },
+        "response_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Response Digest",
+          "type": "string"
+        },
+        "result_commit": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Result Commit"
+        },
+        "result_tree": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Result Tree"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "outcome",
+        "response_digest"
+      ],
+      "title": "IntegrationMergeResult",
+      "type": "object"
+    },
+    "IntegrationPromotionIntent": {
+      "additionalProperties": false,
+      "description": "Durable intent written immediately before the provider merge call.",
+      "properties": {
+        "base_commit": {
+          "title": "Base Commit",
+          "type": "string"
+        },
+        "base_tree": {
+          "title": "Base Tree",
+          "type": "string"
+        },
+        "bundle_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Bundle Digest",
+          "type": "string"
+        },
+        "candidate_commit": {
+          "title": "Candidate Commit",
+          "type": "string"
+        },
+        "candidate_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Candidate Digest",
+          "type": "string"
+        },
+        "candidate_head_commit": {
+          "title": "Candidate Head Commit",
+          "type": "string"
+        },
+        "candidate_head_ref": {
+          "minLength": 1,
+          "title": "Candidate Head Ref",
+          "type": "string"
+        },
+        "candidate_head_tree": {
+          "title": "Candidate Head Tree",
+          "type": "string"
+        },
+        "candidate_ref": {
+          "minLength": 1,
+          "title": "Candidate Ref",
+          "type": "string"
+        },
+        "candidate_repository_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Candidate Repository Digest",
+          "type": "string"
+        },
+        "candidate_tree": {
+          "title": "Candidate Tree",
+          "type": "string"
+        },
+        "check_evidence_manifest_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Check Evidence Manifest Digest",
+          "type": "string"
+        },
+        "controller_config_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Controller Config Digest",
+          "type": "string"
+        },
+        "controller_lease_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Controller Lease Digest",
+          "type": "string"
+        },
+        "controller_lease_identity": {
+          "minLength": 1,
+          "title": "Controller Lease Identity",
+          "type": "string"
+        },
+        "evidence_manifest_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Evidence Manifest Digest",
+          "type": "string"
+        },
+        "merge_method": {
+          "const": "squash",
+          "title": "Merge Method",
+          "type": "string"
+        },
+        "operation_id": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Operation Id",
+          "type": "string"
+        },
+        "protection_evidence_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Protection Evidence Digest",
+          "type": "string"
+        },
+        "provider_api_version": {
+          "minLength": 1,
+          "title": "Provider Api Version",
+          "type": "string"
+        },
+        "provider_identity": {
+          "minLength": 1,
+          "title": "Provider Identity",
+          "type": "string"
+        },
+        "publication_evidence_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Publication Evidence Digest",
+          "type": "string"
+        },
+        "pull_request_number": {
+          "exclusiveMinimum": 0,
+          "title": "Pull Request Number",
+          "type": "integer"
+        },
+        "pull_request_url": {
+          "minLength": 1,
+          "title": "Pull Request Url",
+          "type": "string"
+        },
+        "repository_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Repository Digest",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "state": {
+          "const": "intent_recorded",
+          "default": "intent_recorded",
+          "title": "State",
+          "type": "string"
+        },
+        "synthetic_merge_commit": {
+          "title": "Synthetic Merge Commit",
+          "type": "string"
+        },
+        "synthetic_merge_tree": {
+          "title": "Synthetic Merge Tree",
+          "type": "string"
+        },
+        "target_base_commit": {
+          "title": "Target Base Commit",
+          "type": "string"
+        },
+        "target_base_ref": {
+          "minLength": 1,
+          "title": "Target Base Ref",
+          "type": "string"
+        },
+        "target_base_tree": {
+          "title": "Target Base Tree",
+          "type": "string"
+        },
+        "target_ref": {
+          "minLength": 1,
+          "title": "Target Ref",
+          "type": "string"
+        },
+        "target_repository_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Target Repository Digest",
+          "type": "string"
+        }
+      },
+      "required": [
+        "operation_id",
+        "repository_digest",
+        "controller_lease_digest",
+        "controller_lease_identity",
+        "candidate_ref",
+        "target_ref",
+        "base_commit",
+        "base_tree",
+        "candidate_commit",
+        "candidate_tree",
+        "candidate_repository_digest",
+        "candidate_head_ref",
+        "candidate_head_commit",
+        "candidate_head_tree",
+        "target_repository_digest",
+        "target_base_ref",
+        "target_base_commit",
+        "target_base_tree",
+        "synthetic_merge_commit",
+        "synthetic_merge_tree",
+        "bundle_digest",
+        "candidate_digest",
+        "controller_config_digest",
+        "protection_evidence_digest",
+        "evidence_manifest_digest",
+        "check_evidence_manifest_digest",
+        "publication_evidence_digest",
+        "pull_request_number",
+        "pull_request_url",
+        "provider_identity",
+        "provider_api_version",
+        "merge_method"
+      ],
+      "title": "IntegrationPromotionIntent",
+      "type": "object"
+    },
+    "IntegrationPromotionReceipt": {
+      "additionalProperties": false,
+      "description": "Immutable provider observation; soak is intentionally not represented here.",
+      "properties": {
+        "applied_result_commit": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Applied Result Commit"
+        },
+        "applied_result_parent_commit": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Applied Result Parent Commit"
+        },
+        "applied_result_tree": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Applied Result Tree"
+        },
+        "bundle_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Bundle Digest",
+          "type": "string"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Error"
+        },
+        "expected_base_commit": {
+          "title": "Expected Base Commit",
+          "type": "string"
+        },
+        "expected_candidate_commit": {
+          "title": "Expected Candidate Commit",
+          "type": "string"
+        },
+        "expected_candidate_tree": {
+          "title": "Expected Candidate Tree",
+          "type": "string"
+        },
+        "expected_protection_evidence_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Expected Protection Evidence Digest",
+          "type": "string"
+        },
+        "expected_provider_api_version": {
+          "minLength": 1,
+          "title": "Expected Provider Api Version",
+          "type": "string"
+        },
+        "expected_provider_identity": {
+          "minLength": 1,
+          "title": "Expected Provider Identity",
+          "type": "string"
+        },
+        "expected_target_ref": {
+          "minLength": 1,
+          "title": "Expected Target Ref",
+          "type": "string"
+        },
+        "intent_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Intent Digest",
+          "type": "string"
+        },
+        "main_protection_evidence_digest": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Main Protection Evidence Digest"
+        },
+        "merge_method": {
+          "const": "squash",
+          "title": "Merge Method",
+          "type": "string"
+        },
+        "observation_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Observation Digest",
+          "type": "string"
+        },
+        "observed_base_commit": {
+          "title": "Observed Base Commit",
+          "type": "string"
+        },
+        "observed_head_commit": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Observed Head Commit"
+        },
+        "observed_head_tree": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Observed Head Tree"
+        },
+        "observed_protection_evidence_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Observed Protection Evidence Digest",
+          "type": "string"
+        },
+        "observed_provider_api_version": {
+          "minLength": 1,
+          "title": "Observed Provider Api Version",
+          "type": "string"
+        },
+        "observed_provider_identity": {
+          "minLength": 1,
+          "title": "Observed Provider Identity",
+          "type": "string"
+        },
+        "observed_target_ref": {
+          "minLength": 1,
+          "title": "Observed Target Ref",
+          "type": "string"
+        },
+        "operation_id": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Operation Id",
+          "type": "string"
+        },
+        "outcome": {
+          "enum": [
+            "intent_recorded",
+            "applied",
+            "already_applied",
+            "stale_base",
+            "not_applicable",
+            "invalid",
+            "reconciliation_required"
+          ],
+          "title": "Outcome",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "operation_id",
+        "intent_digest",
+        "bundle_digest",
+        "expected_target_ref",
+        "expected_candidate_commit",
+        "expected_candidate_tree",
+        "expected_base_commit",
+        "expected_protection_evidence_digest",
+        "expected_provider_identity",
+        "expected_provider_api_version",
+        "merge_method",
+        "outcome",
+        "observed_target_ref",
+        "observed_base_commit",
+        "observed_protection_evidence_digest",
+        "observed_provider_identity",
+        "observed_provider_api_version",
+        "observation_digest"
+      ],
+      "title": "IntegrationPromotionReceipt",
+      "type": "object"
+    },
+    "IntegrationPromotionReport": {
+      "additionalProperties": false,
+      "properties": {
+        "checks": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Checks",
+          "type": "array"
+        },
+        "errors": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Errors",
+          "type": "array"
+        },
+        "intent_digest": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Intent Digest"
+        },
+        "operation_id": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Operation Id",
+          "type": "string"
+        },
+        "outcome": {
+          "enum": [
+            "ready",
+            "intent_recorded",
+            "applied",
+            "already_applied",
+            "stale_base",
+            "not_applicable",
+            "invalid",
+            "reconciliation_required"
+          ],
+          "title": "Outcome",
+          "type": "string"
+        },
+        "receipt_digest": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Receipt Digest"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "operation_id",
+        "outcome",
+        "checks"
+      ],
+      "title": "IntegrationPromotionReport",
+      "type": "object"
+    },
+    "IntegrationProviderObservation": {
+      "additionalProperties": false,
+      "description": "Provider-side PR observation used before requesting a merge.",
+      "properties": {
+        "base_commit": {
+          "title": "Base Commit",
+          "type": "string"
+        },
+        "base_ref": {
+          "minLength": 1,
+          "title": "Base Ref",
+          "type": "string"
+        },
+        "base_tree": {
+          "title": "Base Tree",
+          "type": "string"
+        },
+        "candidate_repository_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Candidate Repository Digest",
+          "type": "string"
+        },
+        "candidate_tree": {
+          "title": "Candidate Tree",
+          "type": "string"
+        },
+        "check_evidence_manifest_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Check Evidence Manifest Digest",
+          "type": "string"
+        },
+        "draft": {
+          "const": false,
+          "default": false,
+          "title": "Draft",
+          "type": "boolean"
+        },
+        "head_commit": {
+          "title": "Head Commit",
+          "type": "string"
+        },
+        "head_ref": {
+          "minLength": 1,
+          "title": "Head Ref",
+          "type": "string"
+        },
+        "open_state": {
+          "const": "open",
+          "title": "Open State",
+          "type": "string"
+        },
+        "protection_evidence_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Protection Evidence Digest",
+          "type": "string"
+        },
+        "provider_api_version": {
+          "minLength": 1,
+          "title": "Provider Api Version",
+          "type": "string"
+        },
+        "provider_identity": {
+          "minLength": 1,
+          "title": "Provider Identity",
+          "type": "string"
+        },
+        "pull_request_number": {
+          "exclusiveMinimum": 0,
+          "title": "Pull Request Number",
+          "type": "integer"
+        },
+        "pull_request_url": {
+          "minLength": 1,
+          "title": "Pull Request Url",
+          "type": "string"
+        },
+        "repository_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Repository Digest",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "synthetic_merge_commit": {
+          "title": "Synthetic Merge Commit",
+          "type": "string"
+        },
+        "synthetic_merge_tree": {
+          "title": "Synthetic Merge Tree",
+          "type": "string"
+        },
+        "target_repository_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Target Repository Digest",
+          "type": "string"
+        }
+      },
+      "required": [
+        "repository_digest",
+        "pull_request_number",
+        "pull_request_url",
+        "candidate_repository_digest",
+        "target_repository_digest",
+        "base_ref",
+        "base_commit",
+        "base_tree",
+        "head_ref",
+        "head_commit",
+        "candidate_tree",
+        "synthetic_merge_commit",
+        "synthetic_merge_tree",
+        "protection_evidence_digest",
+        "check_evidence_manifest_digest",
+        "provider_identity",
+        "provider_api_version",
+        "open_state"
+      ],
+      "title": "IntegrationProviderObservation",
+      "type": "object"
+    },
+    "IntegrationProviderReconciliation": {
+      "additionalProperties": false,
+      "description": "The single bounded observation used to resolve an ambiguous PR request.",
+      "properties": {
+        "main_protection_evidence_digest": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Main Protection Evidence Digest"
+        },
+        "merge_commit": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Merge Commit"
+        },
+        "merged": {
+          "title": "Merged",
+          "type": "boolean"
+        },
+        "protection_evidence_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Protection Evidence Digest",
+          "type": "string"
+        },
+        "provider_api_version": {
+          "minLength": 1,
+          "title": "Provider Api Version",
+          "type": "string"
+        },
+        "provider_identity": {
+          "minLength": 1,
+          "title": "Provider Identity",
+          "type": "string"
+        },
+        "pull_request_number": {
+          "exclusiveMinimum": 0,
+          "title": "Pull Request Number",
+          "type": "integer"
+        },
+        "pull_request_url": {
+          "minLength": 1,
+          "title": "Pull Request Url",
+          "type": "string"
+        },
+        "repository_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Repository Digest",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "state": {
+          "enum": [
+            "open",
+            "closed"
+          ],
+          "title": "State",
+          "type": "string"
+        },
+        "target_first_parent": {
+          "title": "Target First Parent",
+          "type": "string"
+        },
+        "target_head_commit": {
+          "title": "Target Head Commit",
+          "type": "string"
+        },
+        "target_head_tree": {
+          "title": "Target Head Tree",
+          "type": "string"
+        },
+        "target_parents": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Target Parents",
+          "type": "array"
+        },
+        "target_ref": {
+          "minLength": 1,
+          "title": "Target Ref",
+          "type": "string"
+        }
+      },
+      "required": [
+        "repository_digest",
+        "pull_request_number",
+        "pull_request_url",
+        "provider_identity",
+        "provider_api_version",
+        "state",
+        "merged",
+        "target_ref",
+        "target_head_commit",
+        "target_head_tree",
+        "target_first_parent",
+        "target_parents",
+        "protection_evidence_digest"
+      ],
+      "title": "IntegrationProviderReconciliation",
+      "type": "object"
+    },
+    "IntegrationRollbackRequest": {
+      "additionalProperties": false,
+      "description": "Exact topology and identities for one case-7 rollback attempt.",
+      "properties": {
+        "failed_integration_head_commit": {
+          "title": "Failed Integration Head Commit",
+          "type": "string"
+        },
+        "failed_integration_head_tree": {
+          "title": "Failed Integration Head Tree",
+          "type": "string"
+        },
+        "main_before_commit": {
+          "title": "Main Before Commit",
+          "type": "string"
+        },
+        "operation_id": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Operation Id",
+          "type": "string"
+        },
+        "promotion_operation_id": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Promotion Operation Id",
+          "type": "string"
+        },
+        "repository_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Repository Digest",
+          "type": "string"
+        },
+        "restore_to_commit": {
+          "title": "Restore To Commit",
+          "type": "string"
+        },
+        "restore_to_tree": {
+          "title": "Restore To Tree",
+          "type": "string"
+        },
+        "rollback_candidate_commit": {
+          "title": "Rollback Candidate Commit",
+          "type": "string"
+        },
+        "rollback_candidate_parent_commit": {
+          "title": "Rollback Candidate Parent Commit",
+          "type": "string"
+        },
+        "target_ref": {
+          "title": "Target Ref",
+          "type": "string"
+        }
+      },
+      "required": [
+        "operation_id",
+        "promotion_operation_id",
+        "repository_digest",
+        "target_ref",
+        "main_before_commit",
+        "failed_integration_head_commit",
+        "failed_integration_head_tree",
+        "restore_to_commit",
+        "restore_to_tree",
+        "rollback_candidate_commit",
+        "rollback_candidate_parent_commit"
+      ],
+      "title": "IntegrationRollbackRequest",
+      "type": "object"
+    },
+    "PathManifestAttestation": {
+      "additionalProperties": false,
+      "properties": {
+        "base_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Base Digest",
+          "type": "string"
+        },
+        "candidate_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Candidate Digest",
+          "type": "string"
+        },
+        "evidence_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Evidence Digest",
+          "type": "string"
+        },
+        "issuer_id": {
+          "minLength": 1,
+          "title": "Issuer Id",
+          "type": "string"
+        },
+        "path_manifest_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Path Manifest Digest",
+          "type": "string"
+        },
+        "valid_from_epoch": {
+          "minimum": 0,
+          "title": "Valid From Epoch",
+          "type": "integer"
+        },
+        "valid_until_epoch": {
+          "minimum": 0,
+          "title": "Valid Until Epoch",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "candidate_digest",
+        "base_digest",
+        "evidence_digest",
+        "path_manifest_digest",
+        "issuer_id",
+        "valid_from_epoch",
+        "valid_until_epoch"
+      ],
+      "title": "PathManifestAttestation",
+      "type": "object"
+    },
+    "PromotionBundle": {
+      "additionalProperties": false,
+      "properties": {
+        "comparison": {
+          "$ref": "#/$defs/WorkspaceComparison"
+        },
+        "controller_config": {
+          "$ref": "#/$defs/PromotionControllerConfig"
+        },
+        "controller_config_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Controller Config Digest",
+          "type": "string"
+        },
+        "decision": {
+          "$ref": "#/$defs/PromotionDecision"
+        },
+        "decision_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Decision Digest",
+          "type": "string"
+        },
+        "evidence_digests": {
+          "items": {
+            "pattern": "^sha256:[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Evidence Digests",
+          "type": "array"
+        },
+        "format": {
+          "const": "avo-promotion-bundle-v1",
+          "default": "avo-promotion-bundle-v1",
+          "title": "Format",
+          "type": "string"
+        },
+        "provenance": {
+          "$ref": "#/$defs/PromotionProvenanceBinding"
+        },
+        "request": {
+          "$ref": "#/$defs/PromotionRequest"
+        },
+        "request_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Request Digest",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "snapshot": {
+          "$ref": "#/$defs/GitRefSnapshot"
+        }
+      },
+      "required": [
+        "snapshot",
+        "comparison",
+        "request",
+        "request_digest",
+        "controller_config",
+        "controller_config_digest",
+        "decision",
+        "decision_digest",
+        "provenance",
+        "evidence_digests"
+      ],
+      "title": "PromotionBundle",
+      "type": "object"
+    },
+    "PromotionConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "candidate_proposers": {
+          "minProperties": 1,
+          "patternProperties": {
+            "^sha256:[0-9a-f]{64}$": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          "title": "Candidate Proposers",
+          "type": "object"
+        },
+        "evaluation_epoch": {
+          "minimum": 0,
+          "title": "Evaluation Epoch",
+          "type": "integer"
+        },
+        "low_gates": {
+          "default": [
+            "deterministic",
+            "provenance"
+          ],
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Low Gates",
+          "type": "array",
+          "uniqueItems": true
+        },
+        "ordinary_gates": {
+          "default": [
+            "integration_soak",
+            "private_evaluation",
+            "provenance",
+            "trusted_ci"
+          ],
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Ordinary Gates",
+          "type": "array",
+          "uniqueItems": true
+        },
+        "proposer_domains": {
+          "additionalProperties": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "minProperties": 1,
+          "propertyNames": {
+            "minLength": 1
+          },
+          "title": "Proposer Domains",
+          "type": "object"
+        },
+        "reviewer_domains": {
+          "additionalProperties": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "minProperties": 1,
+          "propertyNames": {
+            "minLength": 1
+          },
+          "title": "Reviewer Domains",
+          "type": "object"
+        },
+        "rollback_issuer_ids": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Rollback Issuer Ids",
+          "type": "array"
+        },
+        "rollback_limit": {
+          "minimum": 0,
+          "title": "Rollback Limit",
+          "type": "integer"
+        },
+        "trusted_base_issuers": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Trusted Base Issuers",
+          "type": "array"
+        },
+        "trusted_gate_issuers": {
+          "additionalProperties": {
+            "items": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "propertyNames": {
+            "minLength": 1
+          },
+          "title": "Trusted Gate Issuers",
+          "type": "object"
+        },
+        "trusted_path_issuers": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Trusted Path Issuers",
+          "type": "array"
+        },
+        "trusted_reviewer_issuers": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Trusted Reviewer Issuers",
+          "type": "array"
+        }
+      },
+      "required": [
+        "evaluation_epoch",
+        "trusted_base_issuers",
+        "trusted_reviewer_issuers",
+        "trusted_path_issuers",
+        "rollback_issuer_ids",
+        "rollback_limit",
+        "reviewer_domains",
+        "proposer_domains",
+        "candidate_proposers"
+      ],
+      "title": "PromotionConfig",
+      "type": "object"
+    },
+    "PromotionControllerConfig": {
+      "additionalProperties": false,
+      "properties": {
+        "base_issuer_id": {
+          "minLength": 1,
+          "title": "Base Issuer Id",
+          "type": "string"
+        },
+        "controller_identity": {
+          "minLength": 1,
+          "title": "Controller Identity",
+          "type": "string"
+        },
+        "controller_version": {
+          "minLength": 1,
+          "title": "Controller Version",
+          "type": "string"
+        },
+        "path_issuer_id": {
+          "minLength": 1,
+          "title": "Path Issuer Id",
+          "type": "string"
+        },
+        "policy": {
+          "$ref": "#/$defs/PromotionConfig"
+        }
+      },
+      "required": [
+        "controller_identity",
+        "controller_version",
+        "base_issuer_id",
+        "path_issuer_id",
+        "policy"
+      ],
+      "title": "PromotionControllerConfig",
+      "type": "object"
+    },
+    "PromotionDecision": {
+      "additionalProperties": false,
+      "properties": {
+        "candidate_id": {
+          "minLength": 1,
+          "title": "Candidate Id",
+          "type": "string"
+        },
+        "outcome": {
+          "$ref": "#/$defs/PromotionOutcome"
+        },
+        "reason_codes": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Reason Codes",
+          "type": "array"
+        },
+        "required_quorum": {
+          "minimum": 0,
+          "title": "Required Quorum",
+          "type": "integer"
+        },
+        "risk_class": {
+          "$ref": "#/$defs/RiskClass"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "candidate_id",
+        "outcome",
+        "risk_class",
+        "reason_codes",
+        "required_quorum"
+      ],
+      "title": "PromotionDecision",
+      "type": "object"
+    },
+    "PromotionLeaseEvidence": {
+      "additionalProperties": false,
+      "description": "Immutable evidence for the controller lease that fenced a campaign.\n\n``digest`` is the digest of the lease payload (the same digest exposed by\n:class:`PromotionLease`).  The surrounding ``ArtifactRef`` addresses this\ncomplete record, so timestamps and identity remain auditable after the\nephemeral lease file is released.",
+      "properties": {
+        "acquired_at": {
+          "format": "date-time",
+          "title": "Acquired At",
+          "type": "string"
+        },
+        "digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Digest",
+          "type": "string"
+        },
+        "expires_at": {
+          "format": "date-time",
+          "title": "Expires At",
+          "type": "string"
+        },
+        "identity": {
+          "minLength": 1,
+          "title": "Identity",
+          "type": "string"
+        },
+        "operation_id": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Operation Id",
+          "type": "string"
+        },
+        "repository_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Repository Digest",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "target_ref": {
+          "minLength": 1,
+          "title": "Target Ref",
+          "type": "string"
+        }
+      },
+      "required": [
+        "operation_id",
+        "repository_digest",
+        "target_ref",
+        "identity",
+        "acquired_at",
+        "expires_at",
+        "digest"
+      ],
+      "title": "PromotionLeaseEvidence",
+      "type": "object"
+    },
+    "PromotionMutationAuthorization": {
+      "additionalProperties": false,
+      "description": "Durable authorization crossing the provider mutation boundary.",
+      "properties": {
+        "authorized_at": {
+          "format": "date-time",
+          "title": "Authorized At",
+          "type": "string"
+        },
+        "intent_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Intent Digest",
+          "type": "string"
+        },
+        "lease_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Lease Digest",
+          "type": "string"
+        },
+        "lease_identity": {
+          "minLength": 1,
+          "title": "Lease Identity",
+          "type": "string"
+        },
+        "operation_id": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Operation Id",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "operation_id",
+        "intent_digest",
+        "lease_identity",
+        "lease_digest",
+        "authorized_at"
+      ],
+      "title": "PromotionMutationAuthorization",
+      "type": "object"
+    },
+    "PromotionOutcome": {
+      "enum": [
+        "allow",
+        "deny",
+        "quarantine",
+        "escalate"
+      ],
+      "title": "PromotionOutcome",
+      "type": "string"
+    },
+    "PromotionProvenanceBinding": {
+      "additionalProperties": false,
+      "properties": {
+        "base_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Base Digest",
+          "type": "string"
+        },
+        "candidate_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Candidate Digest",
+          "type": "string"
+        },
+        "controller_config_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Controller Config Digest",
+          "type": "string"
+        },
+        "decision_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Decision Digest",
+          "type": "string"
+        },
+        "evidence_manifest_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Evidence Manifest Digest",
+          "type": "string"
+        },
+        "path_manifest_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Path Manifest Digest",
+          "type": "string"
+        },
+        "request_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Request Digest",
+          "type": "string"
+        },
+        "source_provenance_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Source Provenance Digest",
+          "type": "string"
+        },
+        "verified": {
+          "title": "Verified",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "candidate_digest",
+        "base_digest",
+        "source_provenance_digest",
+        "request_digest",
+        "controller_config_digest",
+        "decision_digest",
+        "path_manifest_digest",
+        "evidence_manifest_digest",
+        "verified"
+      ],
+      "title": "PromotionProvenanceBinding",
+      "type": "object"
+    },
+    "PromotionRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "base_attestation": {
+          "$ref": "#/$defs/GateAttestation"
+        },
+        "base_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Base Digest",
+          "type": "string"
+        },
+        "candidate_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Candidate Digest",
+          "type": "string"
+        },
+        "candidate_id": {
+          "minLength": 1,
+          "title": "Candidate Id",
+          "type": "string"
+        },
+        "changed_paths": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Changed Paths",
+          "type": "array"
+        },
+        "exception_requested": {
+          "default": false,
+          "title": "Exception Requested",
+          "type": "boolean"
+        },
+        "gate_attestations": {
+          "items": {
+            "$ref": "#/$defs/GateAttestation"
+          },
+          "title": "Gate Attestations",
+          "type": "array"
+        },
+        "path_manifest_attestation": {
+          "$ref": "#/$defs/PathManifestAttestation"
+        },
+        "proposer_id": {
+          "minLength": 1,
+          "title": "Proposer Id",
+          "type": "string"
+        },
+        "reviewer_attestations": {
+          "items": {
+            "$ref": "#/$defs/ReviewerAttestation"
+          },
+          "title": "Reviewer Attestations",
+          "type": "array"
+        },
+        "rollback_attestation": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RollbackAttestation"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "candidate_id",
+        "proposer_id",
+        "candidate_digest",
+        "base_digest",
+        "changed_paths",
+        "path_manifest_attestation",
+        "base_attestation"
+      ],
+      "title": "PromotionRequest",
+      "type": "object"
+    },
+    "ReviewerAttestation": {
+      "additionalProperties": false,
+      "properties": {
+        "approved": {
+          "title": "Approved",
+          "type": "boolean"
+        },
+        "base_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Base Digest",
+          "type": "string"
+        },
+        "candidate_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Candidate Digest",
+          "type": "string"
+        },
+        "evidence_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Evidence Digest",
+          "type": "string"
+        },
+        "issuer_id": {
+          "minLength": 1,
+          "title": "Issuer Id",
+          "type": "string"
+        },
+        "reviewer_id": {
+          "minLength": 1,
+          "title": "Reviewer Id",
+          "type": "string"
+        },
+        "valid_from_epoch": {
+          "minimum": 0,
+          "title": "Valid From Epoch",
+          "type": "integer"
+        },
+        "valid_until_epoch": {
+          "minimum": 0,
+          "title": "Valid Until Epoch",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "reviewer_id",
+        "candidate_digest",
+        "base_digest",
+        "evidence_digest",
+        "issuer_id",
+        "approved",
+        "valid_from_epoch",
+        "valid_until_epoch"
+      ],
+      "title": "ReviewerAttestation",
+      "type": "object"
+    },
+    "RiskClass": {
+      "enum": [
+        "low",
+        "ordinary",
+        "constitutional",
+        "production"
+      ],
+      "title": "RiskClass",
+      "type": "string"
+    },
+    "RollbackAttestation": {
+      "additionalProperties": false,
+      "properties": {
+        "available": {
+          "title": "Available",
+          "type": "boolean"
+        },
+        "base_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Base Digest",
+          "type": "string"
+        },
+        "candidate_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Candidate Digest",
+          "type": "string"
+        },
+        "evidence_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Evidence Digest",
+          "type": "string"
+        },
+        "issuer_id": {
+          "minLength": 1,
+          "title": "Issuer Id",
+          "type": "string"
+        },
+        "rollback_count": {
+          "minimum": 0,
+          "title": "Rollback Count",
+          "type": "integer"
+        },
+        "valid_from_epoch": {
+          "minimum": 0,
+          "title": "Valid From Epoch",
+          "type": "integer"
+        },
+        "valid_until_epoch": {
+          "minimum": 0,
+          "title": "Valid Until Epoch",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "rollback_count",
+        "candidate_digest",
+        "base_digest",
+        "evidence_digest",
+        "issuer_id",
+        "available",
+        "valid_from_epoch",
+        "valid_until_epoch"
+      ],
+      "title": "RollbackAttestation",
+      "type": "object"
+    },
+    "WorkspaceComparison": {
+      "additionalProperties": false,
+      "properties": {
+        "base_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Base Digest",
+          "type": "string"
+        },
+        "candidate_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Candidate Digest",
+          "type": "string"
+        },
+        "changed_paths": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Changed Paths",
+          "type": "array"
+        },
+        "target_ref": {
+          "minLength": 1,
+          "title": "Target Ref",
+          "type": "string"
+        }
+      },
+      "required": [
+        "target_ref",
+        "base_digest",
+        "candidate_digest",
+        "changed_paths"
+      ],
+      "title": "WorkspaceComparison",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Core durable join between a canary and its protected rollback.\n\nThis is the semantic core, not the complete hosted-live completion package.\nJSON Schema describes wire shape only; callers must use Pydantic validation\nbecause the cross-record topology, authorization, and content-addressing\ninvariants below are not delegated to JSON Schema.",
+  "properties": {
+    "artifacts": {
+      "items": {
+        "$ref": "#/$defs/ArtifactRef"
+      },
+      "maxItems": 10,
+      "minItems": 10,
+      "title": "Artifacts",
+      "type": "array"
+    },
+    "authorization": {
+      "$ref": "#/$defs/IntegrationDrillRollbackAuthorization"
+    },
+    "bundle": {
+      "$ref": "#/$defs/PromotionBundle"
+    },
+    "bundle_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Bundle Digest",
+      "type": "string"
+    },
+    "canary_operation_id": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Canary Operation Id",
+      "type": "string"
+    },
+    "canary_package": {
+      "$ref": "#/$defs/IntegrationCampaignEvidencePackage"
+    },
+    "canary_package_artifact": {
+      "$ref": "#/$defs/ArtifactRef"
+    },
+    "deploy_performed": {
+      "const": false,
+      "default": false,
+      "title": "Deploy Performed",
+      "type": "boolean"
+    },
+    "main_after_commit": {
+      "title": "Main After Commit",
+      "type": "string"
+    },
+    "main_before_commit": {
+      "title": "Main Before Commit",
+      "type": "string"
+    },
+    "operation_id": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Operation Id",
+      "type": "string"
+    },
+    "promotion_intent": {
+      "$ref": "#/$defs/IntegrationPromotionIntent"
+    },
+    "promotion_lease_evidence": {
+      "$ref": "#/$defs/PromotionLeaseEvidence"
+    },
+    "promotion_mutation_authorization": {
+      "$ref": "#/$defs/PromotionMutationAuthorization"
+    },
+    "promotion_receipt": {
+      "$ref": "#/$defs/IntegrationPromotionReceipt"
+    },
+    "promotion_report": {
+      "$ref": "#/$defs/IntegrationPromotionReport"
+    },
+    "publication": {
+      "$ref": "#/$defs/CandidatePublicationBinding"
+    },
+    "request": {
+      "$ref": "#/$defs/IntegrationRollbackRequest"
+    },
+    "rollback_case": {
+      "$ref": "#/$defs/IntegrationDrillCaseResult"
+    },
+    "rollback_intent": {
+      "$ref": "#/$defs/IntegrationDrillRollbackIntent"
+    },
+    "rollback_receipt": {
+      "$ref": "#/$defs/IntegrationDrillRollbackReceipt"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "soak": {
+      "$ref": "#/$defs/IntegrationDrillSoakObservation"
+    }
+  },
+  "required": [
+    "operation_id",
+    "canary_operation_id",
+    "canary_package",
+    "canary_package_artifact",
+    "request",
+    "soak",
+    "authorization",
+    "rollback_intent",
+    "rollback_receipt",
+    "rollback_case",
+    "bundle",
+    "publication",
+    "bundle_digest",
+    "promotion_intent",
+    "promotion_lease_evidence",
+    "promotion_mutation_authorization",
+    "promotion_receipt",
+    "promotion_report",
+    "artifacts",
+    "main_before_commit",
+    "main_after_commit"
+  ],
+  "title": "LiveRollbackEvidencePackage",
+  "type": "object"
+}
