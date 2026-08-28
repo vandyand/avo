@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Callable, Sequence
+from collections.abc import Callable
 from pathlib import Path
-from typing import Protocol, cast
+from typing import Protocol
 
 from avo_correlate.adapters.artifacts.filesystem import FilesystemArtifactStore
 from avo_correlate.contracts.promotion_bundle import (
@@ -17,6 +17,10 @@ from avo_correlate.contracts.promotion_bundle import (
     PromotionProvenanceBinding,
     PromotionReplayReport,
     WorkspaceComparison,
+    promotion_bundle_bytes,
+    promotion_bundle_digest,
+    promotion_bundle_payload,
+    promotion_policy_payload,
 )
 from avo_correlate.contracts.promotion_policy import (
     GateAttestation,
@@ -63,45 +67,9 @@ def _strict_object_pairs(pairs: list[tuple[str, object]]) -> dict[str, object]:
     return result
 
 
-def _policy_payload(config: PromotionControllerConfig) -> dict[str, object]:
-    payload = cast(dict[str, object], config.model_dump(mode="json"))
-    policy = cast(dict[str, object], payload["policy"])
-    for key in ("low_gates", "ordinary_gates"):
-        policy[key] = sorted(cast(Sequence[str], policy[key]))
-    for key in (
-        "trusted_base_issuers",
-        "trusted_reviewer_issuers",
-        "trusted_path_issuers",
-        "rollback_issuer_ids",
-    ):
-        policy[key] = sorted(cast(Sequence[str], policy[key]))
-    trusted_gate_issuers = cast(dict[str, list[str]], policy["trusted_gate_issuers"])
-    policy["trusted_gate_issuers"] = {
-        gate: sorted(issuers) for gate, issuers in trusted_gate_issuers.items()
-    }
-    return payload
-
-
-def _sorted_bundle_payload(bundle: PromotionBundle) -> dict[str, object]:
-    payload = cast(dict[str, object], bundle.model_dump(mode="json"))
-    request = cast(dict[str, object], payload["request"])
-    request["gate_attestations"] = sorted(
-        cast(list[dict[str, object]], request["gate_attestations"]),
-        key=canonical_bytes,
-    )
-    request["reviewer_attestations"] = sorted(
-        cast(list[dict[str, object]], request["reviewer_attestations"]),
-        key=canonical_bytes,
-    )
-    payload["controller_config"] = _policy_payload(bundle.controller_config)
-    payload["evidence_digests"] = sorted(cast(list[str], payload["evidence_digests"]))
-    return payload
-
-
-def bundle_bytes(bundle: PromotionBundle) -> bytes:
-    """Return the exact canonical bytes whose digest identifies *bundle*."""
-
-    return canonical_bytes(_sorted_bundle_payload(bundle))
+_policy_payload = promotion_policy_payload
+_sorted_bundle_payload = promotion_bundle_payload
+bundle_bytes = promotion_bundle_bytes
 
 
 def _provenance_verified(
@@ -338,7 +306,7 @@ class PromotionController:
             evidence_digests=evidence,
         )
         payload = bundle_bytes(bundle)
-        digest = canonical_digest(_sorted_bundle_payload(bundle))
+        digest = promotion_bundle_digest(bundle)
 
         # This is deliberately the final read before the only side effect.  A stale
         # repository therefore leaves no promotion artifact behind.
@@ -373,7 +341,7 @@ class PromotionController:
                 parsed = PromotionBundle.model_validate(raw)
             else:
                 parsed = bundle
-            expected = canonical_digest(_sorted_bundle_payload(parsed))
+            expected = promotion_bundle_digest(parsed)
             if expected != bundle_digest:
                 raise ValueError("bundle digest mismatch")
             checks.append("bundle_digest")

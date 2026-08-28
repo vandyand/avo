@@ -1,0 +1,214 @@
+{
+  "additionalProperties": false,
+  "description": "Immutable provider observation; soak is intentionally not represented here.",
+  "properties": {
+    "applied_result_commit": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Applied Result Commit"
+    },
+    "applied_result_parent_commit": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Applied Result Parent Commit"
+    },
+    "applied_result_tree": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Applied Result Tree"
+    },
+    "bundle_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Bundle Digest",
+      "type": "string"
+    },
+    "error": {
+      "anyOf": [
+        {
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Error"
+    },
+    "expected_base_commit": {
+      "title": "Expected Base Commit",
+      "type": "string"
+    },
+    "expected_candidate_commit": {
+      "title": "Expected Candidate Commit",
+      "type": "string"
+    },
+    "expected_candidate_tree": {
+      "title": "Expected Candidate Tree",
+      "type": "string"
+    },
+    "expected_protection_evidence_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Expected Protection Evidence Digest",
+      "type": "string"
+    },
+    "expected_provider_api_version": {
+      "minLength": 1,
+      "title": "Expected Provider Api Version",
+      "type": "string"
+    },
+    "expected_provider_identity": {
+      "minLength": 1,
+      "title": "Expected Provider Identity",
+      "type": "string"
+    },
+    "expected_target_ref": {
+      "minLength": 1,
+      "title": "Expected Target Ref",
+      "type": "string"
+    },
+    "intent_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Intent Digest",
+      "type": "string"
+    },
+    "main_protection_evidence_digest": {
+      "anyOf": [
+        {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Main Protection Evidence Digest"
+    },
+    "merge_method": {
+      "const": "squash",
+      "title": "Merge Method",
+      "type": "string"
+    },
+    "observation_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Observation Digest",
+      "type": "string"
+    },
+    "observed_base_commit": {
+      "title": "Observed Base Commit",
+      "type": "string"
+    },
+    "observed_head_commit": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Observed Head Commit"
+    },
+    "observed_head_tree": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Observed Head Tree"
+    },
+    "observed_protection_evidence_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Observed Protection Evidence Digest",
+      "type": "string"
+    },
+    "observed_provider_api_version": {
+      "minLength": 1,
+      "title": "Observed Provider Api Version",
+      "type": "string"
+    },
+    "observed_provider_identity": {
+      "minLength": 1,
+      "title": "Observed Provider Identity",
+      "type": "string"
+    },
+    "observed_target_ref": {
+      "minLength": 1,
+      "title": "Observed Target Ref",
+      "type": "string"
+    },
+    "operation_id": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Operation Id",
+      "type": "string"
+    },
+    "outcome": {
+      "enum": [
+        "intent_recorded",
+        "applied",
+        "already_applied",
+        "stale_base",
+        "not_applicable",
+        "invalid",
+        "reconciliation_required"
+      ],
+      "title": "Outcome",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "operation_id",
+    "intent_digest",
+    "bundle_digest",
+    "expected_target_ref",
+    "expected_candidate_commit",
+    "expected_candidate_tree",
+    "expected_base_commit",
+    "expected_protection_evidence_digest",
+    "expected_provider_identity",
+    "expected_provider_api_version",
+    "merge_method",
+    "outcome",
+    "observed_target_ref",
+    "observed_base_commit",
+    "observed_protection_evidence_digest",
+    "observed_provider_identity",
+    "observed_provider_api_version",
+    "observation_digest"
+  ],
+  "title": "IntegrationPromotionReceipt",
+  "type": "object"
+}
