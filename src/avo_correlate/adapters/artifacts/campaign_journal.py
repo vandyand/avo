@@ -5,6 +5,7 @@ from __future__ import annotations
 import errno
 import json
 import os
+import re
 from pathlib import Path
 from typing import TypeVar, cast
 
@@ -15,7 +16,7 @@ from avo_correlate.contracts.integration_campaign import (
     CampaignFinalEvidenceRecord,
     IntegrationCampaignEvidencePackage,
 )
-from avo_correlate.domain.canonical import canonical_bytes
+from avo_correlate.domain.canonical import canonical_bytes, canonical_digest
 
 RecordT = TypeVar(
     "RecordT",
@@ -23,6 +24,7 @@ RecordT = TypeVar(
     CampaignFinalEvidenceRecord,
     IntegrationCampaignEvidencePackage,
 )
+_SHA256_ID = re.compile(r"^sha256:[0-9a-f]{64}$")
 
 
 class CampaignJournalError(RuntimeError):
@@ -94,7 +96,22 @@ class CampaignCompletionJournal:
         return self._read("package", operation_id, IntegrationCampaignEvidencePackage)
 
     def _record(self, kind: str, operation_id: str, record: RecordT) -> ArtifactRef:
-        data = canonical_bytes(record)
+        _check_operation_id(operation_id)
+        try:
+            data = canonical_bytes(record)
+            if kind == "package":
+                # Re-parse the canonical wire form so nested model_construct()
+                # instances cannot bypass campaign-package validation.
+                record = cast(
+                    RecordT,
+                    IntegrationCampaignEvidencePackage.model_validate_json(data),
+                )
+                data = canonical_bytes(record)
+                _verify_package_children(
+                    cast(IntegrationCampaignEvidencePackage, record), self._store
+                )
+        except (TypeError, ValueError, OSError) as exc:
+            raise CampaignJournalError(f"malformed campaign {kind}") from exc
         reference = self._store.put_bytes(
             data,
             media_type=(
@@ -138,20 +155,26 @@ class CampaignCompletionJournal:
     def _read(
         self, kind: str, operation_id: str, model: type[RecordT]
     ) -> tuple[RecordT, ArtifactRef] | None:
-        if not operation_id.startswith("sha256:"):
-            raise ValueError("operation_id must be a SHA-256 digest")
+        _check_operation_id(operation_id)
         index = self._indexes / kind / f"{operation_id.removeprefix('sha256:')}.json"
         if not index.is_file():
             return None
         try:
-            reference = ArtifactRef.model_validate(json.loads(index.read_text(encoding="utf-8")))
+            reference = ArtifactRef.model_validate(
+                json.loads(index.read_text(encoding="utf-8"), object_pairs_hook=_strict_pairs)
+            )
             expected_role = f"integration-campaign-{kind}"
             if reference.role != expected_role:
                 raise ValueError("campaign record role does not match index")
             data = self._store.read_bytes(reference)
-            if canonical_bytes(json.loads(data.decode("utf-8"))) != data:
+            raw = json.loads(data.decode("utf-8"), object_pairs_hook=_strict_pairs)
+            if canonical_bytes(raw) != data:
                 raise ValueError("campaign record is not canonical JSON")
-            record = model.model_validate(json.loads(data.decode("utf-8")))
+            record = model.model_validate(raw)
+            if kind == "package":
+                _verify_package_children(
+                    cast(IntegrationCampaignEvidencePackage, record), self._store
+                )
         except (OSError, ValueError, TypeError, UnicodeError, json.JSONDecodeError) as exc:
             raise CampaignJournalError(f"malformed or unverifiable campaign {kind}") from exc
         if kind == "plan":
@@ -181,3 +204,39 @@ def _sync_directory(path: Path) -> None:
         os.fsync(descriptor)
     finally:
         os.close(descriptor)
+
+
+def _check_operation_id(operation_id: str) -> None:
+    if not isinstance(operation_id, str) or _SHA256_ID.fullmatch(operation_id) is None:
+        raise ValueError("operation_id must be a SHA-256 digest")
+
+
+def _strict_pairs(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    result: dict[str, object] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("duplicate JSON object key")
+        result[key] = value
+    return result
+
+
+def _verify_package_children(
+    package: IntegrationCampaignEvidencePackage, store: FilesystemArtifactStore
+) -> None:
+    """Verify every externally referenced campaign child before returning it."""
+
+    lease_reference = package.lease_evidence_artifact
+    lease_payload = canonical_bytes(package.lease_evidence)
+    if (
+        lease_reference.digest != canonical_digest(package.lease_evidence)
+        or lease_reference.size_bytes != len(lease_payload)
+    ):
+        raise ValueError("campaign lease evidence reference is not content-bound")
+    if store.read_bytes(lease_reference) != lease_payload:
+        raise ValueError("campaign lease evidence is missing or tampered")
+
+    for reference in package.evidence_artifacts:
+        data = store.read_bytes(reference)
+        raw = json.loads(data.decode("utf-8"), object_pairs_hook=_strict_pairs)
+        if canonical_bytes(raw) != data or canonical_digest(raw) != reference.digest:
+            raise ValueError("campaign evidence artifact is missing or tampered")

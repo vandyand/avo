@@ -620,7 +620,11 @@ class GitHubIntegrationProvider:
                 completed = datetime.fromisoformat(completed_at.replace("Z", "+00:00"))
             except ValueError as exc:
                 raise ValueError("trusted check timestamp is malformed") from exc
-            if completed.tzinfo is None or completed < self.freshness_cutoff:
+            if completed.tzinfo is None:
+                raise ValueError("trusted check timestamp must be timezone-aware")
+            if completed > datetime.now(UTC):
+                raise ValueError("trusted check entry is future-dated")
+            if completed < self.freshness_cutoff:
                 raise ValueError("trusted check entry is stale")
             seen.add(key)
             check_entries.append(
@@ -1325,7 +1329,11 @@ class GitHubIntegrationProvider:
                     completed = datetime.fromisoformat(stamp.replace("Z", "+00:00"))
                 except ValueError as exc:
                     raise ValueError("trusted check timestamp is malformed") from exc
-                if completed.tzinfo is None or completed < self.freshness_cutoff:
+                if completed.tzinfo is None:
+                    raise ValueError("trusted check timestamp must be timezone-aware")
+                if completed > datetime.now(UTC):
+                    raise ValueError("trusted check is future-dated")
+                if completed < self.freshness_cutoff:
                     raise ValueError("trusted check is stale")
                 seen.add(key)
                 app_slug = _required_string(app, "slug", "check app")

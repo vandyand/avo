@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import stat
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -73,7 +74,7 @@ from avo_correlate.contracts.integration_promotion import (
 )
 from avo_correlate.contracts.promotion_bundle import PromotionBundle, promotion_bundle_digest
 from avo_correlate.contracts.synthetic_validation import SyntheticValidationCreateAuthorization
-from avo_correlate.domain.canonical import canonical_digest
+from avo_correlate.domain.canonical import canonical_bytes, canonical_digest
 
 REMOTE = "https://github.com/vandyand/avo.git"
 OWNER = "vandyand"
@@ -85,6 +86,7 @@ TRUSTED_CHECKS = (
     ("avo synthetic validate (windows-latest)", 15368),
 )
 PROTECTION_CHECKS = (("validate (ubuntu-latest)", 15368), ("validate (windows-latest)", 15368))
+_SHA256_ID = re.compile(r"^sha256:[0-9a-f]{64}$")
 
 
 @dataclass(frozen=True, slots=True)
@@ -122,6 +124,8 @@ class LiveRollbackHostedRunner:
         self.state_root = state_root.resolve()
 
     def preflight(self, operation_id: str, canary_operation_id: str) -> LiveRollbackPreflight:
+        _check_operation_id(operation_id)
+        _check_operation_id(canary_operation_id)
         self.provider.verify_repository_binding()
         journal = CampaignCompletionJournal(
             self.state_root / "completion",
@@ -164,6 +168,7 @@ class LiveRollbackHostedRunner:
         replay a hosted mutation.
         """
 
+        _check_operation_id(operation_id)
         return LiveRollbackCompletionJournal(
             self.state_root / "live-rollback-completion",
             artifact_store=FilesystemArtifactStore(self.state_root / "artifacts"),
@@ -176,6 +181,7 @@ class LiveRollbackHostedRunner:
     ) -> LiveRollbackCompletionExecution:
         """Return a durable completion, otherwise invoke the typed lifecycle."""
 
+        _check_operation_id(operation_id)
         existing = self.completed(operation_id)
         if existing is not None:
             package, reference = existing
@@ -399,6 +405,9 @@ def execute_live(
 ) -> LiveRollbackCompletionExecution:
     """Run the one hosted rollback lifecycle from controller-owned records."""
 
+    _check_operation_id(preflight.operation_id)
+    _check_operation_id(preflight.canary_operation_id)
+    _assert_safe_roots(state_root, repository_root, candidate_root)
     artifact_store = FilesystemArtifactStore(state_root / "artifacts")
     hosted_target = provider.observe_integration(TARGET_REF)
     if (
@@ -425,6 +434,7 @@ def execute_live(
     comparison = repository.compare_candidate(candidate_root, snapshot)
     if comparison.candidate_digest == snapshot.source_tree_digest:
         raise RuntimeError("restore candidate does not differ from failed integration target")
+    _validate_pre_publish_rollback(preflight, snapshot, comparison.candidate_digest)
 
     publication_journal = FilesystemPublicationJournal(state_root / "publication")
     publisher = _TokenPublisher(
@@ -662,11 +672,96 @@ def _assert_vcs_free_candidate(candidate_root: Path) -> None:
         raise ValueError("rollback candidate contains nested VCS metadata")
 
 
+def _assert_safe_roots(state_root: Path, repository_root: Path, candidate_root: Path) -> None:
+    """Fence local state and candidate trees before any journal or hosted work."""
+
+    repository = repository_root.resolve(strict=True)
+    candidate = candidate_root.resolve(strict=True)
+    state = state_root.resolve()
+    if not candidate.is_dir():
+        raise ValueError("rollback candidate root is missing")
+    if not repository.is_dir():
+        raise ValueError("trusted repository root is missing")
+    pairs = ((state, repository), (state, candidate), (candidate, repository))
+    if any(_roots_overlap(left, right) for left, right in pairs):
+        raise ValueError("state, repository, and candidate roots must be disjoint")
+    _assert_vcs_free_candidate(candidate)
+
+
+def _roots_overlap(left: Path, right: Path) -> bool:
+    return left == right or left.is_relative_to(right) or right.is_relative_to(left)
+
+
+def _check_operation_id(value: str) -> None:
+    if not isinstance(value, str) or _SHA256_ID.fullmatch(value) is None:
+        raise ValueError("operation ID must be a lowercase SHA-256 digest")
+
+
+def _validate_completed_canary(
+    package: LiveRollbackCompletionPackage, canary_operation_id: str
+) -> None:
+    canary = package.core_package.canary_package
+    canary_ref = package.core_package.canary_package_artifact
+    if (
+        package.core_package.canary_operation_id != canary_operation_id
+        or canary.intent.operation_id != canary_operation_id
+        or canary_ref.digest != canonical_digest(canary)
+        or canary_ref.size_bytes != len(canonical_bytes(canary))
+        or canary_ref.role != "integration-campaign-package"
+        or canary_ref.media_type != "application/vnd.avo.integration-campaign+json"
+    ):
+        raise ValueError("completed package is bound to a different canary operation")
+
+
+def _validate_pre_publish_rollback(
+    preflight: LiveRollbackPreflight, snapshot: Any, candidate_digest: str
+) -> None:
+    """Validate immutable rollback facts before constructing a publisher."""
+
+    if (
+        snapshot.repository_digest != preflight.repository_digest
+        or snapshot.target_ref != TARGET_REF
+        or snapshot.commit != preflight.failed_head_commit
+        or snapshot.tree != preflight.failed_head_tree
+        or preflight.canary_package.report.outcome not in {"applied", "already_applied"}
+        or preflight.canary_package.receipt.applied_result_commit != snapshot.commit
+        or preflight.canary_package.receipt.applied_result_tree != snapshot.tree
+        or preflight.canary_package.main_before_commit != preflight.main_commit
+        or preflight.canary_package.main_after_commit != preflight.main_commit
+        or candidate_digest == snapshot.source_tree_digest
+    ):
+        raise ValueError("rollback request preconditions are stale or untrusted")
+    # The eventual candidate commit is created by the publisher. Validate the
+    # request shape and all controller-owned facts now; the exact commit is
+    # rebound immediately after publication before any further hosted action.
+    provisional = IntegrationRollbackRequest(
+        operation_id=preflight.operation_id,
+        promotion_operation_id=canonical_digest({"rollback": preflight.operation_id}),
+        repository_digest=preflight.repository_digest,
+        target_ref=TARGET_REF,
+        main_before_commit=preflight.main_commit,
+        failed_integration_head_commit=preflight.failed_head_commit,
+        failed_integration_head_tree=preflight.failed_head_tree,
+        restore_to_commit=preflight.canary_package.intent.base_commit,
+        restore_to_tree=preflight.canary_package.intent.base_tree,
+        rollback_candidate_commit=preflight.failed_head_commit,
+        rollback_candidate_parent_commit=preflight.failed_head_commit,
+    )
+    IntegrationRollbackRequest.model_validate(provisional.model_dump(mode="json"))
+
+
 def main() -> int:
     args = build_parser().parse_args()
     token = os.environ.get("GITHUB_TOKEN", "")
     if not token:
         print(json.dumps({"status": "blocked", "error": "GITHUB_TOKEN is required"}))
+        return 2
+    try:
+        _check_operation_id(args.operation_id)
+        _check_operation_id(args.canary_operation_id)
+        _assert_safe_roots(args.state_root, args.repository_root, args.candidate_root)
+    except (OSError, RuntimeError, ValueError) as exc:
+        print(json.dumps({"status": "blocked", "error": redact_secret(str(exc))}))
         return 2
     provider = GitHubIntegrationProvider(
         owner=OWNER,
@@ -680,10 +775,10 @@ def main() -> int:
     )
     runner = LiveRollbackHostedRunner(provider, args.state_root)
     try:
-        _assert_vcs_free_candidate(args.candidate_root)
         completed = runner.completed(args.operation_id)
         if completed is not None:
             package, reference = completed
+            _validate_completed_canary(package, args.canary_operation_id)
             summary = {
                 "schema_version": 1,
                 "operation_id": package.operation_id,

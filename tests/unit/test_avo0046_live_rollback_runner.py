@@ -22,6 +22,9 @@ from avo_correlate.domain.canonical import canonical_bytes, canonical_digest
 from scripts.run_avo0046_live_rollback import (
     LiveRollbackHostedRunner,
     LiveRollbackOperator,
+    _assert_safe_roots,
+    _check_operation_id,
+    _validate_completed_canary,
     build_parser,
     redact_secret,
 )
@@ -142,6 +145,41 @@ def test_runner_parser_requires_explicit_state_and_operation() -> None:
     )
     assert args.state_root == Path("state")
     assert args.operation_id.startswith("sha256:")
+
+
+@pytest.mark.parametrize("value", ["bad", "sha256:" + "A" * 64, "../escape"])
+def test_runner_rejects_noncanonical_operation_ids_before_execution(value: str) -> None:
+    with pytest.raises(ValueError, match="SHA-256"):
+        _check_operation_id(value)
+
+
+def test_runner_rejects_overlapping_state_repository_candidate_roots(tmp_path: Path) -> None:
+    repository = tmp_path / "repository"
+    candidate = tmp_path / "candidate"
+    repository.mkdir()
+    candidate.mkdir()
+    with pytest.raises(ValueError, match="disjoint"):
+        _assert_safe_roots(repository / "state", repository, candidate)
+    (repository / "nested").mkdir()
+    with pytest.raises(ValueError, match="disjoint"):
+        _assert_safe_roots(tmp_path / "state", repository, repository / "nested")
+
+
+def test_runner_rejects_candidate_vcs_metadata_before_execution(tmp_path: Path) -> None:
+    repository = tmp_path / "repository"
+    candidate = tmp_path / "candidate"
+    repository.mkdir()
+    candidate.mkdir()
+    (candidate / ".git").mkdir()
+    with pytest.raises(ValueError, match="VCS-free"):
+        _assert_safe_roots(tmp_path / "state", repository, candidate)
+
+
+def test_completed_replay_requires_the_cli_canary_identity() -> None:
+    package = _completion_fixture()
+    _validate_completed_canary(package, package.core_package.canary_operation_id)
+    with pytest.raises(ValueError, match="different canary"):
+        _validate_completed_canary(package, "sha256:" + "b" * 64)
 
 
 def test_operator_is_a_thin_service_boundary() -> None:

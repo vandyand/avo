@@ -515,6 +515,7 @@ def test_observe_returns_exact_bound_provider_observation() -> None:
         ({"status": "queued"}, "duplicate, incomplete"),
         ({"conclusion": "failure"}, "duplicate, incomplete"),
         ({"completed_at": "2025-01-01T00:00:00Z"}, "stale"),
+        ({"completed_at": "2099-01-01T00:00:00Z"}, "future"),
     ],
 )
 def test_observe_rejects_untrusted_or_stale_check_evidence(
