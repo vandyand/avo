@@ -1309,7 +1309,7 @@ class GitHubIntegrationProvider:
         # the endpoint required by GitHub's DELETE API.
         self._validation_ref_path(repository_digest, ref)
         branch = ref.removeprefix("refs/heads/")
-        path = f"git/refs/{quote(branch, safe='')}"
+        path = f"git/refs/heads/{quote(branch, safe='')}"
         return self._call("DELETE", self._path(path))
 
 

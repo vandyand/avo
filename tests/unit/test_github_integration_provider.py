@@ -1672,7 +1672,9 @@ def test_validation_ref_create_delete_have_exact_shape_and_scope() -> None:
     )
     assert calls[1] == (
         "DELETE",
-        configured.api_base + "/repos/acme/widget/git/refs/avo%2Fvalidation%2F" + "d" * 64,
+        configured.api_base
+        + "/repos/acme/widget/git/refs/heads/avo%2Fvalidation%2F"
+        + "d" * 64,
         None,
     )
 
