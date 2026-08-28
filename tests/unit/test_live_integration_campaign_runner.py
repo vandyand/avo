@@ -320,7 +320,7 @@ def test_cleanup_requires_durable_package_and_uses_package_digest(
     assert state["synthetic_validation_cleanup"]["outcome"] == "cleaned"
 
 
-def test_cleanup_ambiguity_retains_completed_result_for_recovery(tmp_path: Path) -> None:
+def test_cleanup_ambiguity_replays_cleanup_to_success(tmp_path: Path) -> None:
     provider = _CleanupProvider(delete_error=True)
     service, plan = _validation_plan(tmp_path, provider)
     result = _completed_result()
@@ -328,10 +328,11 @@ def test_cleanup_ambiguity_retains_completed_result_for_recovery(tmp_path: Path)
     assert first is not None
     assert isinstance(first, SyntheticValidationOutcome)
     assert first.outcome == "reconciliation_required"
+    provider.delete_error = False
     second = runner._cleanup_completed_validation(config(tmp_path), service, plan, result)
     assert second is not None
     assert isinstance(second, SyntheticValidationOutcome)
-    assert second.outcome == "reconciliation_required"
+    assert second.outcome == "cleaned"
     assert provider.delete_calls == 2
 
 
@@ -562,3 +563,57 @@ def test_recovery_finalizes_crash_after_final_evidence(
     monkeypatch.setattr(runner, "_build_recovery_service", recovery_service)
 
     assert runner.recover_before_preflight(config(tmp_path)) is finalized
+
+
+def test_recovery_reuses_completed_package_for_cleanup_without_finalize(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    package = _package()
+    operation_id = package.intent.operation_id
+    package_ref = ArtifactRef.model_construct(
+        digest=canonical_digest(package),
+        size_bytes=1,
+        media_type="application/vnd.avo.integration-campaign+json",
+        role="integration-campaign-package",
+    )
+    cleanup_results: list[tuple[Any, Any]] = []
+
+    class CompletedPackage:
+        def __init__(self, *_args: object, **_kwargs: object) -> None:
+            pass
+
+        def list_plan_operations(self) -> tuple[str, ...]:
+            return (operation_id,)
+
+        def read_package(self, recovered_operation_id: str) -> tuple[Any, ArtifactRef] | None:
+            assert recovered_operation_id == operation_id
+            return package, package_ref
+
+        def read_final_evidence(self, _operation_id: str) -> None:
+            return pytest.fail("completed-package recovery must not read final evidence")
+
+    class RecoveryService:
+        def finalize(self, _operation_id: str) -> object:
+            return pytest.fail("completed-package recovery must not finalize")
+
+        def resume(self, _operation_id: str) -> object:
+            return pytest.fail("completed-package recovery must not resume")
+
+    def recovery_service(_config: runner.CampaignRunnerConfig) -> RecoveryService:
+        return RecoveryService()
+
+    def cleanup(
+        _config: runner.CampaignRunnerConfig, _service: object, result: Any
+    ) -> None:
+        cleanup_results.append((result.package, result.package_artifact))
+
+    monkeypatch.setattr(runner, "CampaignCompletionJournal", CompletedPackage)
+    monkeypatch.setattr(runner, "_build_recovery_service", recovery_service)
+    monkeypatch.setattr(runner, "_cleanup_recovered_validation", cleanup)
+
+    recovered = runner.recover_before_preflight(config(tmp_path))
+
+    assert recovered is not None
+    assert recovered.package is package
+    assert recovered.package_artifact is package_ref
+    assert cleanup_results == [(package, package_ref)]
