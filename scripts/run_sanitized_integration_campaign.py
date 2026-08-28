@@ -836,6 +836,9 @@ def _recover_before_preflight(config: CampaignRunnerConfig) -> IntegrationCampai
     service = _build_recovery_service(config)
     operation_id = operations[0]
     if completion.read_package(operation_id) is not None:
+        # Finalize revalidates the package against its durable plan and releases
+        # a lease left behind by a crash after package indexing.  It performs no
+        # hosted mutation for an already-completed operation.
         result = service.finalize(operation_id)
         _cleanup_recovered_validation(config, service, result)
         return result
