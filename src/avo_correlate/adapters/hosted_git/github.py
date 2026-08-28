@@ -231,17 +231,16 @@ class GitHubIntegrationProvider:
     target_ref: str
     trusted_checks: tuple[tuple[str, int], ...]
     freshness_cutoff: datetime
+    # ``trusted_checks`` are the controller-enforced exact synthetic-SHA
+    # checks.  ``protection_checks`` are the provider-enforced required checks
+    # on the protected branch head.  They must be supplied independently.
+    protection_checks: tuple[tuple[str, int], ...]
     protection_policy: GitHubProtectionPolicy = field(default_factory=GitHubProtectionPolicy)
     token: str | None = field(default=None, repr=False, compare=False)
     api_base: str = "https://api.github.com"
     provider_identity: str = "github"
     provider_api_version: str = "2022-11-28"
     transport: JsonTransport = _default_transport
-    # ``trusted_checks`` are the controller-enforced exact synthetic-SHA
-    # checks.  ``protection_checks`` are the provider-enforced required checks
-    # on the protected branch head.  Keep the fallback for existing custom
-    # construction, where the two sets historically shared one field.
-    protection_checks: tuple[tuple[str, int], ...] | None = None
 
     def __post_init__(self) -> None:
         if not self.owner or not self.repo or any(c in self.owner + self.repo for c in "/\\"):
@@ -253,9 +252,6 @@ class GitHubIntegrationProvider:
         parsed = urlparse(self.api_base)
         if parsed.scheme != "https" or parsed.netloc != "api.github.com":
             raise ValueError("GitHub API base must be https://api.github.com")
-        if self.protection_checks is None:
-            object.__setattr__(self, "protection_checks", self.trusted_checks)
-
         self._validate_checks(self.trusted_checks, "trusted")
         self._validate_checks(self.protection_checks, "protection")
         if self.freshness_cutoff.tzinfo is None:
@@ -263,10 +259,10 @@ class GitHubIntegrationProvider:
 
     @staticmethod
     def _validate_checks(
-        checks: tuple[tuple[str, int], ...] | None, label: str
+        checks: tuple[tuple[str, int], ...], label: str
     ) -> None:
         candidate: object = checks
-        if not isinstance(candidate, tuple) or not candidate:
+        if not isinstance(candidate, tuple) or not candidate:  # pyright: ignore[reportUnnecessaryIsInstance]
             raise ValueError(f"{label} checks must be non-empty")
         seen: set[tuple[str, int]] = set()
         for raw_check in candidate:
@@ -722,7 +718,7 @@ class GitHubIntegrationProvider:
             context = _required_string(check, "context", "required status check")
             app_id = _required_int(check, "app_id", "required status check")
             actual_checks.append((context, app_id))
-        expected_checks = set(self.protection_checks or ())
+        expected_checks = set(self.protection_checks)
         if len(actual_checks) != len(set(actual_checks)) or set(actual_checks) != expected_checks:
             raise ValueError("branch protection required checks differ from protection checks")
         contexts = status.get("contexts")

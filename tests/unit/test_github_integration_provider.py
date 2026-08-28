@@ -104,6 +104,7 @@ def provider_for_intent(
         repository_digest=D,
         target_ref=intent.target_ref,
         trusted_checks=(("ci", 7),),
+        protection_checks=(("ci", 7),),
         freshness_cutoff=datetime(2026, 1, 1, tzinfo=UTC),
         protection_policy=GitHubProtectionPolicy(required_approving_review_count=0),
         transport=transport,
@@ -233,6 +234,7 @@ def provider(
             repository_digest=D,
             target_ref=target_ref,
             trusted_checks=(("ci", 7),),
+            protection_checks=(("ci", 7),),
             freshness_cutoff=datetime(2026, 1, 1, tzinfo=UTC),
             protection_policy=GitHubProtectionPolicy(required_approving_review_count=0),
             token=token,
@@ -243,6 +245,7 @@ def provider(
         repository_digest=D,
         target_ref=target_ref,
         trusted_checks=(("ci", 7),),
+        protection_checks=(("ci", 7),),
         freshness_cutoff=datetime(2026, 1, 1, tzinfo=UTC),
         protection_policy=GitHubProtectionPolicy(required_approving_review_count=0),
         token=token,
@@ -263,6 +266,7 @@ def test_requires_repository_digest_bound_to_configured_repository() -> None:
             repository_digest="sha256:" + "f" * 64,
             target_ref="refs/heads/integration",
             trusted_checks=(("ci", 7),),
+            protection_checks=(("ci", 7),),
             freshness_cutoff=datetime(2026, 1, 1, tzinfo=UTC),
         )
 
@@ -1108,6 +1112,7 @@ def test_protection_policy_is_typed_and_configurable_for_integration_approvals()
         repository_digest=D,
         target_ref="refs/heads/integration",
         trusted_checks=(("ci", 7),),
+        protection_checks=(("ci", 7),),
         freshness_cutoff=datetime(2026, 1, 1, tzinfo=UTC),
         protection_policy=GitHubProtectionPolicy(required_approving_review_count=1),
         transport=transport,
@@ -1450,11 +1455,24 @@ def test_provider_constructor_rejects_malformed_configuration(
         "repository_digest": D,
         "target_ref": "refs/heads/integration",
         "trusted_checks": (("ci", 7),),
+        "protection_checks": (("ci", 7),),
         "freshness_cutoff": datetime(2026, 1, 1, tzinfo=UTC),
     }
     values.update(kwargs)
     with pytest.raises(ValueError, match=message):
         GitHubIntegrationProvider(**values)
+
+
+def test_provider_requires_explicit_protection_checks() -> None:
+    with pytest.raises(TypeError):
+        GitHubIntegrationProvider(  # pyright: ignore[reportCallIssue]
+            owner="acme",
+            repo="widget",
+            repository_digest=D,
+            target_ref="refs/heads/integration",
+            trusted_checks=(("ci", 7),),
+            freshness_cutoff=datetime(2026, 1, 1, tzinfo=UTC),
+        )
 
 
 @pytest.mark.parametrize(
