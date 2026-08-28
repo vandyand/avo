@@ -2,6 +2,7 @@ import base64
 import hashlib
 import json
 from collections.abc import Mapping
+from dataclasses import replace
 from datetime import UTC, datetime
 from typing import Any, cast
 
@@ -94,6 +95,8 @@ def valid_intent(**updates: object) -> IntegrationPromotionIntent:
         target_base_commit=str(values["target_base_commit"]),
         synthetic_merge_commit=str(values["synthetic_merge_commit"]),
     )
+    if values.get("expected_main_commit") is not None:
+        identity["expected_main_commit"] = str(values["expected_main_commit"])
     values["operation_id"] = integration_operation_id(**identity)
     return IntegrationPromotionIntent.model_validate(values)
 
@@ -706,6 +709,48 @@ def test_merge_maps_main_protection_transport_failure_to_precondition() -> None:
     assert [call[0] for call in calls].count("PUT") == 0
 
 
+def test_merge_expected_main_commit_is_final_precondition_and_never_puts() -> None:
+    initial = valid_intent(expected_main_commit="e" * 40)
+    responses = observation_responses(initial)
+    intent = valid_intent(
+        expected_main_commit="e" * 40,
+        protection_evidence_digest=responses["protection_digest"],
+        check_evidence_manifest_digest=responses["check_digest"],
+    )
+    transport, calls = _observation_transport(intent, responses)
+
+    def with_main(
+        method: str, url: str, body: JsonBody | None, headers: Mapping[str, str]
+    ) -> tuple[int, JsonValue]:
+        if url.endswith("/git/ref/heads/main"):
+            return 200, {"ref": "refs/heads/main", "object": {"type": "commit", "sha": G}}
+        if url.endswith("/git/commits/" + G):
+            return 200, {"sha": G, "tree": {"sha": G}, "parents": []}
+        return transport(method, url, body, headers)
+
+    configured = replace(provider_for_intent(intent, with_main), token="test-token")
+    with pytest.raises(IntegrationPromotionPreconditionError, match="current main commit"):
+        configured.merge(intent, lease_guard=lambda: None)
+    assert [call[0] for call in calls].count("PUT") == 0
+
+
+@pytest.mark.parametrize("which", ["lease", "authorize"])
+def test_merge_final_fence_errors_are_preconditions_without_put(which: str) -> None:
+    intent, responses = _bound_intent_and_responses()
+    transport, calls = _observation_transport(intent, responses)
+
+    def fail() -> None:
+        raise RuntimeError("final fence lost")
+
+    with pytest.raises(IntegrationPromotionPreconditionError, match="final fence lost"):
+        provider_for_intent(intent, transport).merge(
+            intent,
+            lease_guard=fail if which == "lease" else (lambda: None),
+            mutation_authorize=fail if which == "authorize" else None,
+        )
+    assert [call[0] for call in calls].count("PUT") == 0
+
+
 def test_merge_rejects_external_two_parent_result() -> None:
     intent, responses = _bound_intent_and_responses()
     transport, _calls = _observation_transport(intent, responses)
@@ -1228,6 +1273,214 @@ def test_observe_failed_soak_rejects_duplicate_workflow_runs() -> None:
         _failed_soak_provider(transport).observe_failed_soak(
             now=datetime(2026, 8, 28, 12, tzinfo=UTC)
         )
+
+
+def test_observe_failed_soak_rejects_wrong_ref_before_any_request() -> None:
+    calls: list[str] = []
+
+    def transport(
+        method: str, url: str, body: JsonBody | None, headers: Mapping[str, str]
+    ) -> tuple[int, JsonValue]:
+        del method, body, headers
+        calls.append(url)
+        return 200, {}
+
+    with pytest.raises(ValueError, match="refs/heads/integration"):
+        _failed_soak_provider(transport).observe_failed_soak("refs/heads/main")
+    assert calls == []
+
+
+@pytest.mark.parametrize(
+    ("route", "update", "message"),
+    [
+        ("integration", {"parents": []}, "exactly one parent"),
+        ("restore", {"sha": "f" * 40}, "response mismatch"),
+        ("integration", {"message": "ordinary commit"}, "marker"),
+    ],
+)
+def test_observe_failed_soak_rejects_commit_topology_and_marker(
+    route: str, update: dict[str, JsonValue], message: str
+) -> None:
+    transport, _calls = _failed_soak_transport()
+
+    def wrapped(
+        method: str, url: str, body: JsonBody | None, headers: Mapping[str, str]
+    ) -> tuple[int, JsonValue]:
+        status, payload = transport(method, url, body, headers)
+        if route == "integration" and url.endswith("/git/commits/" + "1" * 40):
+            assert isinstance(payload, dict)
+            return status, cast(JsonValue, {**payload, **update})
+        if route == "restore" and url.endswith("/git/commits/" + "2" * 40):
+            assert isinstance(payload, dict)
+            return status, cast(JsonValue, {**payload, **update})
+        return status, payload
+
+    with pytest.raises(ValueError, match=message):
+        _failed_soak_provider(wrapped).observe_failed_soak(
+            now=datetime(2026, 8, 28, 12, tzinfo=UTC)
+        )
+
+
+@pytest.mark.parametrize(
+    ("update", "message"),
+    [
+        ({"path": "other.yml"}, "identity or encoding"),
+        ({"encoding": "utf-8"}, "identity or encoding"),
+        ({"content": "!not-base64!"}, "not valid base64"),
+    ],
+)
+def test_observe_failed_soak_rejects_workflow_content(
+    update: dict[str, JsonValue], message: str
+) -> None:
+    transport, _calls = _failed_soak_transport()
+
+    def wrapped(
+        method: str, url: str, body: JsonBody | None, headers: Mapping[str, str]
+    ) -> tuple[int, JsonValue]:
+        status, payload = transport(method, url, body, headers)
+        if "/contents/.github/workflows/integration-soak.yml?ref=" in url:
+            assert isinstance(payload, dict)
+            return status, cast(JsonValue, {**payload, **update})
+        return status, payload
+
+    with pytest.raises(ValueError, match=message):
+        _failed_soak_provider(wrapped).observe_failed_soak(
+            now=datetime(2026, 8, 28, 12, tzinfo=UTC)
+        )
+
+
+@pytest.mark.parametrize(
+    ("update", "message"),
+    [
+        ({"name": "OTHER"}, "variable identity"),
+        ({"value": "Z" * 64}, "lowercase SHA-256"),
+        ({"value": "0" * 64}, "does not match"),
+    ],
+)
+def test_observe_failed_soak_rejects_workflow_variable(
+    update: dict[str, JsonValue], message: str
+) -> None:
+    transport, _calls = _failed_soak_transport()
+
+    def wrapped(
+        method: str, url: str, body: JsonBody | None, headers: Mapping[str, str]
+    ) -> tuple[int, JsonValue]:
+        status, payload = transport(method, url, body, headers)
+        if url.endswith("/actions/variables/AVO_TRUSTED_SOAK_WORKFLOW_SHA256"):
+            assert isinstance(payload, dict)
+            return status, cast(JsonValue, {**payload, **update})
+        return status, payload
+
+    with pytest.raises(ValueError, match=message):
+        _failed_soak_provider(wrapped).observe_failed_soak(
+            now=datetime(2026, 8, 28, 12, tzinfo=UTC)
+        )
+
+
+@pytest.mark.parametrize(
+    ("update", "message"),
+    [
+        ({"id": 0}, "IDs must be positive"),
+        ({"status": "queued"}, "deterministically fail"),
+        ({"conclusion": "success"}, "deterministically fail"),
+        ({"completed_at": None}, "completed_at is required"),
+        ({"completed_at": "not-a-time"}, "completed_at is malformed"),
+        ({"completed_at": "2026-08-28T10:00:00"}, "timezone-aware"),
+        ({"completed_at": "2099-08-28T10:00:00Z"}, "stale or future"),
+    ],
+)
+def test_observe_failed_soak_rejects_workflow_run_state(
+    update: dict[str, JsonValue], message: str
+) -> None:
+    transport, _calls = _failed_soak_transport()
+
+    def wrapped(
+        method: str, url: str, body: JsonBody | None, headers: Mapping[str, str]
+    ) -> tuple[int, JsonValue]:
+        status, payload = transport(method, url, body, headers)
+        if "/actions/workflows/integration-soak.yml/runs?" in url:
+            assert isinstance(payload, dict)
+            runs = payload["workflow_runs"]
+            assert isinstance(runs, list) and isinstance(runs[0], dict)
+            return status, cast(JsonValue, {**payload, "workflow_runs": [{**runs[0], **update}]})
+        return status, payload
+
+    with pytest.raises(ValueError, match=message):
+        _failed_soak_provider(wrapped).observe_failed_soak(
+            now=datetime(2026, 8, 28, 12, tzinfo=UTC)
+        )
+
+
+@pytest.mark.parametrize(
+    ("update", "message"),
+    [
+        ({"app": {"id": 1}}, "exactly one matching check"),
+        ({"status": "queued"}, "completed failure"),
+        ({"conclusion": "success"}, "completed failure"),
+        ({"id": 0}, "ID must be positive"),
+        ({"completed_at": "not-a-time"}, "malformed"),
+        ({"completed_at": "2026-08-28T10:00:00"}, "timezone-aware"),
+        ({"completed_at": "2025-08-28T10:00:00Z"}, "stale or future"),
+    ],
+)
+def test_observe_failed_soak_rejects_check_state(
+    update: dict[str, JsonValue], message: str
+) -> None:
+    transport, _calls = _failed_soak_transport()
+
+    def wrapped(
+        method: str, url: str, body: JsonBody | None, headers: Mapping[str, str]
+    ) -> tuple[int, JsonValue]:
+        status, payload = transport(method, url, body, headers)
+        if "/check-runs?" in url:
+            assert isinstance(payload, dict)
+            runs = payload["check_runs"]
+            assert isinstance(runs, list) and isinstance(runs[0], dict)
+            return status, cast(JsonValue, {**payload, "check_runs": [{**runs[0], **update}]})
+        return status, payload
+
+    with pytest.raises(ValueError, match=message):
+        _failed_soak_provider(wrapped).observe_failed_soak(
+            now=datetime(2026, 8, 28, 12, tzinfo=UTC)
+        )
+
+
+def test_observe_failed_soak_paginates_runs_and_checks() -> None:
+    transport, _calls = _failed_soak_transport()
+
+    def wrapped(
+        method: str, url: str, body: JsonBody | None, headers: Mapping[str, str]
+    ) -> tuple[int, JsonValue]:
+        status, payload = transport(method, url, body, headers)
+        if "/actions/workflows/integration-soak.yml/runs?" in url:
+            matching: list[JsonValue] = (
+                payload["workflow_runs"]
+                if isinstance(payload, dict) and isinstance(payload["workflow_runs"], list)
+                else []
+            )
+            assert isinstance(matching, list) and isinstance(matching[0], dict)
+            filler = [{**matching[0], "id": 1000 + i, "head_sha": "f" * 40} for i in range(100)]
+            if url.endswith("&page=1"):
+                return status, cast(JsonValue, {"total_count": 101, "workflow_runs": filler})
+            return status, cast(JsonValue, {"total_count": 101, "workflow_runs": matching})
+        if "/check-runs?" in url:
+            matching: list[JsonValue] = (
+                payload["check_runs"]
+                if isinstance(payload, dict) and isinstance(payload["check_runs"], list)
+                else []
+            )
+            assert isinstance(matching, list) and isinstance(matching[0], dict)
+            filler = [{**matching[0], "id": 2000 + i, "head_sha": "f" * 40} for i in range(100)]
+            if url.endswith("&page=1"):
+                return status, cast(JsonValue, {"total_count": 101, "check_runs": filler})
+            return status, cast(JsonValue, {"total_count": 101, "check_runs": matching})
+        return status, payload
+
+    observed = _failed_soak_provider(wrapped).observe_failed_soak(
+        now=datetime(2026, 8, 28, 12, tzinfo=UTC)
+    )
+    assert observed.workflow_run_id == 900
+    assert observed.check_run_id == 902
 
 
 def test_protection_policy_is_typed_and_configurable_for_integration_approvals() -> None:

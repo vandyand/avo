@@ -425,3 +425,75 @@ def test_completion_package_rejects_forged_protection_app_identity() -> None:
     )
     with pytest.raises(ValueError, match=r"protection|evidence|exact"):
         package.model_copy(update={"protection_manifest": manifest}).validate_package()  # pyright: ignore[reportCallIssue]
+
+
+def test_completion_leaf_contracts_reject_malformed_identity_and_stale_evidence() -> None:
+    package = _completion_fixture()
+    plan = package.publication_plan.model_dump(mode="json")
+    plan["base_commit"] = "not-a-commit"
+    with pytest.raises(ValueError, match="malformed Git"):
+        LiveRollbackPublicationPlan.model_validate(plan)
+    plan = package.publication_plan.model_dump(mode="json")
+    plan["publication_id"] = D
+    with pytest.raises(ValueError, match="digest mismatch"):
+        LiveRollbackPublicationPlan.model_validate(plan)
+
+    outcome = package.publication_outcome.model_dump(mode="json")
+    outcome["candidate_tree"] = "bad-tree"
+    with pytest.raises(ValueError, match="malformed Git"):
+        LiveRollbackPublicationOutcome.model_validate(outcome)
+    evidence = package.publication_evidence.model_dump(mode="json")
+    evidence["base_tree"] = "bad-tree"
+    with pytest.raises(ValueError, match="malformed Git"):
+        LiveRollbackPublicationEvidence.model_validate(evidence)
+
+
+def test_completion_manifest_and_workflow_contracts_reject_invalid_topology() -> None:
+    package = _completion_fixture()
+    check = package.check_manifest.model_dump(mode="json")
+    check["source_commit"] = "bad-source"
+    with pytest.raises(ValueError, match="source commit"):
+        LiveRollbackManifestEvidence.model_validate(check)
+    check = package.check_manifest.model_dump(mode="json")
+    check["entries"] = [check["entries"][0], check["entries"][0]]
+    with pytest.raises(ValueError, match="unique"):
+        LiveRollbackManifestEvidence.model_validate(check)
+    check = package.check_manifest.model_dump(mode="json")
+    check["observed_at"] = "2025-01-01T00:00:00Z"
+    with pytest.raises(ValueError, match="predates"):
+        LiveRollbackManifestEvidence.model_validate(check)
+
+    workflow = package.workflow_evidence.model_dump(mode="json")
+    workflow["source_commit"] = "bad-source"
+    with pytest.raises(ValueError, match="source commit"):
+        LiveRollbackWorkflowEvidence.model_validate(workflow)
+    workflow = package.workflow_evidence.model_dump(mode="json")
+    workflow["workflow_path"] = "ci.yml"
+    with pytest.raises(ValueError, match="synthetic validation"):
+        LiveRollbackWorkflowEvidence.model_validate(workflow)
+    workflow = package.workflow_evidence.model_dump(mode="json")
+    workflow["repository_variables_digest"] = "sha256:" + "f" * 64
+    with pytest.raises(ValueError, match="differ"):
+        LiveRollbackWorkflowEvidence.model_validate(workflow)
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        ("main_after_commit", "f" * 40, "publication binding"),
+        ("deploy_performed", True, "publication binding"),
+    ],
+)
+def test_completion_package_rejects_main_fence_or_deploy_state(
+    field: str, value: object, message: str
+) -> None:
+    package = _completion_fixture()
+    with pytest.raises(ValueError, match=message):
+        package.model_copy(update={field: value}).validate_package()  # pyright: ignore[reportCallIssue]
+
+
+def test_completion_package_rejects_stale_publication_evidence() -> None:
+    package = _completion_fixture()
+    stale = package.publication_evidence.model_copy(update={"candidate_tree": "f" * 40})
+    with pytest.raises(ValueError, match="publication binding"):
+        package.model_copy(update={"publication_evidence": stale}).validate_package()  # pyright: ignore[reportCallIssue]
