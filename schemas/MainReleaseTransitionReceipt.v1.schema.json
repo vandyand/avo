@@ -27,6 +27,11 @@
       "title": "Issuer Identity",
       "type": "string"
     },
+    "issuer_isolation_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Issuer Isolation Digest",
+      "type": "string"
+    },
     "observed_at": {
       "format": "date-time",
       "title": "Observed At",
@@ -50,6 +55,11 @@
       "pattern": "^sha256:[0-9a-f]{64}$",
       "title": "Release Authorization Digest",
       "type": "string"
+    },
+    "release_issuer_app_id": {
+      "exclusiveMinimum": 0,
+      "title": "Release Issuer App Id",
+      "type": "integer"
     },
     "repository_digest": {
       "pattern": "^sha256:[0-9a-f]{64}$",
@@ -78,6 +88,12 @@
       "default": 1,
       "title": "Transition Count",
       "type": "integer"
+    },
+    "validation_app_id": {
+      "const": 15368,
+      "default": 15368,
+      "title": "Validation App Id",
+      "type": "integer"
     }
   },
   "required": [
@@ -88,6 +104,8 @@
     "hold_run_id",
     "hold_nonce",
     "issuer_identity",
+    "release_issuer_app_id",
+    "issuer_isolation_digest",
     "outcome",
     "response_digest",
     "observed_at"

@@ -1,0 +1,28 @@
+{
+  "additionalProperties": false,
+  "description": "Controller-pinned isolated release issuer, structurally distinct from validation.",
+  "properties": {
+    "app_id": {
+      "exclusiveMinimum": 0,
+      "title": "App Id",
+      "type": "integer"
+    },
+    "isolation_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Isolation Digest",
+      "type": "string"
+    },
+    "issuer_id": {
+      "minLength": 1,
+      "title": "Issuer Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "issuer_id",
+    "app_id",
+    "isolation_digest"
+  ],
+  "title": "MainReleaseIssuerBinding",
+  "type": "object"
+}

@@ -27,6 +27,7 @@ from avo_correlate.contracts.base import (
     StrictModel,
     require_aware_datetime,
 )
+from avo_correlate.contracts.promotion_policy import PromotionPolicy, RiskClass
 from avo_correlate.domain.canonical import canonical_bytes, canonical_digest
 
 GitObject = Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{40}(?:[0-9a-f]{24})?$")]
@@ -34,16 +35,16 @@ MainRef = Literal["refs/heads/main"]
 
 
 def _paths(paths: list[str]) -> list[str]:
+    from avo_correlate.contracts.promotion_policy import is_valid_promotion_path
+
     if paths != sorted(paths, key=lambda item: (item.casefold(), item)):
         raise ValueError("changed paths must be sorted")
     if len({item.casefold() for item in paths}) != len(paths):
         raise ValueError("changed paths must be unique")
-    for path in paths:
-        if not path or path.startswith(("/", "\\")) or ".." in path.split("/"):
-            raise ValueError("changed paths must be normalized relative paths")
-        lowered = path.casefold()
-        if "production" in lowered or "deploy" in lowered or "constitutional" in lowered:
-            raise ValueError("production and constitutional paths are not eligible")
+    if any(not is_valid_promotion_path(path) for path in paths):
+        raise ValueError("changed paths must be normalized relative POSIX paths")
+    if PromotionPolicy.derive_risk(paths) is not RiskClass.ORDINARY:
+        raise ValueError("main delta paths must classify as ordinary")
     return paths
 
 
@@ -58,6 +59,27 @@ class MainBound(StrictModel):
     target_ref: MainRef = "refs/heads/main"
 
 
+class MainValidationIdentity(StrictModel):
+    """The validation principal is fixed to App 15368."""
+
+    app_id: Literal[15368] = 15368
+    identity: NonEmptyString
+
+
+class MainReleaseIssuerBinding(StrictModel):
+    """Controller-pinned isolated release issuer, structurally distinct from validation."""
+
+    issuer_id: NonEmptyString
+    app_id: StrictInt = Field(gt=0)
+    isolation_digest: Sha256Digest
+
+    @model_validator(mode="after")
+    def validate_isolation(self) -> MainReleaseIssuerBinding:
+        if self.app_id == 15368:
+            raise ValueError("validation App 15368 cannot be the release issuer")
+        return self
+
+
 class MainSourcePackageBinding(MainBound):
     """Immutable binding to a complete successful integration package."""
 
@@ -68,6 +90,7 @@ class MainSourcePackageBinding(MainBound):
             "package_digest", "integration_package_digest", "source_package_digest"
         )
     )
+    package_artifact: ArtifactRef
     child_artifacts: list[ArtifactRef] = Field(min_length=1)
     source_result_commit: GitObject
     source_result_tree: GitObject
@@ -84,8 +107,12 @@ class MainSourcePackageBinding(MainBound):
         roles = [child.role for child in self.child_artifacts]
         if len(roles) != len(set(roles)):
             raise ValueError("source package child roles must be unique")
-        if self.package_digest not in digests:
-            raise ValueError("source package artifact is missing from its child bindings")
+        if self.package_artifact.digest != self.package_digest:
+            raise ValueError("source package digest differs from raw package artifact")
+        if self.package_artifact.role != "integration-campaign-package":
+            raise ValueError("source package raw artifact has the wrong role")
+        if self.package_artifact.media_type != "application/vnd.avo.integration-campaign+json":
+            raise ValueError("source package raw artifact has the wrong media type")
         if self.source_result_parent == self.source_result_commit:
             raise ValueError("source result parent must differ from result")
         return self
@@ -176,6 +203,8 @@ class MainProtectionManifest(MainBound):
     bypass_allowed: Literal[False] = False
     direct_merge_allowed: Literal[False] = False
     isolated_release_issuer: NonEmptyString
+    release_issuer_app_id: StrictInt = Field(gt=0)
+    issuer_isolation_digest: Sha256Digest
     validation_app_id: Literal[15368] = 15368
     release_context: Literal["avo-main-release"] = "avo-main-release"
     protection_epoch: Sha256Digest
@@ -185,8 +214,8 @@ class MainProtectionManifest(MainBound):
 
     @model_validator(mode="after")
     def validate_protection(self) -> MainProtectionManifest:
-        if self.isolated_release_issuer.casefold() in {"15368", "app-15368", "app15368"}:
-            raise ValueError("App 15368 is validation-only, not the release issuer")
+        if self.release_issuer_app_id == self.validation_app_id:
+            raise ValueError("validation App 15368 cannot be the release issuer")
         return self
 
 
@@ -202,25 +231,55 @@ class MainQueueObservation(MainBound):
     expected_base_commit: GitObject
     merge_method: Literal["squash"]
     isolated_release_issuer: NonEmptyString
-    observed_at: datetime
-
-    _aware_observed_at = field_validator("observed_at")(_aware)
-
-
-class MainMergeGroupChecks(MainBound):
-    schema_version: Literal[1] = 1
-    operation_id: Sha256Digest
-    group_sha: GitObject
-    checks: list[MainCheckObservation] = Field(min_length=1)
-    validation_app_id: Literal[15368] = 15368
+    release_issuer_app_id: StrictInt = Field(gt=0)
+    issuer_isolation_digest: Sha256Digest
     observed_at: datetime
 
     _aware_observed_at = field_validator("observed_at")(_aware)
 
     @model_validator(mode="after")
+    def validate_queue_issuer(self) -> MainQueueObservation:
+        if self.release_issuer_app_id == 15368:
+            raise ValueError("validation App 15368 cannot be the release issuer")
+        if self.expected_base_commit == "":
+            raise ValueError("queue base is required")
+        return self
+
+
+class MainMergeGroupChecks(MainBound):
+    schema_version: Literal[1] = 1
+    operation_id: Sha256Digest
+    package_digest: Sha256Digest
+    composition_digest: Sha256Digest
+    group_sha: GitObject
+    checks: list[MainCheckObservation] = Field(min_length=1)
+    allowlisted_contexts: list[NonEmptyString] = Field(min_length=1)
+    config_digest: Sha256Digest
+    validation_app_id: Literal[15368] = 15368
+    freshness_cutoff: datetime
+    observed_at: datetime
+
+    _aware_freshness_cutoff = field_validator("freshness_cutoff")(_aware)
+    _aware_observed_at = field_validator("observed_at")(_aware)
+
+    @model_validator(mode="after")
     def validate_group_checks(self) -> MainMergeGroupChecks:
-        if any(check.sha != self.group_sha for check in self.checks):
+        if any(
+            check.sha != self.group_sha
+            or check.app_id != self.validation_app_id
+            or check.status != "completed"
+            or check.conclusion != "success"
+            for check in self.checks
+        ):
             raise ValueError("all merge-group checks must bind the exact group SHA")
+        contexts = {check.context for check in self.checks}
+        allowed = set(self.allowlisted_contexts)
+        if contexts != allowed or len(allowed) != len(self.allowlisted_contexts):
+            raise ValueError("checks must exactly match the allowlisted contexts")
+        if self.observed_at < self.freshness_cutoff or any(
+            check.observed_at < self.freshness_cutoff for check in self.checks
+        ):
+            raise ValueError("merge-group checks are stale")
         keys = [(check.context, check.app_id, check.run_id) for check in self.checks]
         if len(keys) != len(set(keys)):
             raise ValueError("merge-group checks must be unique")
@@ -372,6 +431,7 @@ class MainQueueAdmissionObservation(MainBound):
     queue_generation_digest: Sha256Digest
     protection_manifest_digest: Sha256Digest
     issuer_identity: NonEmptyString
+    release_issuer_app_id: StrictInt = Field(gt=0)
     issuer_isolation_digest: Sha256Digest
     validation_app_id: Literal[15368] = 15368
     check_context: Literal["avo-main-release"] = "avo-main-release"
@@ -387,8 +447,8 @@ class MainQueueAdmissionObservation(MainBound):
     def validate_admission(self) -> MainQueueAdmissionObservation:
         if self.admission_sha != self.head_commit:
             raise ValueError("admission success must bind the exact PR head SHA")
-        if self.issuer_identity.casefold() in {"15368", "app-15368", "app15368"}:
-            raise ValueError("App 15368 cannot issue admission evidence")
+        if self.release_issuer_app_id == self.validation_app_id:
+            raise ValueError("validation App 15368 cannot issue admission evidence")
         if self.base_commit == self.head_commit:
             raise ValueError("PR head must differ from base")
         if not self.pull_request_url.startswith("https://"):
@@ -422,6 +482,7 @@ class MainReleaseHoldObservation(MainBound):
     hold_run_id: NonEmptyString
     hold_nonce: NonEmptyString
     issuer_identity: NonEmptyString
+    release_issuer_app_id: StrictInt = Field(gt=0)
     issuer_isolation_digest: Sha256Digest
     check_context: Literal["avo-main-release"] = "avo-main-release"
     check_state: Literal["in_progress"] = "in_progress"
@@ -438,16 +499,26 @@ class MainReleaseHoldObservation(MainBound):
     def validate_hold(self) -> MainReleaseHoldObservation:
         if self.queue_members != [self.pull_request_number]:
             raise ValueError("release group must contain exactly the authorized PR")
-        if self.group_parents != [self.base_commit]:
-            raise ValueError("release group must have the expected one-parent topology")
+        if not self.group_parents or self.group_parents[0] != self.base_commit:
+            raise ValueError("release group parent topology must start at the base")
+        if len(set(self.group_parents)) != len(self.group_parents):
+            raise ValueError("release group parent topology must be complete and unique")
         if self.group_tree != self.composition_tree:
             raise ValueError("release group tree differs from deterministic composition")
         if self.other_required_checks.group_sha != self.group_sha:
             raise ValueError("required checks must bind the exact merge-group SHA")
+        if (
+            self.other_required_checks.operation_id != self.operation_id
+            or self.other_required_checks.repository_digest != self.repository_digest
+            or self.other_required_checks.target_ref != self.target_ref
+            or self.other_required_checks.package_digest != self.package_digest
+            or self.other_required_checks.composition_digest != self.composition_digest
+        ):
+            raise ValueError("merge-group checks are not hold-bound")
         if any(check.context == "avo-main-release" for check in self.other_required_checks.checks):
             raise ValueError("group hold checks must not reuse the release hold context")
-        if self.issuer_identity.casefold() in {"15368", "app-15368", "app15368"}:
-            raise ValueError("App 15368 cannot issue release hold evidence")
+        if self.release_issuer_app_id == self.validation_app_id:
+            raise ValueError("validation App 15368 cannot issue release hold evidence")
         return self
 
 
@@ -469,6 +540,7 @@ class MainReleaseAuthorization(MainBound):
     lease_digest: Sha256Digest
     policy_epoch: Sha256Digest
     release_issuer_identity: NonEmptyString
+    release_issuer_app_id: StrictInt = Field(gt=0)
     issuer_isolation_digest: Sha256Digest
     authorization_digest: Sha256Digest
     one_use: Literal[True] = True
@@ -484,8 +556,8 @@ class MainReleaseAuthorization(MainBound):
     def validate_release_authorization(self) -> MainReleaseAuthorization:
         if self.expires_at <= self.authorized_at:
             raise ValueError("release authorization must expire after authorization")
-        if self.release_issuer_identity.casefold() in {"15368", "app-15368", "app15368"}:
-            raise ValueError("App 15368 cannot be the isolated release issuer")
+        if self.release_issuer_app_id == 15368:
+            raise ValueError("validation App 15368 cannot be the isolated release issuer")
         if self.authorization_digest != canonical_digest(
             self.model_dump(exclude={"authorization_digest"}, mode="json")
         ):
@@ -501,6 +573,9 @@ class MainReleaseTransitionReceipt(MainBound):
     hold_run_id: NonEmptyString
     hold_nonce: NonEmptyString
     issuer_identity: NonEmptyString
+    release_issuer_app_id: StrictInt = Field(gt=0)
+    validation_app_id: Literal[15368] = 15368
+    issuer_isolation_digest: Sha256Digest
     outcome: Literal["transitioned", "already_transitioned", "reconciliation_required"]
     transition_count: Literal[1] = 1
     response_digest: Sha256Digest
@@ -511,8 +586,8 @@ class MainReleaseTransitionReceipt(MainBound):
 
     @model_validator(mode="after")
     def validate_transition(self) -> MainReleaseTransitionReceipt:
-        if self.issuer_identity.casefold() in {"15368", "app-15368", "app15368"}:
-            raise ValueError("App 15368 cannot transition release hold")
+        if self.release_issuer_app_id == self.validation_app_id:
+            raise ValueError("validation App 15368 cannot transition release hold")
         return self
 
 
@@ -573,6 +648,13 @@ class MainCompletionPackage(MainBound):
     schema_version: Literal[1] = 1
     operation_id: Sha256Digest
     plan: MainGraduationPlan
+    source_package: MainSourcePackageBinding
+    delta: MainDeltaManifest
+    composition: MainCompositionArtifact
+    queue_observation: MainQueueObservation
+    protection_manifest: MainProtectionManifest
+    attestation_manifest: MainAttestationManifest
+    merge_group_checks: MainMergeGroupChecks
     intent: MainGraduationIntent
     preparation_authorization: MainPreparationAuthorization
     admission_observation: MainQueueAdmissionObservation
@@ -588,6 +670,13 @@ class MainCompletionPackage(MainBound):
     def validate_completion(self) -> MainCompletionPackage:
         records = (
             self.plan,
+            self.source_package,
+            self.delta,
+            self.composition,
+            self.queue_observation,
+            self.protection_manifest,
+            self.attestation_manifest,
+            self.merge_group_checks,
             self.intent,
             self.preparation_authorization,
             self.admission_observation,
@@ -602,6 +691,113 @@ class MainCompletionPackage(MainBound):
             for record in records
         ):
             raise ValueError("completion child operation IDs differ")
+        if self.transition_receipt.outcome not in {"transitioned", "already_transitioned"}:
+            raise ValueError("completion requires terminal release transition")
+        if self.provider_receipt.outcome != "observed":
+            raise ValueError("completion requires an observed provider result")
+        if self.reconciliation.state != "completed":
+            raise ValueError("completion requires completed reconciliation")
+        if self.reconciliation.main_tree != self.composition.candidate_tree:
+            raise ValueError("final main tree differs from deterministic composition")
+        if self.reconciliation.expected_tree != self.composition.candidate_tree:
+            raise ValueError("reconciliation expected tree differs from composition")
+        if self.reconciliation.main_parents != [self.composition.base_commit]:
+            raise ValueError("final main result must have exactly the bound base parent")
+        if self.reconciliation.main_commit != self.provider_receipt.result_commit:
+            raise ValueError("provider result commit differs from final main result")
+        if self.provider_receipt.result_tree != self.composition.candidate_tree:
+            raise ValueError("provider result tree differs from composition")
+        if self.provider_receipt.result_parents != [self.composition.base_commit]:
+            raise ValueError("provider result must have exactly one bound base parent")
+        if self.release_authorization.used:
+            raise ValueError("completion cannot reuse a release authorization")
+        if self.merge_group_checks.group_sha == self.admission_observation.head_commit:
+            raise ValueError("PR-head SHA cannot be reused as merge-group SHA")
+        for evidence in (
+            self.source_package,
+            self.delta,
+            self.composition,
+            self.queue_observation,
+            self.protection_manifest,
+            self.attestation_manifest,
+            self.merge_group_checks,
+        ):
+            if (
+                evidence.repository_digest != self.repository_digest
+                or evidence.target_ref != self.target_ref
+            ):
+                raise ValueError("completion evidence repository/target binding differs")
+        if self.merge_group_checks.group_sha != self.hold_observation.group_sha:
+            raise ValueError("group checks differ from release hold")
+        if self.merge_group_checks.operation_id != self.operation_id:
+            raise ValueError("group checks operation differs")
+        if self.merge_group_checks.package_digest != self.source_package.package_digest:
+            raise ValueError("group checks package differs")
+        if self.merge_group_checks.composition_digest != self.composition.composition_digest:
+            raise ValueError("group checks composition differs")
+        if (
+            self.queue_observation.queue_generation_digest
+            != self.hold_observation.queue_generation_digest
+        ):
+            raise ValueError("queue generation differs across evidence")
+        if (
+            self.protection_manifest.issuer_isolation_digest
+            != self.release_authorization.issuer_isolation_digest
+        ):
+            raise ValueError("release issuer isolation differs across evidence")
+        if (
+            self.protection_manifest.release_issuer_app_id
+            != self.release_authorization.release_issuer_app_id
+        ):
+            raise ValueError("release issuer app differs across evidence")
+        issuer_stages = (
+            self.protection_manifest.issuer_isolation_digest,
+            self.queue_observation.issuer_isolation_digest,
+            self.admission_observation.issuer_isolation_digest,
+            self.hold_observation.issuer_isolation_digest,
+            self.release_authorization.issuer_isolation_digest,
+            self.transition_receipt.issuer_isolation_digest,
+        )
+        if len(set(issuer_stages)) != 1:
+            raise ValueError("release issuer isolation differs across stages")
+        issuer_apps = (
+            self.protection_manifest.release_issuer_app_id,
+            self.queue_observation.release_issuer_app_id,
+            self.admission_observation.release_issuer_app_id,
+            self.hold_observation.release_issuer_app_id,
+            self.release_authorization.release_issuer_app_id,
+            self.transition_receipt.release_issuer_app_id,
+        )
+        if len(set(issuer_apps)) != 1 or issuer_apps[0] == 15368:
+            raise ValueError("release issuer identity is not stable and isolated")
+        if (
+            self.admission_observation.issuer_identity != self.hold_observation.issuer_identity
+            or self.hold_observation.issuer_identity
+            != self.release_authorization.release_issuer_identity
+            or self.release_authorization.release_issuer_identity
+            != self.transition_receipt.issuer_identity
+        ):
+            raise ValueError("release issuer differs across stages")
+        if (
+            self.queue_observation.queue_generation_digest
+            != self.admission_observation.queue_generation_digest
+        ):
+            raise ValueError("queue generation differs at admission")
+        if self.queue_observation.expected_base_commit != self.composition.base_commit:
+            raise ValueError("queue base differs from composition base")
+        if (
+            self.protection_manifest.isolated_release_issuer
+            != self.queue_observation.isolated_release_issuer
+            or self.queue_observation.isolated_release_issuer
+            != self.admission_observation.issuer_identity
+        ):
+            raise ValueError("controller-pinned release issuer differs across stages")
+        if self.admission_observation.base_commit != self.composition.base_commit:
+            raise ValueError("admission base differs from composition base")
+        if self.admission_observation.head_commit != self.composition.candidate_commit:
+            raise ValueError("admission head differs from composed candidate")
+        if self.admission_observation.head_tree != self.composition.candidate_tree:
+            raise ValueError("admission head tree differs from composed candidate")
         if self.release_authorization.hold_observation_digest != canonical_digest(
             self.hold_observation
         ):
@@ -632,11 +828,45 @@ class MainCompletionPackage(MainBound):
             raise ValueError("release authorization queue generation differs")
         if self.preparation_authorization.intent_digest != canonical_digest(self.intent):
             raise ValueError("preparation authorization does not bind intent")
+        if (
+            self.source_package != self.plan.package
+            or self.delta != self.plan.delta
+            or self.composition != self.plan.composition
+        ):
+            raise ValueError("completion evidence differs from plan children")
+        if self.intent.package_digest != self.source_package.package_digest:
+            raise ValueError("intent package differs from source package")
+        if self.intent.composition_digest != self.composition.composition_digest:
+            raise ValueError("intent composition differs from composition artifact")
+        if self.preparation_authorization.package_digest != self.source_package.package_digest:
+            raise ValueError("preparation authorization package differs")
+        if self.preparation_authorization.composition_digest != self.composition.composition_digest:
+            raise ValueError("preparation authorization composition differs")
         if self.admission_observation.head_commit == self.hold_observation.group_sha:
             raise ValueError("PR-head admission SHA cannot be reused as group SHA")
         roles = [item.role for item in self.artifacts]
         if len(roles) != len(set(roles)):
             raise ValueError("completion artifact roles must be unique")
+        required_roles = {
+            "main-graduation-source-package",
+            "main-graduation-delta",
+            "main-graduation-composition",
+            "main-graduation-queue-observation",
+            "main-graduation-protection-manifest",
+            "main-graduation-attestation-manifest",
+            "main-graduation-merge-group-checks",
+            "main-graduation-plan",
+            "main-graduation-intent",
+            "main-graduation-preparation-authorization",
+            "main-graduation-queue-admission",
+            "main-graduation-release-hold",
+            "main-graduation-release-authorization",
+            "main-graduation-release-transition",
+            "main-graduation-provider-receipt",
+            "main-graduation-reconciliation",
+        }
+        if set(roles) != required_roles:
+            raise ValueError("completion artifact closure is incomplete")
         return self
 
 
@@ -645,6 +875,7 @@ class MainRollbackAuthorization(MainBound):
     operation_id: Sha256Digest
     completion_package_digest: Sha256Digest
     current_main_commit: GitObject
+    current_main_tree: GitObject
     inverse_delta_digest: Sha256Digest
     inverse_tree: GitObject
     lease_identity: NonEmptyString
@@ -656,6 +887,14 @@ class MainRollbackAuthorization(MainBound):
     authorized_at: datetime
 
     _aware_authorized_at = field_validator("authorized_at")(_aware)
+
+    @model_validator(mode="after")
+    def validate_rollback_authorization(self) -> MainRollbackAuthorization:
+        if self.authorization_digest != canonical_digest(
+            self.model_dump(exclude={"authorization_digest"}, mode="json")
+        ):
+            raise ValueError("rollback authorization digest mismatch")
+        return self
 
 
 class MainRollbackIntent(MainBound):
@@ -672,6 +911,14 @@ class MainRollbackIntent(MainBound):
     recorded_at: datetime
 
     _aware_recorded_at = field_validator("recorded_at")(_aware)
+
+    @model_validator(mode="after")
+    def validate_rollback_intent(self) -> MainRollbackIntent:
+        if self.intent_digest != canonical_digest(
+            self.model_dump(exclude={"intent_digest"}, mode="json")
+        ):
+            raise ValueError("rollback intent digest mismatch")
+        return self
 
 
 class EligibilityLedgerStarted(MainBound):
@@ -791,10 +1038,12 @@ __all__ = [
     "MainReconciliation",
     "MainReleaseAuthorization",
     "MainReleaseHoldObservation",
+    "MainReleaseIssuerBinding",
     "MainReleaseTransitionReceipt",
     "MainRollbackAuthorization",
     "MainRollbackIntent",
     "MainSourcePackageBinding",
+    "MainValidationIdentity",
     "main_operation_id",
     "main_record_bytes",
     "main_record_digest",

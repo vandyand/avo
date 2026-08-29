@@ -266,6 +266,9 @@
           "title": "Operation Id",
           "type": "string"
         },
+        "package_artifact": {
+          "$ref": "#/$defs/ArtifactRef"
+        },
         "package_digest": {
           "pattern": "^sha256:[0-9a-f]{64}$",
           "title": "Package Digest",
@@ -313,6 +316,7 @@
         "repository_digest",
         "operation_id",
         "package_digest",
+        "package_artifact",
         "child_artifacts",
         "source_result_commit",
         "source_result_tree",

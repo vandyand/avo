@@ -107,10 +107,12 @@ from avo_correlate.contracts.main_graduation import (
     MainReconciliation,
     MainReleaseAuthorization,
     MainReleaseHoldObservation,
+    MainReleaseIssuerBinding,
     MainReleaseTransitionReceipt,
     MainRollbackAuthorization,
     MainRollbackIntent,
     MainSourcePackageBinding,
+    MainValidationIdentity,
 )
 from avo_correlate.contracts.model import ModelInvocationRecord, ModelRequest, ModelResponse
 from avo_correlate.contracts.operations import (
@@ -282,6 +284,7 @@ MODELS: tuple[type[StrictModel], ...] = (
     MainMergeGroupChecks,
     MainPreparationAuthorization,
     MainProviderReceipt,
+    MainReleaseIssuerBinding,
     MainProtectionManifest,
     MainQueueAdmissionObservation,
     MainQueueObservation,
@@ -292,6 +295,7 @@ MODELS: tuple[type[StrictModel], ...] = (
     MainRollbackAuthorization,
     MainRollbackIntent,
     MainSourcePackageBinding,
+    MainValidationIdentity,
 )
 
 

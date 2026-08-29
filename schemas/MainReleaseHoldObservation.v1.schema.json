@@ -81,6 +81,15 @@
     "MainMergeGroupChecks": {
       "additionalProperties": false,
       "properties": {
+        "allowlisted_contexts": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Allowlisted Contexts",
+          "type": "array"
+        },
         "checks": {
           "items": {
             "$ref": "#/$defs/MainCheckObservation"
@@ -88,6 +97,21 @@
           "minItems": 1,
           "title": "Checks",
           "type": "array"
+        },
+        "composition_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Composition Digest",
+          "type": "string"
+        },
+        "config_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Config Digest",
+          "type": "string"
+        },
+        "freshness_cutoff": {
+          "format": "date-time",
+          "title": "Freshness Cutoff",
+          "type": "string"
         },
         "group_sha": {
           "pattern": "^[0-9a-f]{40}(?:[0-9a-f]{24})?$",
@@ -102,6 +126,11 @@
         "operation_id": {
           "pattern": "^sha256:[0-9a-f]{64}$",
           "title": "Operation Id",
+          "type": "string"
+        },
+        "package_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Package Digest",
           "type": "string"
         },
         "repository_digest": {
@@ -131,8 +160,13 @@
       "required": [
         "repository_digest",
         "operation_id",
+        "package_digest",
+        "composition_digest",
         "group_sha",
         "checks",
+        "allowlisted_contexts",
+        "config_digest",
+        "freshness_cutoff",
         "observed_at"
       ],
       "title": "MainMergeGroupChecks",
@@ -282,6 +316,11 @@
       "title": "Queue Members",
       "type": "array"
     },
+    "release_issuer_app_id": {
+      "exclusiveMinimum": 0,
+      "title": "Release Issuer App Id",
+      "type": "integer"
+    },
     "repository_digest": {
       "pattern": "^sha256:[0-9a-f]{64}$",
       "title": "Repository Digest",
@@ -325,6 +364,7 @@
     "hold_run_id",
     "hold_nonce",
     "issuer_identity",
+    "release_issuer_app_id",
     "issuer_isolation_digest",
     "other_required_checks",
     "protection_manifest_digest",

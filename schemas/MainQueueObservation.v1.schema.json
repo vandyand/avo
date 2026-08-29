@@ -23,6 +23,11 @@
       "title": "Isolated Release Issuer",
       "type": "string"
     },
+    "issuer_isolation_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Issuer Isolation Digest",
+      "type": "string"
+    },
     "max_entries_per_group": {
       "const": 1,
       "default": 1,
@@ -60,6 +65,11 @@
       "title": "Queue Manifest Digest",
       "type": "string"
     },
+    "release_issuer_app_id": {
+      "exclusiveMinimum": 0,
+      "title": "Release Issuer App Id",
+      "type": "integer"
+    },
     "repository_digest": {
       "pattern": "^sha256:[0-9a-f]{64}$",
       "title": "Repository Digest",
@@ -86,6 +96,8 @@
     "expected_base_commit",
     "merge_method",
     "isolated_release_issuer",
+    "release_issuer_app_id",
+    "issuer_isolation_digest",
     "observed_at"
   ],
   "title": "MainQueueObservation",

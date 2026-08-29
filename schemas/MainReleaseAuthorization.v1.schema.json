@@ -99,6 +99,11 @@
       "title": "Queue Generation Digest",
       "type": "string"
     },
+    "release_issuer_app_id": {
+      "exclusiveMinimum": 0,
+      "title": "Release Issuer App Id",
+      "type": "integer"
+    },
     "release_issuer_identity": {
       "minLength": 1,
       "title": "Release Issuer Identity",
@@ -144,6 +149,7 @@
     "lease_digest",
     "policy_epoch",
     "release_issuer_identity",
+    "release_issuer_app_id",
     "issuer_isolation_digest",
     "authorization_digest",
     "expires_at",

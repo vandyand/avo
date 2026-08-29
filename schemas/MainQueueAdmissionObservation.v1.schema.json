@@ -116,6 +116,11 @@
       "title": "Queue Generation Digest",
       "type": "string"
     },
+    "release_issuer_app_id": {
+      "exclusiveMinimum": 0,
+      "title": "Release Issuer App Id",
+      "type": "integer"
+    },
     "release_transition": {
       "const": false,
       "default": false,
@@ -164,6 +169,7 @@
     "queue_generation_digest",
     "protection_manifest_digest",
     "issuer_identity",
+    "release_issuer_app_id",
     "issuer_isolation_digest",
     "observed_at"
   ],

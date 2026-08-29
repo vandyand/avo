@@ -18,6 +18,11 @@
       "title": "Isolated Release Issuer",
       "type": "string"
     },
+    "issuer_isolation_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Issuer Isolation Digest",
+      "type": "string"
+    },
     "manifest_digest": {
       "pattern": "^sha256:[0-9a-f]{64}$",
       "title": "Manifest Digest",
@@ -66,6 +71,11 @@
       "title": "Release Context",
       "type": "string"
     },
+    "release_issuer_app_id": {
+      "exclusiveMinimum": 0,
+      "title": "Release Issuer App Id",
+      "type": "integer"
+    },
     "repository_digest": {
       "pattern": "^sha256:[0-9a-f]{64}$",
       "title": "Repository Digest",
@@ -103,6 +113,8 @@
     "provider_identity",
     "provider_api_version",
     "isolated_release_issuer",
+    "release_issuer_app_id",
+    "issuer_isolation_digest",
     "protection_epoch",
     "observed_at"
   ],

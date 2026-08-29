@@ -27,6 +27,11 @@
       "title": "Current Main Commit",
       "type": "string"
     },
+    "current_main_tree": {
+      "pattern": "^[0-9a-f]{40}(?:[0-9a-f]{24})?$",
+      "title": "Current Main Tree",
+      "type": "string"
+    },
     "deploy_performed": {
       "const": false,
       "default": false,
@@ -86,6 +91,7 @@
     "operation_id",
     "completion_package_digest",
     "current_main_commit",
+    "current_main_tree",
     "inverse_delta_digest",
     "inverse_tree",
     "lease_identity",
