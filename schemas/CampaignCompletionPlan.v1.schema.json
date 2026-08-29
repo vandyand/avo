@@ -763,6 +763,22 @@
           "title": "Format",
           "type": "string"
         },
+        "operation_kind": {
+          "anyOf": [
+            {
+              "enum": [
+                "ordinary_campaign",
+                "authorized_rollback"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Operation Kind"
+        },
         "provenance": {
           "$ref": "#/$defs/PromotionProvenanceBinding"
         },
