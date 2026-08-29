@@ -44,7 +44,7 @@ def test_main_binding_rejects_wrong_target_and_deploy() -> None:
         MainQueueAdmissionObservation(
             operation_id=DIGEST,
             repository_digest=DIGEST,
-            target_ref="refs/heads/integration",
+            target_ref="refs/heads/integration",  # pyright: ignore[reportArgumentType]
             preparation_authorization_digest=DIGEST,
             package_digest=DIGEST,
             composition_digest=DIGEST,
@@ -100,9 +100,9 @@ def test_source_package_uses_a_distinct_upstream_operation() -> None:
         "source_result_parent": BASE,
         "source_issuer": "source-controller",
     }
-    assert MainSourcePackageBinding(**values).source_operation_id != DIGEST
+    assert MainSourcePackageBinding.model_validate(values).source_operation_id != DIGEST
     with pytest.raises(ValidationError, match="must differ"):
-        MainSourcePackageBinding(**{**values, "source_operation_id": DIGEST})
+        MainSourcePackageBinding.model_validate({**values, "source_operation_id": DIGEST})
 
 
 def test_queue_topology_digest_is_canonical_and_binds_two_parent_form() -> None:
@@ -132,9 +132,9 @@ def test_queue_topology_digest_is_canonical_and_binds_two_parent_form() -> None:
         "issuer_isolation_digest": DIGEST,
         "observed_at": datetime.now(UTC),
     }
-    assert MainQueueObservation(**values).expected_group_parents == [BASE, HEAD]
+    assert MainQueueObservation.model_validate(values).expected_group_parents == [BASE, HEAD]
     with pytest.raises(ValidationError, match="topology digest"):
-        MainQueueObservation(**{**values, "group_topology_digest": DIGEST})
+        MainQueueObservation.model_validate({**values, "group_topology_digest": DIGEST})
 
 
 def test_inverse_delta_digest_is_canonical() -> None:
@@ -148,12 +148,17 @@ def test_inverse_delta_digest_is_canonical() -> None:
         "inverse_tree": BASE,
         "policy_epoch": DIGEST,
     }
-    probe = MainInverseDeltaArtifact.model_construct(**values, inverse_delta_digest=DIGEST)
-    artifact = MainInverseDeltaArtifact(
-        **values,
-        inverse_delta_digest=canonical_digest(
-            probe.model_dump(exclude={"inverse_delta_digest"}, mode="json")
-        ),
+    probe = MainInverseDeltaArtifact.model_construct(
+        **values,  # pyright: ignore[reportArgumentType]
+        inverse_delta_digest=DIGEST,
+    )
+    artifact = MainInverseDeltaArtifact.model_validate(
+        {
+            **values,
+            "inverse_delta_digest": canonical_digest(
+                probe.model_dump(exclude={"inverse_delta_digest"}, mode="json")
+            ),
+        }
     )
     assert artifact.inverse_delta_digest != DIGEST
 
@@ -476,7 +481,7 @@ def test_provider_receipt_without_durable_transition_is_rejected(tmp_path: Path)
         release_authorization_digest=canonical_digest(authorization),
     )
     journal = MainGraduationJournal(tmp_path)
-    journal._read = lambda kind, _operation: (
+    journal._read = lambda kind, _operation: (  # pyright: ignore[reportPrivateUsage]
         (authorization, None) if kind == "release-authorization" else None
     )  # type: ignore[method-assign]
     with pytest.raises(MainGraduationJournalError, match="durable release transition"):
@@ -616,14 +621,16 @@ def test_release_authorization_digest_is_canonical() -> None:
         "authorized_at": now,
     }
     probe = MainReleaseAuthorization.model_construct(
-        **values,
+        **values,  # pyright: ignore[reportArgumentType]
         authorization_digest=DIGEST,
     )
-    auth = MainReleaseAuthorization(
-        **values,
-        authorization_digest=canonical_digest(
-            probe.model_dump(exclude={"authorization_digest"}, mode="json")
-        ),
+    auth = MainReleaseAuthorization.model_validate(
+        {
+            **values,
+            "authorization_digest": canonical_digest(
+                probe.model_dump(exclude={"authorization_digest"}, mode="json")
+            ),
+        }
     )
     with pytest.raises(ValidationError):
         MainReleaseAuthorization.model_validate(
@@ -680,7 +687,7 @@ def test_global_admission_run_nonce_replay_uses_original_reference(tmp_path: Pat
         operation_id=DIGEST, admission_run_id="run", admission_nonce="nonce"
     )
     assert journal._index_run_nonce("admission", admission, first_ref) is None  # pyright: ignore[reportPrivateUsage]
-    journal._read = lambda _kind, operation_id: (
+    journal._read = lambda _kind, operation_id: (  # pyright: ignore[reportPrivateUsage]
         (admission, first_ref) if operation_id == DIGEST else None
     )  # type: ignore[method-assign]
     assert journal._index_run_nonce("admission", admission, replay_ref) == first_ref  # pyright: ignore[reportPrivateUsage]
@@ -707,7 +714,7 @@ def test_delta_uses_strict_policy_path_and_ordinary_risk() -> None:
         "src/avo_correlate/contracts/promotion_policy.py",
     ):
         with pytest.raises(ValidationError):
-            MainDeltaManifest(**values, changed_paths=[path])
+            MainDeltaManifest.model_validate({**values, "changed_paths": [path]})
 
 
 def test_journal_blocks_later_open_eligible_sequence(tmp_path: Path) -> None:
