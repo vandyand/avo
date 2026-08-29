@@ -229,6 +229,10 @@ class MainQueueObservation(MainBound):
     bypass_allowed: Literal[False] = False
     direct_merge_allowed: Literal[False] = False
     expected_base_commit: GitObject
+    # The provider's documented synthetic-merge topology, captured from the
+    # queue configuration.  A group observation cannot choose its own shape.
+    expected_group_parents: list[GitObject] = Field(min_length=1)
+    group_topology_digest: Sha256Digest
     merge_method: Literal["squash"]
     isolated_release_issuer: NonEmptyString
     release_issuer_app_id: StrictInt = Field(gt=0)
@@ -469,6 +473,8 @@ class MainReleaseHoldObservation(MainBound):
     group_sha: GitObject
     group_tree: GitObject
     group_parents: list[GitObject] = Field(min_length=1)
+    expected_group_parents: list[GitObject] = Field(min_length=1)
+    group_topology_digest: Sha256Digest
     base_commit: GitObject
     base_tree: GitObject
     composition_tree: GitObject = Field(
@@ -503,6 +509,8 @@ class MainReleaseHoldObservation(MainBound):
             raise ValueError("release group parent topology must start at the base")
         if len(set(self.group_parents)) != len(self.group_parents):
             raise ValueError("release group parent topology must be complete and unique")
+        if self.group_parents != self.expected_group_parents:
+            raise ValueError("release group topology differs from provider-bound expectation")
         if self.group_tree != self.composition_tree:
             raise ValueError("release group tree differs from deterministic composition")
         if self.other_required_checks.group_sha != self.group_sha:
@@ -709,6 +717,19 @@ class MainCompletionPackage(MainBound):
             raise ValueError("provider result tree differs from composition")
         if self.provider_receipt.result_parents != [self.composition.base_commit]:
             raise ValueError("provider result must have exactly one bound base parent")
+        if self.provider_receipt.release_authorization_digest != canonical_digest(
+            self.release_authorization
+        ):
+            raise ValueError("provider receipt does not bind release authorization")
+        if self.reconciliation.transition_receipt_digest != canonical_digest(
+            self.transition_receipt
+        ):
+            raise ValueError("reconciliation does not bind release transition")
+        if (
+            self.reconciliation.queue_generation_digest
+            != self.queue_observation.queue_generation_digest
+        ):
+            raise ValueError("reconciliation queue generation differs")
         if self.release_authorization.used:
             raise ValueError("completion cannot reuse a release authorization")
         if self.merge_group_checks.group_sha == self.admission_observation.head_commit:
@@ -786,6 +807,16 @@ class MainCompletionPackage(MainBound):
         if self.queue_observation.expected_base_commit != self.composition.base_commit:
             raise ValueError("queue base differs from composition base")
         if (
+            self.hold_observation.expected_group_parents
+            != self.queue_observation.expected_group_parents
+        ):
+            raise ValueError("hold topology expectation differs from queue configuration")
+        if (
+            self.hold_observation.group_topology_digest
+            != self.queue_observation.group_topology_digest
+        ):
+            raise ValueError("hold topology digest differs from queue configuration")
+        if (
             self.protection_manifest.isolated_release_issuer
             != self.queue_observation.isolated_release_issuer
             or self.queue_observation.isolated_release_issuer
@@ -828,6 +859,14 @@ class MainCompletionPackage(MainBound):
             raise ValueError("release authorization queue generation differs")
         if self.preparation_authorization.intent_digest != canonical_digest(self.intent):
             raise ValueError("preparation authorization does not bind intent")
+        if self.preparation_authorization.plan_digest != canonical_digest(self.plan):
+            raise ValueError("preparation authorization does not bind plan")
+        if self.intent.plan_digest != canonical_digest(self.plan):
+            raise ValueError("intent does not bind plan")
+        if self.release_authorization.preparation_authorization_digest != canonical_digest(
+            self.preparation_authorization
+        ):
+            raise ValueError("release authorization does not bind preparation authorization")
         if (
             self.source_package != self.plan.package
             or self.delta != self.plan.delta
@@ -903,10 +942,15 @@ class MainRollbackIntent(MainBound):
     completion_package_digest: Sha256Digest
     inverse_delta_digest: Sha256Digest
     base_commit: GitObject
+    base_tree: GitObject
+    current_main_commit: GitObject
+    current_main_tree: GitObject
     candidate_commit: GitObject
     candidate_tree: GitObject
+    inverse_tree: GitObject
     lease_identity: NonEmptyString
     lease_digest: Sha256Digest
+    policy_epoch: Sha256Digest
     intent_digest: Sha256Digest
     recorded_at: datetime
 
@@ -956,8 +1000,7 @@ class MainGraduationEligibilityRecord(MainBound):
         if self.classification == "eligible" and not (self.ordinary and self.nonempty):
             raise ValueError("only ordinary nonempty submissions are eligible")
         if self.classification == "excluded" and (
-            self.ordinary
-            or self.nonempty
+            (self.ordinary and self.nonempty)
             or not self.exclusion_reason
             or not self.exclusion_evidence_digest
         ):

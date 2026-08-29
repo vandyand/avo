@@ -68,6 +68,24 @@ def test_eligibility_sequence_is_gap_free() -> None:
         )
 
 
+@pytest.mark.parametrize("ordinary, nonempty", [(False, True), (True, False), (False, False)])
+def test_eligibility_exclusion_allows_each_nonordinary_or_empty_axis(
+    ordinary: bool, nonempty: bool
+) -> None:
+    record = MainGraduationEligibilityRecord(
+        operation_id=DIGEST,
+        repository_digest=DIGEST,
+        scheduler_sequence=1,
+        submission_digest=DIGEST,
+        classification="excluded",
+        exclusion_reason="not eligible for main graduation",
+        exclusion_evidence_digest=DIGEST,
+        ordinary=ordinary,
+        nonempty=nonempty,
+    )
+    assert record.classification == "excluded"
+
+
 def test_release_authorization_digest_is_canonical() -> None:
     now = datetime.now(UTC)
     values = {
@@ -111,13 +129,23 @@ def test_release_authorization_digest_is_canonical() -> None:
 
 
 def test_journal_create_once_and_canonical_read(tmp_path: Path) -> None:
+    eligibility = MainGraduationEligibilityRecord(
+        operation_id=DIGEST,
+        repository_digest=DIGEST,
+        scheduler_sequence=1,
+        submission_digest=DIGEST,
+        classification="eligible",
+        ordinary=True,
+        nonempty=True,
+    )
     attempt = MainGraduationAttempt(
         operation_id=DIGEST,
         repository_digest=DIGEST,
         scheduler_sequence=1,
-        eligibility_record_digest=DIGEST,
+        eligibility_record_digest=canonical_digest(eligibility),
     )
     journal = MainGraduationJournal(tmp_path)
+    journal.record_eligibility(eligibility)
     first = journal.record_attempt(attempt)
     second = journal.record_attempt(attempt)
     assert first.digest == second.digest
@@ -126,6 +154,17 @@ def test_journal_create_once_and_canonical_read(tmp_path: Path) -> None:
     journal.delete_artifact(first.digest)
     with pytest.raises(MainGraduationJournalError):
         journal.read_attempt(DIGEST)
+
+
+def test_journal_rejects_attempt_without_canonical_durable_eligibility(tmp_path: Path) -> None:
+    attempt = MainGraduationAttempt(
+        operation_id=DIGEST,
+        repository_digest=DIGEST,
+        scheduler_sequence=1,
+        eligibility_record_digest=DIGEST,
+    )
+    with pytest.raises(MainGraduationJournalError, match="durable eligibility"):
+        MainGraduationJournal(tmp_path).record_attempt(attempt)
 
 
 def test_delta_uses_strict_policy_path_and_ordinary_risk() -> None:

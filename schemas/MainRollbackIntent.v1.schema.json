@@ -6,6 +6,11 @@
       "title": "Base Commit",
       "type": "string"
     },
+    "base_tree": {
+      "pattern": "^[0-9a-f]{40}(?:[0-9a-f]{24})?$",
+      "title": "Base Tree",
+      "type": "string"
+    },
     "candidate_commit": {
       "pattern": "^[0-9a-f]{40}(?:[0-9a-f]{24})?$",
       "title": "Candidate Commit",
@@ -21,6 +26,16 @@
       "title": "Completion Package Digest",
       "type": "string"
     },
+    "current_main_commit": {
+      "pattern": "^[0-9a-f]{40}(?:[0-9a-f]{24})?$",
+      "title": "Current Main Commit",
+      "type": "string"
+    },
+    "current_main_tree": {
+      "pattern": "^[0-9a-f]{40}(?:[0-9a-f]{24})?$",
+      "title": "Current Main Tree",
+      "type": "string"
+    },
     "intent_digest": {
       "pattern": "^sha256:[0-9a-f]{64}$",
       "title": "Intent Digest",
@@ -29,6 +44,11 @@
     "inverse_delta_digest": {
       "pattern": "^sha256:[0-9a-f]{64}$",
       "title": "Inverse Delta Digest",
+      "type": "string"
+    },
+    "inverse_tree": {
+      "pattern": "^[0-9a-f]{40}(?:[0-9a-f]{24})?$",
+      "title": "Inverse Tree",
       "type": "string"
     },
     "lease_digest": {
@@ -44,6 +64,11 @@
     "operation_id": {
       "pattern": "^sha256:[0-9a-f]{64}$",
       "title": "Operation Id",
+      "type": "string"
+    },
+    "policy_epoch": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Policy Epoch",
       "type": "string"
     },
     "recorded_at": {
@@ -75,10 +100,15 @@
     "completion_package_digest",
     "inverse_delta_digest",
     "base_commit",
+    "base_tree",
+    "current_main_commit",
+    "current_main_tree",
     "candidate_commit",
     "candidate_tree",
+    "inverse_tree",
     "lease_identity",
     "lease_digest",
+    "policy_epoch",
     "intent_digest",
     "recorded_at"
   ],

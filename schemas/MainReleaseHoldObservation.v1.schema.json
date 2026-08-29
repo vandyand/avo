@@ -224,6 +224,15 @@
       "title": "Composition Tree",
       "type": "string"
     },
+    "expected_group_parents": {
+      "items": {
+        "pattern": "^[0-9a-f]{40}(?:[0-9a-f]{24})?$",
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Expected Group Parents",
+      "type": "array"
+    },
     "group_parents": {
       "items": {
         "pattern": "^[0-9a-f]{40}(?:[0-9a-f]{24})?$",
@@ -236,6 +245,11 @@
     "group_sha": {
       "pattern": "^[0-9a-f]{40}(?:[0-9a-f]{24})?$",
       "title": "Group Sha",
+      "type": "string"
+    },
+    "group_topology_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Group Topology Digest",
       "type": "string"
     },
     "group_tree": {
@@ -356,6 +370,8 @@
     "group_sha",
     "group_tree",
     "group_parents",
+    "expected_group_parents",
+    "group_topology_digest",
     "base_commit",
     "base_tree",
     "composition_tree",
