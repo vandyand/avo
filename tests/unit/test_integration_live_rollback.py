@@ -33,7 +33,11 @@ from avo_correlate.contracts.integration_promotion import (
     PromotionMutationAuthorization,
     integration_operation_id,
 )
-from avo_correlate.contracts.promotion_bundle import promotion_bundle_digest
+from avo_correlate.contracts.promotion_bundle import (
+    RollbackPromotionBundleAuthorization,
+    promotion_bundle_digest,
+)
+from avo_correlate.contracts.promotion_policy import PromotionOutcome
 from avo_correlate.domain.canonical import canonical_bytes, canonical_digest
 from tests.unit.test_integration_campaign_contracts import (
     _package,  # pyright: ignore[reportPrivateUsage]
@@ -77,6 +81,61 @@ def _package_fixture() -> LiveRollbackEvidencePackage:
             "snapshot": canary.bundle.snapshot.model_copy(
                 update={"commit": failed, "tree": failed_tree}
             )
+        }
+    )
+    canary_ref = _ref(
+        canary, "integration-campaign-package", "application/vnd.avo.integration-campaign+json"
+    )
+    rollback_authorization = RollbackPromotionBundleAuthorization.model_construct(
+        operation_id=request.operation_id,
+        canary_operation_id=canary.intent.operation_id,
+        canary_package_digest=canary_ref.digest,
+        repository_digest=request.repository_digest,
+        target_ref=request.target_ref,
+        main_before_commit=MAIN,
+        failed_integration_head_commit=failed,
+        failed_integration_head_tree=failed_tree,
+        restore_to_commit=request.restore_to_commit,
+        restore_to_tree=request.restore_to_tree,
+        rollback_candidate_commit=CANDIDATE,
+        rollback_candidate_tree=request.restore_to_tree,
+        rollback_candidate_parent_commit=failed,
+        candidate_digest=D,
+        source_tree_digest=D,
+        restore_tree_digest=D,
+        publication_evidence_digest=D,
+        issuer_id="trusted-rollback",
+        reason="failed integration soak",
+        authorized=True,
+        authorization_id=D,
+    )
+    rollback_authorization = rollback_authorization.model_copy(
+        update={
+            "authorization_id": canonical_digest(
+                rollback_authorization.model_dump(exclude={"authorization_id"}, mode="json")
+            )
+        }
+    )
+    decision = bundle.decision.model_copy(
+        update={
+            "outcome": PromotionOutcome.ALLOW,
+            "reason_codes": sorted(set(bundle.decision.reason_codes) | {"authorized_rollback"}),
+        }
+    )
+    bundle = bundle.model_copy(
+        update={
+            "decision": decision,
+            "decision_digest": canonical_digest(decision),
+            "provenance": bundle.provenance.model_copy(
+                update={"decision_digest": canonical_digest(decision)}
+            ),
+            "operation_kind": "authorized_rollback",
+            "rollback_operation_id": request.operation_id,
+            "rollback_authorization": rollback_authorization,
+            "evidence_digests": sorted(
+                set(bundle.evidence_digests)
+                | {canary_ref.digest, rollback_authorization.authorization_id}
+            ),
         }
     )
     bundle_digest = promotion_bundle_digest(bundle)
@@ -329,9 +388,7 @@ def _package_fixture() -> LiveRollbackEvidencePackage:
         "operation_id": request.operation_id,
         "canary_operation_id": canary.intent.operation_id,
         "canary_package": canary,
-        "canary_package_artifact": _ref(
-            canary, "integration-campaign-package", "application/vnd.avo.integration-campaign+json"
-        ),
+            "canary_package_artifact": canary_ref,
         "request": request,
         "soak": soak,
         "authorization": auth,

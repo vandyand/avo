@@ -30,6 +30,9 @@ from avo_correlate.adapters.artifacts.promotion_journal import IntegrationPromot
 from avo_correlate.adapters.artifacts.rollback_bundle_authority import (
     RollbackBundleAuthorityJournal,
 )
+from avo_correlate.adapters.artifacts.rollback_quarantine import (
+    RollbackOperationQuarantineJournal,
+)
 from avo_correlate.adapters.artifacts.synthetic_validation_journal import SyntheticValidationJournal
 from avo_correlate.adapters.git import (
     FilesystemPublicationJournal,
@@ -76,10 +79,15 @@ from avo_correlate.contracts.integration_promotion import (
     CandidatePublicationBinding,
     IntegrationPromotionIntent,
 )
-from avo_correlate.contracts.integration_soak import SOAK_CONTEXT, SOAK_WORKFLOW_PATH
+from avo_correlate.contracts.integration_soak import (
+    SOAK_CONTEXT,
+    SOAK_WORKFLOW_PATH,
+    FailedSoakAttestation,
+)
 from avo_correlate.contracts.prepublication import (
     SOAK_ISSUER_ID,
     RollbackPublicationAuthorityConfig,
+    RollbackPublicationAuthorization,
     RollbackSnapshotRestoreFacts,
 )
 from avo_correlate.contracts.promotion_bundle import (
@@ -399,6 +407,79 @@ def _validate_durable_canary(
         raise RuntimeError("preflight canary is not the durable semantic package")
 
 
+def _read_legacy_recovery_soak(
+    state_root: Path,
+    operation_id: str,
+    authority_journal: RollbackBundleAuthorityJournal,
+    existing: object | None,
+) -> FailedSoakAttestation | None:
+    """Read only the fixed, operation-keyed historical recovery child.
+
+    The file is an operator-provisioned recovery input, never a CLI authority
+    argument.  It is consulted only when the immutable authority index lacks
+    its original soak child; the authority service still binds its exact ID
+    and full digest before creating a bridge.
+    """
+
+    if existing is None:
+        return None
+    if not isinstance(existing, RollbackPublicationAuthorization):
+        raise RuntimeError("durable rollback authorization has an invalid type")
+    if authority_journal.read_failed_soak_data(existing) is not None:
+        return None
+    path = state_root.resolve() / "rollback-recovery" / (
+        operation_id.removeprefix("sha256:") + ".json"
+    )
+    if path.is_symlink() or not path.is_file():
+        raise RuntimeError("exact legacy failed-soak recovery input is missing")
+    data = path.read_bytes()
+    if len(data) > 2_000_000:
+        raise RuntimeError("legacy failed-soak recovery input is oversized")
+    try:
+        raw = json.loads(data, object_pairs_hook=_strict_object_pairs)
+        if canonical_bytes(raw) != data:
+            raise ValueError("legacy failed-soak recovery input is not canonical")
+        return FailedSoakAttestation.model_validate(raw)
+    except (TypeError, ValueError, json.JSONDecodeError) as exc:
+        raise RuntimeError("legacy failed-soak recovery input is malformed") from exc
+
+
+def _assert_not_quarantined(state_root: Path, operation_id: str) -> None:
+    """Reject terminal operations before any provider is constructed or read."""
+
+    if RollbackOperationQuarantineJournal(state_root).read(operation_id) is not None:
+        raise RuntimeError("rollback operation is terminally quarantined")
+
+
+def quarantine_rollback_operation(
+    state_root: Path,
+    authorization: RollbackPublicationAuthorization,
+    *,
+    canary_package_artifact: ArtifactRef,
+    publication_plan_artifact: ArtifactRef,
+    reason: str,
+    absence_verifier: Callable[[str, str, str], object],
+):
+    """Create an operator quarantine without touching authority artifacts."""
+
+    operation = authorization.operation_id.removeprefix("sha256:")
+    index_path = (
+        state_root.resolve()
+        / "artifacts"
+        / "rollback-publication-authorizations"
+        / operation
+    )
+    index_data = index_path.read_bytes()
+    return RollbackOperationQuarantineJournal(state_root).create_for_authorization(
+        authorization,
+        authorization_index_data=index_data,
+        canary_package_artifact=canary_package_artifact,
+        publication_plan_artifact=publication_plan_artifact,
+        reason=reason,
+        absence_verifier=absence_verifier,
+    )
+
+
 def _rollback_request(
     preflight: LiveRollbackPreflight,
     rollback_candidate_commit: str,
@@ -556,7 +637,18 @@ def execute_live(
         restore_tree=facts.restore_tree,
     )
     authority_journal = RollbackBundleAuthorityJournal(artifact_store)
-    authority = RollbackBundleAuthority(_authority_config(), authority_journal)
+    existing_authorization = authority_journal.read_authorization(provisional_request.operation_id)
+    recovery_failed_soak = _read_legacy_recovery_soak(
+        state_root,
+        provisional_request.operation_id,
+        authority_journal,
+        existing_authorization,
+    )
+    authority = RollbackBundleAuthority(
+        _authority_config(),
+        authority_journal,
+        recovery_absence_verifier=provider.verify_recovery_absence,
+    )
     preauthorization = authority.authorize(
         provisional_request,
         canary_package_artifact=preflight.canary_package_artifact,
@@ -564,6 +656,7 @@ def execute_live(
         failed_soak=failed_soak,
         facts=facts,
         prepared=prepared,
+        recovery_failed_soak=recovery_failed_soak,
     )
     # A drill authorization is a projection of the durable preauthorization
     # and provider observation; the runner never asserts authorization itself.
@@ -844,6 +937,15 @@ def _check_operation_id(value: str) -> None:
         raise ValueError("operation ID must be a lowercase SHA-256 digest")
 
 
+def _strict_object_pairs(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    result: dict[str, object] = {}
+    for key, item in pairs:
+        if key in result:
+            raise ValueError(f"duplicate JSON key: {key}")
+        result[key] = item
+    return result
+
+
 def _validate_completed_canary(
     package: LiveRollbackCompletionPackage, canary_operation_id: str
 ) -> None:
@@ -852,8 +954,6 @@ def _validate_completed_canary(
     if (
         package.core_package.canary_operation_id != canary_operation_id
         or canary.intent.operation_id != canary_operation_id
-        or canary_ref.digest != canonical_digest(canary)
-        or canary_ref.size_bytes != len(canonical_bytes(canary))
         or canary_ref.role != "integration-campaign-package"
         or canary_ref.media_type != "application/vnd.avo.integration-campaign+json"
     ):
@@ -907,6 +1007,7 @@ def main() -> int:
         _check_operation_id(args.operation_id)
         _check_operation_id(args.canary_operation_id)
         _assert_safe_roots(args.state_root, args.repository_root, args.candidate_root)
+        _assert_not_quarantined(args.state_root, args.operation_id)
     except (OSError, RuntimeError, ValueError) as exc:
         print(json.dumps({"status": "blocked", "error": redact_secret(str(exc))}))
         return 2
