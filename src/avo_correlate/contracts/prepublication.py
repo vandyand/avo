@@ -30,6 +30,10 @@ def _path(value: str) -> str:
     return value
 
 
+def _empty_int_list() -> list[int]:
+    return []
+
+
 class RollbackPublicationAuthorityConfig(StrictModel):
     """Fixed trust configuration; none of these values come from a canary."""
 
@@ -159,9 +163,71 @@ class RollbackPublicationAuthorization(StrictModel):
         return self
 
 
+class RollbackRemoteAbsenceObservation(StrictModel):
+    """Authenticated read-only proof that a candidate has no hosted residue."""
+
+    schema_version: Literal[1] = 1
+    repository_digest: Sha256Digest
+    candidate_ref: NonEmptyString
+    candidate_commit: str
+    base_commit: str
+    ref_absent: Literal[True] = True
+    pull_request_numbers: list[int] = Field(default_factory=_empty_int_list, max_length=0)
+    observation_id: Sha256Digest
+
+    @model_validator(mode="after")
+    def validate_observation(self) -> RollbackRemoteAbsenceObservation:
+        _git(self.candidate_commit)
+        _git(self.base_commit)
+        if self.pull_request_numbers:
+            raise ValueError("remote absence observation contains pull requests")
+        if self.observation_id != canonical_digest(
+            self.model_dump(exclude={"observation_id"}, mode="json")
+        ):
+            raise ValueError("remote absence observation digest mismatch")
+        return self
+
+
+class RollbackOperationQuarantine(StrictModel):
+    """Immutable terminal fence for an operation abandoned before publication."""
+
+    schema_version: Literal[1] = 1
+    operation_id: Sha256Digest
+    authorization_id: Sha256Digest
+    authorization_index_digest: Sha256Digest
+    canary_operation_id: Sha256Digest
+    canary_package_digest: Sha256Digest
+    publication_plan_digest: Sha256Digest
+    publication_plan_artifact_digest: Sha256Digest
+    candidate_ref: NonEmptyString
+    candidate_commit: str
+    candidate_parent_commit: str
+    reason: NonEmptyString = Field(max_length=256)
+    remote_absence: RollbackRemoteAbsenceObservation
+    quarantine_id: Sha256Digest
+
+    @model_validator(mode="after")
+    def validate_quarantine(self) -> RollbackOperationQuarantine:
+        _git(self.candidate_commit)
+        _git(self.candidate_parent_commit)
+        if self.remote_absence.candidate_ref != self.candidate_ref:
+            raise ValueError("quarantine candidate ref differs from absence proof")
+        if self.remote_absence.candidate_commit != self.candidate_commit:
+            raise ValueError("quarantine candidate commit differs from absence proof")
+        if self.remote_absence.base_commit != self.candidate_parent_commit:
+            raise ValueError("quarantine candidate parent differs from absence proof")
+        if self.quarantine_id != canonical_digest(
+            self.model_dump(exclude={"quarantine_id"}, mode="json")
+        ):
+            raise ValueError("quarantine digest mismatch")
+        return self
+
+
 __all__ = [
     "SOAK_ISSUER_ID",
+    "RollbackOperationQuarantine",
     "RollbackPublicationAuthorityConfig",
     "RollbackPublicationAuthorization",
+    "RollbackRemoteAbsenceObservation",
     "RollbackSnapshotRestoreFacts",
 ]

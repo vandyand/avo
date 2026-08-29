@@ -1,0 +1,151 @@
+{
+  "$defs": {
+    "RollbackRemoteAbsenceObservation": {
+      "additionalProperties": false,
+      "description": "Authenticated read-only proof that a candidate has no hosted residue.",
+      "properties": {
+        "base_commit": {
+          "title": "Base Commit",
+          "type": "string"
+        },
+        "candidate_commit": {
+          "title": "Candidate Commit",
+          "type": "string"
+        },
+        "candidate_ref": {
+          "minLength": 1,
+          "title": "Candidate Ref",
+          "type": "string"
+        },
+        "observation_id": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Observation Id",
+          "type": "string"
+        },
+        "pull_request_numbers": {
+          "items": {
+            "type": "integer"
+          },
+          "maxItems": 0,
+          "title": "Pull Request Numbers",
+          "type": "array"
+        },
+        "ref_absent": {
+          "const": true,
+          "default": true,
+          "title": "Ref Absent",
+          "type": "boolean"
+        },
+        "repository_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Repository Digest",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "repository_digest",
+        "candidate_ref",
+        "candidate_commit",
+        "base_commit",
+        "observation_id"
+      ],
+      "title": "RollbackRemoteAbsenceObservation",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Immutable terminal fence for an operation abandoned before publication.",
+  "properties": {
+    "authorization_id": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Authorization Id",
+      "type": "string"
+    },
+    "authorization_index_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Authorization Index Digest",
+      "type": "string"
+    },
+    "canary_operation_id": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Canary Operation Id",
+      "type": "string"
+    },
+    "canary_package_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Canary Package Digest",
+      "type": "string"
+    },
+    "candidate_commit": {
+      "title": "Candidate Commit",
+      "type": "string"
+    },
+    "candidate_parent_commit": {
+      "title": "Candidate Parent Commit",
+      "type": "string"
+    },
+    "candidate_ref": {
+      "minLength": 1,
+      "title": "Candidate Ref",
+      "type": "string"
+    },
+    "operation_id": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Operation Id",
+      "type": "string"
+    },
+    "publication_plan_artifact_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Publication Plan Artifact Digest",
+      "type": "string"
+    },
+    "publication_plan_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Publication Plan Digest",
+      "type": "string"
+    },
+    "quarantine_id": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Quarantine Id",
+      "type": "string"
+    },
+    "reason": {
+      "maxLength": 256,
+      "minLength": 1,
+      "title": "Reason",
+      "type": "string"
+    },
+    "remote_absence": {
+      "$ref": "#/$defs/RollbackRemoteAbsenceObservation"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "operation_id",
+    "authorization_id",
+    "authorization_index_digest",
+    "canary_operation_id",
+    "canary_package_digest",
+    "publication_plan_digest",
+    "publication_plan_artifact_digest",
+    "candidate_ref",
+    "candidate_commit",
+    "candidate_parent_commit",
+    "reason",
+    "remote_absence",
+    "quarantine_id"
+  ],
+  "title": "RollbackOperationQuarantine",
+  "type": "object"
+}

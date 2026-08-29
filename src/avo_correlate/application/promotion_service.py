@@ -11,6 +11,10 @@ from typing import Any, Protocol
 
 from avo_correlate.adapters.artifacts.filesystem import FilesystemArtifactStore
 from avo_correlate.contracts.base import ArtifactRef
+from avo_correlate.contracts.integration_campaign import (
+    IntegrationCampaignEvidencePackage,
+    verify_campaign_package_artifact,
+)
 from avo_correlate.contracts.integration_promotion import CandidatePublicationBinding
 from avo_correlate.contracts.promotion_bundle import (
     GitRefSnapshot,
@@ -175,21 +179,11 @@ class RollbackPromotionAuthorizationJournal:
                 ):
                     raise ValueError("durable canary package binding is malformed")
                 canary_data = self._store.read_bytes(canary_reference)
-                canary_raw = json.loads(
-                    canary_data,
-                    object_pairs_hook=_strict_object_pairs,
-                )
-                if canonical_bytes(canary_raw) != canary_data:
-                    raise ValueError("durable canary package is not canonical JSON")
-                from avo_correlate.contracts.integration_campaign import (
-                    IntegrationCampaignEvidencePackage,
-                )
-
+                canary_raw = json.loads(canary_data, object_pairs_hook=_strict_object_pairs)
                 canary = IntegrationCampaignEvidencePackage.model_validate(
                     canary_raw
                 )
-                if canonical_digest(canary) != authorization.canary_package_digest:
-                    raise ValueError("durable canary package differs from authorization")
+                verify_campaign_package_artifact(canary, canary_reference, canary_data)
                 publication = CandidatePublicationBinding.model_validate(value["publication"])
                 if (
                     publication.repository_digest != authorization.repository_digest
@@ -544,7 +538,9 @@ class PromotionController:
         candidate_publication = CandidatePublicationBinding.model_validate(
             publication.model_dump(mode="json")
         )
-        self._validate_durable_canary(canary, canary_package_artifact)
+        canary_artifact_digest = self._validate_durable_canary(
+            canary, canary_package_artifact
+        )
         self._validate_drill_authorization(rollback_request, drill, config)
         candidate_path = candidate_root.resolve(strict=True)
         if _roots_overlap(candidate_path, self._trusted_repository_root):
@@ -597,7 +593,7 @@ class PromotionController:
             "schema_version": 1,
             "operation_id": rollback_request.operation_id,
             "canary_operation_id": canary.intent.operation_id,
-            "canary_package_digest": canonical_digest(canary),
+            "canary_package_digest": canary_artifact_digest,
             "drill_authorization_id": canonical_digest(drill),
             "repository_digest": snapshot.repository_digest,
             "target_ref": "refs/heads/integration",
@@ -734,20 +730,12 @@ class PromotionController:
 
         return self.create_rollback_bundle(request, **kwargs)  # type: ignore[arg-type]
 
-    def _validate_durable_canary(self, canary: Any, reference: ArtifactRef) -> None:
-        if (
-            reference.digest != canonical_digest(canary)
-            or reference.role != "integration-campaign-package"
-            or reference.media_type != "application/vnd.avo.integration-campaign+json"
-            or reference.size_bytes != len(canonical_bytes(canary))
-        ):
-            raise ValueError("canary package artifact is not the durable canonical package")
+    def _validate_durable_canary(self, canary: Any, reference: ArtifactRef) -> str:
         try:
             data = self._artifact_store.read_bytes(reference)
-            parsed = json.loads(data, object_pairs_hook=_strict_object_pairs)
-            if canonical_bytes(parsed) != data:
-                raise ValueError("canary package artifact is not canonical JSON")
-            canary.__class__.model_validate(parsed)
+            if not isinstance(canary, IntegrationCampaignEvidencePackage):
+                raise TypeError("canary package is not a campaign package")
+            return verify_campaign_package_artifact(canary, reference, data)
         except (OSError, TypeError, ValueError, KeyError, json.JSONDecodeError) as exc:
             raise ValueError("durable canary package is missing or malformed") from exc
 

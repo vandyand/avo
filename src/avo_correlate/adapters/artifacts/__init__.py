@@ -17,6 +17,9 @@ from avo_correlate.adapters.artifacts.rollback_bundle_authority import (
     RollbackBundleAuthorityJournal,
     RollbackPublicationAuthorizationJournal,
 )
+from avo_correlate.adapters.artifacts.rollback_quarantine import (
+    RollbackOperationQuarantineJournal,
+)
 
 __all__ = [
     "CampaignCompletionJournal",
@@ -27,5 +30,6 @@ __all__ = [
     "LiveRollbackJournal",
     "LiveRollbackJournalError",
     "RollbackBundleAuthorityJournal",
+    "RollbackOperationQuarantineJournal",
     "RollbackPublicationAuthorizationJournal",
 ]

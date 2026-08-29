@@ -16,7 +16,10 @@ from avo_correlate.adapters.artifacts.rollback_bundle_authority import (
 )
 from avo_correlate.adapters.git.publisher import PreparedPublication
 from avo_correlate.contracts.base import ArtifactRef
-from avo_correlate.contracts.integration_campaign import IntegrationCampaignEvidencePackage
+from avo_correlate.contracts.integration_campaign import (
+    IntegrationCampaignEvidencePackage,
+    verify_campaign_package_artifact,
+)
 from avo_correlate.contracts.integration_drill import (
     IntegrationDrillRollbackAuthorization,
     IntegrationRollbackRequest,
@@ -31,7 +34,7 @@ from avo_correlate.contracts.prepublication import (
 from avo_correlate.contracts.promotion_bundle import RollbackPromotionBundleAuthorization
 from avo_correlate.domain.canonical import canonical_bytes, canonical_digest
 
-_CANDIDATE_REF = re.compile(r"^refs/heads/avo/candidate/[0-9a-f]{32}$")
+_CANDIDATE_REF = re.compile(r"^refs/heads/avo/candidate/[0-9a-f]{64}$")
 
 
 def prepared_publication_evidence_digest(prepared: PreparedPublication) -> str:
@@ -67,10 +70,12 @@ class RollbackBundleAuthority:
             [RollbackPublicationAuthorization, CandidatePublicationBinding], object
         ]
         | None = None,
+        recovery_absence_verifier: Callable[[str, str, str], object] | None = None,
     ) -> None:
         self.config = config
         self.journal = journal
         self._finalizer = finalizer
+        self._recovery_absence_verifier = recovery_absence_verifier
 
     def authorize(
         self,
@@ -81,6 +86,7 @@ class RollbackBundleAuthority:
         failed_soak: FailedSoakAttestation,
         facts: RollbackSnapshotRestoreFacts,
         prepared: PreparedPublication,
+        recovery_failed_soak: FailedSoakAttestation | None = None,
     ) -> RollbackPublicationAuthorization:
         """Create and durably record authority before a candidate push."""
 
@@ -108,20 +114,20 @@ class RollbackBundleAuthority:
         )
         facts = RollbackSnapshotRestoreFacts.model_validate_json(canonical_bytes(facts))
         failed_soak = FailedSoakAttestation.model_validate_json(canonical_bytes(failed_soak))
+        if recovery_failed_soak is not None:
+            recovery_failed_soak = FailedSoakAttestation.model_validate_json(
+                canonical_bytes(recovery_failed_soak)
+            )
         self._validate_soak(failed_soak)
         plan = prepared.plan
         config = self.config
         canary = canary_package
-        if (
-            canary_package_artifact.digest != canonical_digest(canary)
-            or canary_package_artifact.role != "integration-campaign-package"
-            or canary_package_artifact.media_type != "application/vnd.avo.integration-campaign+json"
-            or canary_package_artifact.size_bytes != len(canonical_bytes(canary))
-        ):
-            raise ValueError("canary package artifact is not the canonical semantic package")
         try:
-            if self.journal.read_artifact(canary_package_artifact) != canonical_bytes(canary):
-                raise ValueError("canary package artifact contents differ from package")
+            verify_campaign_package_artifact(
+                canary,
+                canary_package_artifact,
+                self.journal.read_artifact(canary_package_artifact),
+            )
             lease_reference = canary.lease_evidence_artifact
             lease_payload = canonical_bytes(canary.lease_evidence)
             if (
@@ -176,13 +182,99 @@ class RollbackBundleAuthority:
             raise ValueError("rollback operation, canary, facts, or prepared plan are mixed")
         if not plan.changed_paths:
             raise ValueError("prepared publication has no authenticated changed paths")
+        plan_artifact = prepared.plan_artifact
+        if plan_artifact is None:
+            raise ValueError("prepared publication has no durable plan artifact")
+        existing = self.journal.read_authorization(operation.operation_id)
+        if existing is not None:
+            if (
+                existing.canary_operation_id != canary.intent.operation_id
+                or existing.canary_package_digest != canary_package_artifact.digest
+                or existing.repository_digest != config.repository_digest
+                or existing.target_ref != config.target_ref
+                or existing.main_before_commit != operation.main_before_commit
+                or existing.failed_integration_head_commit != facts.failed_head_commit
+                or existing.failed_integration_head_tree != facts.failed_head_tree
+                or existing.restore_to_commit != facts.restore_commit
+                or existing.restore_to_tree != facts.restore_tree
+                or existing.rollback_candidate_commit != plan.candidate_commit
+                or existing.rollback_candidate_tree != plan.candidate_tree
+                or existing.rollback_candidate_parent_commit != facts.failed_head_commit
+                or existing.candidate_digest != plan.candidate_digest
+                or existing.candidate_ref != plan.candidate_ref
+                or existing.changed_paths != list(plan.changed_paths)
+                or existing.publication_plan_digest != plan.publication_id
+                or existing.publication_evidence_digest != prepared.evidence_digest
+                or existing.authority_config_digest != config.trusted_config_digest
+                or existing.publisher_identity != config.publisher_identity
+            ):
+                raise ValueError("existing rollback authorization differs from trusted inputs")
+            indexed_plan_artifact = self.journal.read_publication_plan_artifact(existing)
+            if indexed_plan_artifact.digest != plan_artifact.digest:
+                raise ValueError("existing publication plan differs from trusted inputs")
+            plan_data = canonical_bytes(plan.payload())
+            self.journal.record(
+                existing,
+                canary_package_artifact=canary_package_artifact,
+                publication_plan_artifact=indexed_plan_artifact,
+                publication_plan_data=plan_data,
+            )
+            exact_soak = (
+                existing.failed_soak_attestation_id == failed_soak.attestation_id
+                and existing.failed_soak_attestation_digest == canonical_digest(failed_soak)
+            )
+            stored_soak_data = self.journal.read_failed_soak_data(existing)
+            bridge_exists = self.journal.recovery_bridge_exists(existing)
+            if bridge_exists:
+                self.journal.require_recovery_bridge(existing)
+                legacy_data = stored_soak_data
+                if legacy_data is None:
+                    legacy_data = self.journal.read_recovery_bridge_legacy_soak_data(existing)
+                legacy_soak = FailedSoakAttestation.model_validate_json(legacy_data)
+                if not _same_soak_observation(legacy_soak, failed_soak):
+                    raise ValueError("fresh failed soak differs from durable recovery bridge")
+                self.journal.require(existing)
+                return existing
+            if exact_soak and stored_soak_data is not None:
+                self.journal.require(existing)
+                return existing
+            legacy_soak = (
+                failed_soak
+                if stored_soak_data is None
+                else FailedSoakAttestation.model_validate_json(stored_soak_data)
+            )
+            if not exact_soak and recovery_failed_soak is not None:
+                # An explicitly supplied historical observation must itself be
+                # the exact attestation bound into the immutable authority.
+                legacy_soak = recovery_failed_soak
+            if (
+                legacy_soak.attestation_id != existing.failed_soak_attestation_id
+                or canonical_digest(legacy_soak)
+                != existing.failed_soak_attestation_digest
+            ):
+                raise ValueError("recovery failed soak is not the stored authority")
+            self._validate_soak(legacy_soak)
+            if self._recovery_absence_verifier is None:
+                raise ValueError("recovery absence verifier is required")
+            self._recovery_absence_verifier(
+                plan.candidate_ref, plan.candidate_commit, plan.base_commit
+            )
+            self.journal.record_recovery_bridge(
+                existing,
+                legacy_failed_soak_data=canonical_bytes(legacy_soak),
+                fresh_failed_soak_data=canonical_bytes(failed_soak),
+                publication_plan_artifact=indexed_plan_artifact,
+                publication_plan_data=plan_data,
+            )
+            self.journal.require(existing)
+            return existing
         soak_id = failed_soak.attestation_id
         soak_digest = canonical_digest(failed_soak)
         values: dict[str, Any] = {
             "schema_version": 1,
             "operation_id": operation.operation_id,
             "canary_operation_id": canary.intent.operation_id,
-            "canary_package_digest": canonical_digest(canary),
+            "canary_package_digest": canary_package_artifact.digest,
             "repository_digest": config.repository_digest,
             "target_ref": config.target_ref,
             "main_before_commit": operation.main_before_commit,
@@ -210,13 +302,12 @@ class RollbackBundleAuthority:
         authorization = RollbackPublicationAuthorization.model_validate(
             {**values, "authorization_id": canonical_digest(values)}
         )
-        plan_artifact = prepared.plan_artifact
-        if plan_artifact is None:
-            raise ValueError("prepared publication has no durable plan artifact")
         self.journal.record(
             authorization,
             canary_package_artifact=canary_package_artifact,
             publication_plan_artifact=plan_artifact,
+            publication_plan_data=canonical_bytes(plan.payload()),
+            failed_soak_data=canonical_bytes(failed_soak),
         )
         return authorization
 
@@ -348,10 +439,12 @@ class RollbackBundleAuthority:
             raise TypeError("authorization must be a trusted RollbackPublicationAuthorization")
         self.journal.require(authorization)
         self._validate_soak(failed_soak)
+        exact_soak = (
+            authorization.failed_soak_attestation_id == failed_soak.attestation_id
+            and authorization.failed_soak_attestation_digest == canonical_digest(failed_soak)
+        )
         if (
-            authorization.failed_soak_attestation_id != failed_soak.attestation_id
-            or authorization.failed_soak_attestation_digest != canonical_digest(failed_soak)
-            or authorization.repository_digest != failed_soak.repository_digest
+            authorization.repository_digest != failed_soak.repository_digest
             or authorization.failed_integration_head_commit != failed_soak.integration_commit
             or authorization.failed_integration_head_tree != failed_soak.integration_tree
             or authorization.restore_to_commit != failed_soak.restore_commit
@@ -359,11 +452,13 @@ class RollbackBundleAuthority:
             or authorization.main_before_commit != failed_soak.main_commit
         ):
             raise ValueError("stored preauthorization is not bound to failed soak authority")
+        if not exact_soak:
+            self.journal.require_recovery_bridge(authorization)
         values: dict[str, Any] = {
             "schema_version": 1,
             "operation_id": authorization.operation_id,
             "prepublication_authorization_id": authorization.authorization_id,
-            "failed_soak_attestation_id": failed_soak.attestation_id,
+            "failed_soak_attestation_id": authorization.failed_soak_attestation_id,
             "repository_digest": authorization.repository_digest,
             "target_ref": authorization.target_ref,
             "main_before_commit": authorization.main_before_commit,
@@ -414,3 +509,13 @@ class RollbackBundleAuthority:
 
 
 __all__ = ["RollbackBundleAuthority", "prepared_publication_evidence_digest"]
+
+
+def _same_soak_observation(
+    left: FailedSoakAttestation, right: FailedSoakAttestation
+) -> bool:
+    """Compare all provider facts except freshness-derived identity fields."""
+
+    return left.model_dump(
+        exclude={"freshness_cutoff", "attestation_id"}, mode="json"
+    ) == right.model_dump(exclude={"freshness_cutoff", "attestation_id"}, mode="json")

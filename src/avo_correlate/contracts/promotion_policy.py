@@ -6,7 +6,7 @@ import unicodedata
 from enum import StrEnum
 from typing import Literal
 
-from pydantic import Field, StrictBool, StrictInt, field_validator
+from pydantic import Field, StrictBool, StrictInt, field_serializer, field_validator
 
 from avo_correlate.contracts.base import NonEmptyString, Sha256Digest, StrictModel
 
@@ -148,6 +148,17 @@ class PromotionConfig(StrictModel):
     ordinary_gates: frozenset[NonEmptyString] = frozenset(
         {"trusted_ci", "private_evaluation", "provenance", "integration_soak"}
     )
+
+    @field_serializer("low_gates", "ordinary_gates")
+    def sorted_gate_names(self, values: frozenset[str]) -> list[str]:
+        """Serialize policy sets in one process-independent wire order.
+
+        These fields are sets semantically, but their old JSON representation
+        depended on Python's hash iteration order.  Artifact references are
+        byte-addressed, so that representation was unsafe across processes.
+        """
+
+        return sorted(values)
 
 
 class PromotionRequest(StrictModel):

@@ -15,6 +15,7 @@ from avo_correlate.contracts.integration_campaign import (
     CampaignCompletionPlan,
     CampaignFinalEvidenceRecord,
     IntegrationCampaignEvidencePackage,
+    verify_campaign_package_artifact,
 )
 from avo_correlate.domain.canonical import canonical_bytes, canonical_digest
 
@@ -168,10 +169,13 @@ class CampaignCompletionJournal:
                 raise ValueError("campaign record role does not match index")
             data = self._store.read_bytes(reference)
             raw = json.loads(data.decode("utf-8"), object_pairs_hook=_strict_pairs)
-            if canonical_bytes(raw) != data:
+            if kind != "package" and canonical_bytes(raw) != data:
                 raise ValueError("campaign record is not canonical JSON")
             record = model.model_validate(raw)
             if kind == "package":
+                verify_campaign_package_artifact(
+                    cast(IntegrationCampaignEvidencePackage, record), reference, data
+                )
                 _verify_package_children(
                     cast(IntegrationCampaignEvidencePackage, record), self._store
                 )
