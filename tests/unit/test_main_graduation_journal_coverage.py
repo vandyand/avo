@@ -976,3 +976,146 @@ def test_completion_orchestration_and_conflict_edges(
     assert journal._index_run_nonce("admission", nonce_admission, ref()) is None
     with pytest.raises(MainGraduationRecordConflictError, match="not bound"):
         journal._index_run_nonce("admission", nonce_admission, ref())
+
+
+def test_plan_intent_and_preparation_validators_close_authority_chain() -> None:
+    graduation_plan = plan()
+    assert graduation_plan.validate_plan() is graduation_plan
+    for field, value in (
+        ("repository_digest", D2),
+        ("operation_id", D2),
+        ("controller_config_digest", D),
+    ):
+        with pytest.raises(ValueError):
+            graduation_plan.model_copy(update={field: value}).validate_plan()
+    with pytest.raises(ValueError):
+        graduation_plan.model_copy(
+            update={
+                "evidence_artifacts": [
+                    graduation_plan.evidence_artifacts[0],
+                    graduation_plan.evidence_artifacts[0],
+                ]
+            }
+        ).validate_plan()
+    lease_values = {
+        "operation_id": D,
+        "repository_digest": R,
+        "identity": "lease",
+        "acquired_at": NOW,
+        "expires_at": NOW + timedelta(minutes=5),
+    }
+    lease_probe = MainLeaseEvidence.model_construct(**lease_values, lease_digest=D)
+    lease = MainLeaseEvidence.model_validate(
+        {
+            **lease_values,
+            "lease_digest": canonical_digest(
+                lease_probe.model_dump(exclude={"lease_digest"}, mode="json")
+            ),
+        }
+    )
+    lease_payload = main_record_bytes(lease)
+    lease_ref = ArtifactRef(
+        digest=canonical_digest(lease),
+        size_bytes=len(lease_payload),
+        media_type="application/vnd.avo.main-graduation-lease-evidence+json",
+        role="main-graduation-lease-evidence",
+        created_at=NOW,
+    )
+    intent_values = {
+        "operation_id": D,
+        "repository_digest": R,
+        "plan_digest": canonical_digest(graduation_plan),
+        "package_digest": D,
+        "composition_digest": D2,
+        "base_commit": BASE,
+        "base_tree": TREE,
+        "candidate_commit": HEAD,
+        "candidate_tree": TREE,
+        "candidate_ref": "refs/heads/avo/candidate/" + "a" * 64,
+        "lease_identity": "lease",
+        "lease_digest": lease.lease_digest,
+        "lease_evidence": lease,
+        "lease_evidence_artifact": lease_ref,
+        "policy_epoch": D,
+        "recorded_at": NOW,
+    }
+    intent_probe = MainGraduationIntent.model_construct(**intent_values, intent_digest=D)
+    intent = MainGraduationIntent.model_validate(
+        {
+            **intent_values,
+            "intent_digest": canonical_digest(
+                intent_probe.model_dump(exclude={"intent_digest"}, mode="json")
+            ),
+        }
+    )
+    assert intent.validate_intent() is intent
+    with pytest.raises(ValueError):
+        intent.model_copy(update={"lease_identity": "other"}).validate_intent()
+    prep_values = {
+        "operation_id": D,
+        "repository_digest": R,
+        "plan_digest": canonical_digest(graduation_plan),
+        "intent_digest": canonical_digest(intent),
+        "package_digest": D,
+        "composition_digest": D2,
+        "base_commit": BASE,
+        "base_tree": TREE,
+        "candidate_commit": HEAD,
+        "candidate_tree": TREE,
+        "lease_identity": "lease",
+        "lease_digest": lease.lease_digest,
+        "policy_epoch": D,
+        "authorized_at": NOW,
+    }
+    prep_probe = MainPreparationAuthorization.model_construct(**prep_values, authorization_digest=D)
+    prep = MainPreparationAuthorization.model_validate(
+        {
+            **prep_values,
+            "authorization_digest": canonical_digest(
+                prep_probe.model_dump(exclude={"authorization_digest"}, mode="json")
+            ),
+        }
+    )
+    assert prep.validate_authorization() is prep
+    with pytest.raises(ValueError):
+        prep.model_copy(update={"lease_digest": D2}).validate_authorization()
+
+
+def test_admission_hold_and_release_contract_validators_cover_bindings() -> None:
+    package = completion()
+    admission = package.admission_observation
+    assert admission.validate_admission() is admission
+    for field, value in (
+        ("admission_sha", BASE),
+        ("head_commit", BASE),
+        ("release_issuer_app_id", 15368),
+        ("pull_request_url", "http://example.test/p/1"),
+    ):
+        with pytest.raises(ValueError):
+            admission.model_copy(update={field: value}).validate_admission()
+    hold = package.hold_observation
+    assert hold.validate_hold() is hold
+    for field, value in (
+        ("queue_members", [2]),
+        ("group_parents", [HEAD, BASE]),
+        ("group_parents", [BASE, BASE]),
+        ("expected_group_parents", [BASE]),
+        ("group_tree", BASE),
+        ("composition_tree", BASE),
+        ("release_issuer_app_id", 15368),
+    ):
+        with pytest.raises(ValueError):
+            hold.model_copy(update={field: value}).validate_hold()
+    auth = package.release_authorization
+    auth = auth.model_copy(
+        update={
+            "authorization_digest": canonical_digest(
+                auth.model_dump(exclude={"authorization_digest"}, mode="json")
+            )
+        }
+    )
+    assert auth.validate_release_authorization() is auth
+    with pytest.raises(ValueError):
+        auth.model_copy(update={"expires_at": NOW}).validate_release_authorization()
+    with pytest.raises(ValueError):
+        auth.model_copy(update={"release_issuer_app_id": 15368}).validate_release_authorization()
