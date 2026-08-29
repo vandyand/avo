@@ -1,0 +1,99 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "authorization_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Authorization Digest",
+      "type": "string"
+    },
+    "authorized": {
+      "const": true,
+      "default": true,
+      "title": "Authorized",
+      "type": "boolean"
+    },
+    "authorized_at": {
+      "format": "date-time",
+      "title": "Authorized At",
+      "type": "string"
+    },
+    "completion_package_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Completion Package Digest",
+      "type": "string"
+    },
+    "current_main_commit": {
+      "pattern": "^[0-9a-f]{40}(?:[0-9a-f]{24})?$",
+      "title": "Current Main Commit",
+      "type": "string"
+    },
+    "deploy_performed": {
+      "const": false,
+      "default": false,
+      "title": "Deploy Performed",
+      "type": "boolean"
+    },
+    "inverse_delta_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Inverse Delta Digest",
+      "type": "string"
+    },
+    "inverse_tree": {
+      "pattern": "^[0-9a-f]{40}(?:[0-9a-f]{24})?$",
+      "title": "Inverse Tree",
+      "type": "string"
+    },
+    "lease_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Lease Digest",
+      "type": "string"
+    },
+    "lease_identity": {
+      "minLength": 1,
+      "title": "Lease Identity",
+      "type": "string"
+    },
+    "operation_id": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Operation Id",
+      "type": "string"
+    },
+    "policy_epoch": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Policy Epoch",
+      "type": "string"
+    },
+    "repository_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Repository Digest",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "target_ref": {
+      "const": "refs/heads/main",
+      "default": "refs/heads/main",
+      "title": "Target Ref",
+      "type": "string"
+    }
+  },
+  "required": [
+    "repository_digest",
+    "operation_id",
+    "completion_package_digest",
+    "current_main_commit",
+    "inverse_delta_digest",
+    "inverse_tree",
+    "lease_identity",
+    "lease_digest",
+    "policy_epoch",
+    "authorization_digest",
+    "authorized_at"
+  ],
+  "title": "MainRollbackAuthorization",
+  "type": "object"
+}

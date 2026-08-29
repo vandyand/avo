@@ -1,0 +1,93 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "bypass_allowed": {
+      "const": false,
+      "default": false,
+      "title": "Bypass Allowed",
+      "type": "boolean"
+    },
+    "direct_merge_allowed": {
+      "const": false,
+      "default": false,
+      "title": "Direct Merge Allowed",
+      "type": "boolean"
+    },
+    "expected_base_commit": {
+      "pattern": "^[0-9a-f]{40}(?:[0-9a-f]{24})?$",
+      "title": "Expected Base Commit",
+      "type": "string"
+    },
+    "isolated_release_issuer": {
+      "minLength": 1,
+      "title": "Isolated Release Issuer",
+      "type": "string"
+    },
+    "max_entries_per_group": {
+      "const": 1,
+      "default": 1,
+      "title": "Max Entries Per Group",
+      "type": "integer"
+    },
+    "merge_method": {
+      "const": "squash",
+      "title": "Merge Method",
+      "type": "string"
+    },
+    "observed_at": {
+      "format": "date-time",
+      "title": "Observed At",
+      "type": "string"
+    },
+    "operation_id": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Operation Id",
+      "type": "string"
+    },
+    "queue_enabled": {
+      "const": true,
+      "default": true,
+      "title": "Queue Enabled",
+      "type": "boolean"
+    },
+    "queue_generation_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Queue Generation Digest",
+      "type": "string"
+    },
+    "queue_manifest_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Queue Manifest Digest",
+      "type": "string"
+    },
+    "repository_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Repository Digest",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "target_ref": {
+      "const": "refs/heads/main",
+      "default": "refs/heads/main",
+      "title": "Target Ref",
+      "type": "string"
+    }
+  },
+  "required": [
+    "repository_digest",
+    "operation_id",
+    "queue_generation_digest",
+    "queue_manifest_digest",
+    "expected_base_commit",
+    "merge_method",
+    "isolated_release_issuer",
+    "observed_at"
+  ],
+  "title": "MainQueueObservation",
+  "type": "object"
+}

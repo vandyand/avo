@@ -1,0 +1,1700 @@
+{
+  "$defs": {
+    "ArtifactRef": {
+      "additionalProperties": false,
+      "properties": {
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Digest",
+          "type": "string"
+        },
+        "media_type": {
+          "minLength": 1,
+          "title": "Media Type",
+          "type": "string"
+        },
+        "role": {
+          "minLength": 1,
+          "title": "Role",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "size_bytes": {
+          "minimum": 0,
+          "title": "Size Bytes",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "digest",
+        "size_bytes",
+        "media_type",
+        "role",
+        "created_at"
+      ],
+      "title": "ArtifactRef",
+      "type": "object"
+    },
+    "MainCheckObservation": {
+      "additionalProperties": false,
+      "properties": {
+        "app_id": {
+          "exclusiveMinimum": 0,
+          "title": "App Id",
+          "type": "integer"
+        },
+        "conclusion": {
+          "enum": [
+            "success",
+            "neutral",
+            "failure",
+            "pending"
+          ],
+          "title": "Conclusion",
+          "type": "string"
+        },
+        "context": {
+          "minLength": 1,
+          "title": "Context",
+          "type": "string"
+        },
+        "name": {
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "nonce": {
+          "minLength": 1,
+          "title": "Nonce",
+          "type": "string"
+        },
+        "observed_at": {
+          "format": "date-time",
+          "title": "Observed At",
+          "type": "string"
+        },
+        "run_id": {
+          "minLength": 1,
+          "title": "Run Id",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "sha": {
+          "pattern": "^[0-9a-f]{40}(?:[0-9a-f]{24})?$",
+          "title": "Sha",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "completed",
+            "in_progress",
+            "queued"
+          ],
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "context",
+        "app_id",
+        "sha",
+        "status",
+        "conclusion",
+        "run_id",
+        "nonce",
+        "observed_at"
+      ],
+      "title": "MainCheckObservation",
+      "type": "object"
+    },
+    "MainCompositionArtifact": {
+      "additionalProperties": false,
+      "description": "Deterministic application of the source delta to one fresh main base.",
+      "properties": {
+        "base_commit": {
+          "pattern": "^[0-9a-f]{40}(?:[0-9a-f]{24})?$",
+          "title": "Base Commit",
+          "type": "string"
+        },
+        "base_tree": {
+          "pattern": "^[0-9a-f]{40}(?:[0-9a-f]{24})?$",
+          "title": "Base Tree",
+          "type": "string"
+        },
+        "candidate_commit": {
+          "pattern": "^[0-9a-f]{40}(?:[0-9a-f]{24})?$",
+          "title": "Candidate Commit",
+          "type": "string"
+        },
+        "candidate_parent_commit": {
+          "pattern": "^[0-9a-f]{40}(?:[0-9a-f]{24})?$",
+          "title": "Candidate Parent Commit",
+          "type": "string"
+        },
+        "candidate_ref": {
+          "minLength": 1,
+          "title": "Candidate Ref",
+          "type": "string"
+        },
+        "candidate_tree": {
+          "pattern": "^[0-9a-f]{40}(?:[0-9a-f]{24})?$",
+          "title": "Candidate Tree",
+          "type": "string"
+        },
+        "composition_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Composition Digest",
+          "type": "string"
+        },
+        "delta_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Delta Digest",
+          "type": "string"
+        },
+        "deploy_performed": {
+          "const": false,
+          "default": false,
+          "title": "Deploy Performed",
+          "type": "boolean"
+        },
+        "operation_id": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Operation Id",
+          "type": "string"
+        },
+        "package_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Package Digest",
+          "type": "string"
+        },
+        "repository_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Repository Digest",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "target_ref": {
+          "const": "refs/heads/main",
+          "default": "refs/heads/main",
+          "title": "Target Ref",
+          "type": "string"
+        }
+      },
+      "required": [
+        "repository_digest",
+        "operation_id",
+        "package_digest",
+        "delta_digest",
+        "base_commit",
+        "base_tree",
+        "candidate_commit",
+        "candidate_tree",
+        "candidate_parent_commit",
+        "composition_digest",
+        "candidate_ref"
+      ],
+      "title": "MainCompositionArtifact",
+      "type": "object"
+    },
+    "MainDeltaManifest": {
+      "additionalProperties": false,
+      "description": "The exact sole-parent-to-result delta selected from the source package.",
+      "properties": {
+        "changed_paths": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Changed Paths",
+          "type": "array"
+        },
+        "delta_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Delta Digest",
+          "type": "string"
+        },
+        "deploy_performed": {
+          "const": false,
+          "default": false,
+          "title": "Deploy Performed",
+          "type": "boolean"
+        },
+        "operation_id": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Operation Id",
+          "type": "string"
+        },
+        "ordinary_risk": {
+          "const": "ordinary",
+          "default": "ordinary",
+          "title": "Ordinary Risk",
+          "type": "string"
+        },
+        "ordinary_risk_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Ordinary Risk Digest",
+          "type": "string"
+        },
+        "package_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Package Digest",
+          "type": "string"
+        },
+        "path_manifest_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Path Manifest Digest",
+          "type": "string"
+        },
+        "repository_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Repository Digest",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "source_result_commit": {
+          "pattern": "^[0-9a-f]{40}(?:[0-9a-f]{24})?$",
+          "title": "Source Result Commit",
+          "type": "string"
+        },
+        "source_result_parent": {
+          "pattern": "^[0-9a-f]{40}(?:[0-9a-f]{24})?$",
+          "title": "Source Result Parent",
+          "type": "string"
+        },
+        "source_result_tree": {
+          "pattern": "^[0-9a-f]{40}(?:[0-9a-f]{24})?$",
+          "title": "Source Result Tree",
+          "type": "string"
+        },
+        "target_ref": {
+          "const": "refs/heads/main",
+          "default": "refs/heads/main",
+          "title": "Target Ref",
+          "type": "string"
+        }
+      },
+      "required": [
+        "repository_digest",
+        "operation_id",
+        "package_digest",
+        "source_result_commit",
+        "source_result_parent",
+        "source_result_tree",
+        "changed_paths",
+        "path_manifest_digest",
+        "delta_digest",
+        "ordinary_risk_digest"
+      ],
+      "title": "MainDeltaManifest",
+      "type": "object"
+    },
+    "MainGraduationIntent": {
+      "additionalProperties": false,
+      "properties": {
+        "base_commit": {
+          "pattern": "^[0-9a-f]{40}(?:[0-9a-f]{24})?$",
+          "title": "Base Commit",
+          "type": "string"
+        },
+        "base_tree": {
+          "pattern": "^[0-9a-f]{40}(?:[0-9a-f]{24})?$",
+          "title": "Base Tree",
+          "type": "string"
+        },
+        "candidate_commit": {
+          "pattern": "^[0-9a-f]{40}(?:[0-9a-f]{24})?$",
+          "title": "Candidate Commit",
+          "type": "string"
+        },
+        "candidate_ref": {
+          "minLength": 1,
+          "title": "Candidate Ref",
+          "type": "string"
+        },
+        "candidate_tree": {
+          "pattern": "^[0-9a-f]{40}(?:[0-9a-f]{24})?$",
+          "title": "Candidate Tree",
+          "type": "string"
+        },
+        "composition_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Composition Digest",
+          "type": "string"
+        },
+        "intent_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Intent Digest",
+          "type": "string"
+        },
+        "lease_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Lease Digest",
+          "type": "string"
+        },
+        "lease_identity": {
+          "minLength": 1,
+          "title": "Lease Identity",
+          "type": "string"
+        },
+        "operation_id": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Operation Id",
+          "type": "string"
+        },
+        "package_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Package Digest",
+          "type": "string"
+        },
+        "plan_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Plan Digest",
+          "type": "string"
+        },
+        "policy_epoch": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Policy Epoch",
+          "type": "string"
+        },
+        "recorded_at": {
+          "format": "date-time",
+          "title": "Recorded At",
+          "type": "string"
+        },
+        "repository_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Repository Digest",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "state": {
+          "const": "intent_recorded",
+          "default": "intent_recorded",
+          "title": "State",
+          "type": "string"
+        },
+        "target_ref": {
+          "const": "refs/heads/main",
+          "default": "refs/heads/main",
+          "title": "Target Ref",
+          "type": "string"
+        }
+      },
+      "required": [
+        "repository_digest",
+        "operation_id",
+        "plan_digest",
+        "package_digest",
+        "composition_digest",
+        "base_commit",
+        "base_tree",
+        "candidate_commit",
+        "candidate_tree",
+        "candidate_ref",
+        "lease_identity",
+        "lease_digest",
+        "policy_epoch",
+        "intent_digest",
+        "recorded_at"
+      ],
+      "title": "MainGraduationIntent",
+      "type": "object"
+    },
+    "MainGraduationPlan": {
+      "additionalProperties": false,
+      "properties": {
+        "composition": {
+          "$ref": "#/$defs/MainCompositionArtifact"
+        },
+        "controller_config_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Controller Config Digest",
+          "type": "string"
+        },
+        "delta": {
+          "$ref": "#/$defs/MainDeltaManifest"
+        },
+        "deploy_performed": {
+          "const": false,
+          "default": false,
+          "title": "Deploy Performed",
+          "type": "boolean"
+        },
+        "evidence_artifacts": {
+          "items": {
+            "$ref": "#/$defs/ArtifactRef"
+          },
+          "minItems": 1,
+          "title": "Evidence Artifacts",
+          "type": "array"
+        },
+        "operation_id": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Operation Id",
+          "type": "string"
+        },
+        "package": {
+          "$ref": "#/$defs/MainSourcePackageBinding"
+        },
+        "policy_epoch": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Policy Epoch",
+          "type": "string"
+        },
+        "repository_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Repository Digest",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "target_ref": {
+          "const": "refs/heads/main",
+          "default": "refs/heads/main",
+          "title": "Target Ref",
+          "type": "string"
+        }
+      },
+      "required": [
+        "repository_digest",
+        "operation_id",
+        "package",
+        "delta",
+        "composition",
+        "policy_epoch",
+        "controller_config_digest",
+        "evidence_artifacts"
+      ],
+      "title": "MainGraduationPlan",
+      "type": "object"
+    },
+    "MainMergeGroupChecks": {
+      "additionalProperties": false,
+      "properties": {
+        "checks": {
+          "items": {
+            "$ref": "#/$defs/MainCheckObservation"
+          },
+          "minItems": 1,
+          "title": "Checks",
+          "type": "array"
+        },
+        "group_sha": {
+          "pattern": "^[0-9a-f]{40}(?:[0-9a-f]{24})?$",
+          "title": "Group Sha",
+          "type": "string"
+        },
+        "observed_at": {
+          "format": "date-time",
+          "title": "Observed At",
+          "type": "string"
+        },
+        "operation_id": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Operation Id",
+          "type": "string"
+        },
+        "repository_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Repository Digest",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "target_ref": {
+          "const": "refs/heads/main",
+          "default": "refs/heads/main",
+          "title": "Target Ref",
+          "type": "string"
+        },
+        "validation_app_id": {
+          "const": 15368,
+          "default": 15368,
+          "title": "Validation App Id",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "repository_digest",
+        "operation_id",
+        "group_sha",
+        "checks",
+        "observed_at"
+      ],
+      "title": "MainMergeGroupChecks",
+      "type": "object"
+    },
+    "MainPreparationAuthorization": {
+      "additionalProperties": false,
+      "description": "Reversible authorization; it cannot authorize a main mutation.",
+      "properties": {
+        "authorization_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Authorization Digest",
+          "type": "string"
+        },
+        "authorized": {
+          "const": true,
+          "default": true,
+          "title": "Authorized",
+          "type": "boolean"
+        },
+        "authorized_at": {
+          "format": "date-time",
+          "title": "Authorized At",
+          "type": "string"
+        },
+        "base_commit": {
+          "pattern": "^[0-9a-f]{40}(?:[0-9a-f]{24})?$",
+          "title": "Base Commit",
+          "type": "string"
+        },
+        "base_tree": {
+          "pattern": "^[0-9a-f]{40}(?:[0-9a-f]{24})?$",
+          "title": "Base Tree",
+          "type": "string"
+        },
+        "candidate_commit": {
+          "pattern": "^[0-9a-f]{40}(?:[0-9a-f]{24})?$",
+          "title": "Candidate Commit",
+          "type": "string"
+        },
+        "candidate_tree": {
+          "pattern": "^[0-9a-f]{40}(?:[0-9a-f]{24})?$",
+          "title": "Candidate Tree",
+          "type": "string"
+        },
+        "composition_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Composition Digest",
+          "type": "string"
+        },
+        "deploy_performed": {
+          "const": false,
+          "default": false,
+          "title": "Deploy Performed",
+          "type": "boolean"
+        },
+        "intent_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Intent Digest",
+          "type": "string"
+        },
+        "lease_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Lease Digest",
+          "type": "string"
+        },
+        "lease_identity": {
+          "minLength": 1,
+          "title": "Lease Identity",
+          "type": "string"
+        },
+        "operation_id": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Operation Id",
+          "type": "string"
+        },
+        "package_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Package Digest",
+          "type": "string"
+        },
+        "plan_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Plan Digest",
+          "type": "string"
+        },
+        "policy_epoch": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Policy Epoch",
+          "type": "string"
+        },
+        "repository_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Repository Digest",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "scope": {
+          "const": "candidate_publication_pr_preparation_queue_admission",
+          "default": "candidate_publication_pr_preparation_queue_admission",
+          "title": "Scope",
+          "type": "string"
+        },
+        "target_ref": {
+          "const": "refs/heads/main",
+          "default": "refs/heads/main",
+          "title": "Target Ref",
+          "type": "string"
+        }
+      },
+      "required": [
+        "repository_digest",
+        "operation_id",
+        "plan_digest",
+        "intent_digest",
+        "package_digest",
+        "composition_digest",
+        "base_commit",
+        "base_tree",
+        "candidate_commit",
+        "candidate_tree",
+        "lease_identity",
+        "lease_digest",
+        "policy_epoch",
+        "authorization_digest",
+        "authorized_at"
+      ],
+      "title": "MainPreparationAuthorization",
+      "type": "object"
+    },
+    "MainProviderReceipt": {
+      "additionalProperties": false,
+      "properties": {
+        "deploy_performed": {
+          "const": false,
+          "default": false,
+          "title": "Deploy Performed",
+          "type": "boolean"
+        },
+        "observed_at": {
+          "format": "date-time",
+          "title": "Observed At",
+          "type": "string"
+        },
+        "operation_id": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Operation Id",
+          "type": "string"
+        },
+        "outcome": {
+          "enum": [
+            "observed",
+            "rejected",
+            "ambiguous"
+          ],
+          "title": "Outcome",
+          "type": "string"
+        },
+        "provider_api_version": {
+          "minLength": 1,
+          "title": "Provider Api Version",
+          "type": "string"
+        },
+        "provider_identity": {
+          "minLength": 1,
+          "title": "Provider Identity",
+          "type": "string"
+        },
+        "release_authorization_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Release Authorization Digest",
+          "type": "string"
+        },
+        "repository_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Repository Digest",
+          "type": "string"
+        },
+        "response_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Response Digest",
+          "type": "string"
+        },
+        "result_commit": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{40}(?:[0-9a-f]{24})?$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Result Commit"
+        },
+        "result_parents": {
+          "items": {
+            "pattern": "^[0-9a-f]{40}(?:[0-9a-f]{24})?$",
+            "type": "string"
+          },
+          "title": "Result Parents",
+          "type": "array"
+        },
+        "result_tree": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{40}(?:[0-9a-f]{24})?$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Result Tree"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "target_ref": {
+          "const": "refs/heads/main",
+          "default": "refs/heads/main",
+          "title": "Target Ref",
+          "type": "string"
+        }
+      },
+      "required": [
+        "repository_digest",
+        "operation_id",
+        "release_authorization_digest",
+        "provider_identity",
+        "provider_api_version",
+        "outcome",
+        "response_digest",
+        "observed_at"
+      ],
+      "title": "MainProviderReceipt",
+      "type": "object"
+    },
+    "MainQueueAdmissionObservation": {
+      "additionalProperties": false,
+      "description": "One-use, PR-head-only admission proof (never group evidence).",
+      "properties": {
+        "admission_nonce": {
+          "minLength": 1,
+          "title": "Admission Nonce",
+          "type": "string"
+        },
+        "admission_run_id": {
+          "minLength": 1,
+          "title": "Admission Run Id",
+          "type": "string"
+        },
+        "admission_sha": {
+          "pattern": "^[0-9a-f]{40}(?:[0-9a-f]{24})?$",
+          "title": "Admission Sha",
+          "type": "string"
+        },
+        "base_commit": {
+          "pattern": "^[0-9a-f]{40}(?:[0-9a-f]{24})?$",
+          "title": "Base Commit",
+          "type": "string"
+        },
+        "base_tree": {
+          "pattern": "^[0-9a-f]{40}(?:[0-9a-f]{24})?$",
+          "title": "Base Tree",
+          "type": "string"
+        },
+        "check_conclusion": {
+          "const": "success",
+          "default": "success",
+          "title": "Check Conclusion",
+          "type": "string"
+        },
+        "check_context": {
+          "const": "avo-main-release",
+          "default": "avo-main-release",
+          "title": "Check Context",
+          "type": "string"
+        },
+        "check_state": {
+          "const": "completed",
+          "default": "completed",
+          "title": "Check State",
+          "type": "string"
+        },
+        "composition_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Composition Digest",
+          "type": "string"
+        },
+        "head_commit": {
+          "pattern": "^[0-9a-f]{40}(?:[0-9a-f]{24})?$",
+          "title": "Head Commit",
+          "type": "string"
+        },
+        "head_tree": {
+          "pattern": "^[0-9a-f]{40}(?:[0-9a-f]{24})?$",
+          "title": "Head Tree",
+          "type": "string"
+        },
+        "issuer_identity": {
+          "minLength": 1,
+          "title": "Issuer Identity",
+          "type": "string"
+        },
+        "issuer_isolation_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Issuer Isolation Digest",
+          "type": "string"
+        },
+        "observed_at": {
+          "format": "date-time",
+          "title": "Observed At",
+          "type": "string"
+        },
+        "one_use": {
+          "const": true,
+          "default": true,
+          "title": "One Use",
+          "type": "boolean"
+        },
+        "operation_id": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Operation Id",
+          "type": "string"
+        },
+        "package_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Package Digest",
+          "type": "string"
+        },
+        "preparation_authorization_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Preparation Authorization Digest",
+          "type": "string"
+        },
+        "protection_manifest_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Protection Manifest Digest",
+          "type": "string"
+        },
+        "pull_request_number": {
+          "exclusiveMinimum": 0,
+          "title": "Pull Request Number",
+          "type": "integer"
+        },
+        "pull_request_url": {
+          "minLength": 1,
+          "title": "Pull Request Url",
+          "type": "string"
+        },
+        "queue_generation_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Queue Generation Digest",
+          "type": "string"
+        },
+        "release_transition": {
+          "const": false,
+          "default": false,
+          "title": "Release Transition",
+          "type": "boolean"
+        },
+        "repository_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Repository Digest",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "target_ref": {
+          "const": "refs/heads/main",
+          "default": "refs/heads/main",
+          "title": "Target Ref",
+          "type": "string"
+        },
+        "validation_app_id": {
+          "const": 15368,
+          "default": 15368,
+          "title": "Validation App Id",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "repository_digest",
+        "operation_id",
+        "preparation_authorization_digest",
+        "package_digest",
+        "composition_digest",
+        "pull_request_number",
+        "pull_request_url",
+        "base_commit",
+        "base_tree",
+        "head_commit",
+        "head_tree",
+        "admission_sha",
+        "admission_run_id",
+        "admission_nonce",
+        "queue_generation_digest",
+        "protection_manifest_digest",
+        "issuer_identity",
+        "issuer_isolation_digest",
+        "observed_at"
+      ],
+      "title": "MainQueueAdmissionObservation",
+      "type": "object"
+    },
+    "MainReconciliation": {
+      "additionalProperties": false,
+      "properties": {
+        "deploy_performed": {
+          "const": false,
+          "default": false,
+          "title": "Deploy Performed",
+          "type": "boolean"
+        },
+        "expected_base_commit": {
+          "pattern": "^[0-9a-f]{40}(?:[0-9a-f]{24})?$",
+          "title": "Expected Base Commit",
+          "type": "string"
+        },
+        "expected_tree": {
+          "pattern": "^[0-9a-f]{40}(?:[0-9a-f]{24})?$",
+          "title": "Expected Tree",
+          "type": "string"
+        },
+        "main_commit": {
+          "pattern": "^[0-9a-f]{40}(?:[0-9a-f]{24})?$",
+          "title": "Main Commit",
+          "type": "string"
+        },
+        "main_parents": {
+          "items": {
+            "pattern": "^[0-9a-f]{40}(?:[0-9a-f]{24})?$",
+            "type": "string"
+          },
+          "title": "Main Parents",
+          "type": "array"
+        },
+        "main_tree": {
+          "pattern": "^[0-9a-f]{40}(?:[0-9a-f]{24})?$",
+          "title": "Main Tree",
+          "type": "string"
+        },
+        "operation_id": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Operation Id",
+          "type": "string"
+        },
+        "queue_generation_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Queue Generation Digest",
+          "type": "string"
+        },
+        "repository_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Repository Digest",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "state": {
+          "enum": [
+            "pending",
+            "completed",
+            "failed",
+            "reconciliation_required"
+          ],
+          "title": "State",
+          "type": "string"
+        },
+        "target_ref": {
+          "const": "refs/heads/main",
+          "default": "refs/heads/main",
+          "title": "Target Ref",
+          "type": "string"
+        },
+        "transition_receipt_digest": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Transition Receipt Digest"
+        }
+      },
+      "required": [
+        "repository_digest",
+        "operation_id",
+        "state",
+        "main_commit",
+        "main_tree",
+        "main_parents",
+        "expected_tree",
+        "expected_base_commit",
+        "queue_generation_digest"
+      ],
+      "title": "MainReconciliation",
+      "type": "object"
+    },
+    "MainReleaseAuthorization": {
+      "additionalProperties": false,
+      "description": "Single-use authority consumed only by the isolated release issuer.",
+      "properties": {
+        "admission_observation_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Admission Observation Digest",
+          "type": "string"
+        },
+        "authorization_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Authorization Digest",
+          "type": "string"
+        },
+        "authorized_at": {
+          "format": "date-time",
+          "title": "Authorized At",
+          "type": "string"
+        },
+        "composition_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Composition Digest",
+          "type": "string"
+        },
+        "deploy_performed": {
+          "const": false,
+          "default": false,
+          "title": "Deploy Performed",
+          "type": "boolean"
+        },
+        "expires_at": {
+          "format": "date-time",
+          "title": "Expires At",
+          "type": "string"
+        },
+        "group_sha": {
+          "pattern": "^[0-9a-f]{40}(?:[0-9a-f]{24})?$",
+          "title": "Group Sha",
+          "type": "string"
+        },
+        "hold_nonce": {
+          "minLength": 1,
+          "title": "Hold Nonce",
+          "type": "string"
+        },
+        "hold_observation_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Hold Observation Digest",
+          "type": "string"
+        },
+        "hold_run_id": {
+          "minLength": 1,
+          "title": "Hold Run Id",
+          "type": "string"
+        },
+        "issuer_isolation_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Issuer Isolation Digest",
+          "type": "string"
+        },
+        "lease_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Lease Digest",
+          "type": "string"
+        },
+        "lease_identity": {
+          "minLength": 1,
+          "title": "Lease Identity",
+          "type": "string"
+        },
+        "one_use": {
+          "const": true,
+          "default": true,
+          "title": "One Use",
+          "type": "boolean"
+        },
+        "operation_id": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Operation Id",
+          "type": "string"
+        },
+        "package_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Package Digest",
+          "type": "string"
+        },
+        "policy_epoch": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Policy Epoch",
+          "type": "string"
+        },
+        "preparation_authorization_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Preparation Authorization Digest",
+          "type": "string"
+        },
+        "queue_generation_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Queue Generation Digest",
+          "type": "string"
+        },
+        "release_issuer_identity": {
+          "minLength": 1,
+          "title": "Release Issuer Identity",
+          "type": "string"
+        },
+        "repository_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Repository Digest",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "target_ref": {
+          "const": "refs/heads/main",
+          "default": "refs/heads/main",
+          "title": "Target Ref",
+          "type": "string"
+        },
+        "used": {
+          "const": false,
+          "default": false,
+          "title": "Used",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "repository_digest",
+        "operation_id",
+        "preparation_authorization_digest",
+        "admission_observation_digest",
+        "hold_observation_digest",
+        "package_digest",
+        "composition_digest",
+        "group_sha",
+        "hold_run_id",
+        "hold_nonce",
+        "queue_generation_digest",
+        "lease_identity",
+        "lease_digest",
+        "policy_epoch",
+        "release_issuer_identity",
+        "issuer_isolation_digest",
+        "authorization_digest",
+        "expires_at",
+        "authorized_at"
+      ],
+      "title": "MainReleaseAuthorization",
+      "type": "object"
+    },
+    "MainReleaseHoldObservation": {
+      "additionalProperties": false,
+      "description": "Distinct pending group-specific hold, created after queue admission.",
+      "properties": {
+        "admission_observation_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Admission Observation Digest",
+          "type": "string"
+        },
+        "attestation_manifest_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Attestation Manifest Digest",
+          "type": "string"
+        },
+        "base_commit": {
+          "pattern": "^[0-9a-f]{40}(?:[0-9a-f]{24})?$",
+          "title": "Base Commit",
+          "type": "string"
+        },
+        "base_tree": {
+          "pattern": "^[0-9a-f]{40}(?:[0-9a-f]{24})?$",
+          "title": "Base Tree",
+          "type": "string"
+        },
+        "check_conclusion": {
+          "const": "pending",
+          "default": "pending",
+          "title": "Check Conclusion",
+          "type": "string"
+        },
+        "check_context": {
+          "const": "avo-main-release",
+          "default": "avo-main-release",
+          "title": "Check Context",
+          "type": "string"
+        },
+        "check_state": {
+          "const": "in_progress",
+          "default": "in_progress",
+          "title": "Check State",
+          "type": "string"
+        },
+        "composition_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Composition Digest",
+          "type": "string"
+        },
+        "composition_tree": {
+          "pattern": "^[0-9a-f]{40}(?:[0-9a-f]{24})?$",
+          "title": "Composition Tree",
+          "type": "string"
+        },
+        "group_parents": {
+          "items": {
+            "pattern": "^[0-9a-f]{40}(?:[0-9a-f]{24})?$",
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Group Parents",
+          "type": "array"
+        },
+        "group_sha": {
+          "pattern": "^[0-9a-f]{40}(?:[0-9a-f]{24})?$",
+          "title": "Group Sha",
+          "type": "string"
+        },
+        "group_tree": {
+          "pattern": "^[0-9a-f]{40}(?:[0-9a-f]{24})?$",
+          "title": "Group Tree",
+          "type": "string"
+        },
+        "hold_nonce": {
+          "minLength": 1,
+          "title": "Hold Nonce",
+          "type": "string"
+        },
+        "hold_run_id": {
+          "minLength": 1,
+          "title": "Hold Run Id",
+          "type": "string"
+        },
+        "issuer_identity": {
+          "minLength": 1,
+          "title": "Issuer Identity",
+          "type": "string"
+        },
+        "issuer_isolation_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Issuer Isolation Digest",
+          "type": "string"
+        },
+        "max_entries_per_group": {
+          "const": 1,
+          "default": 1,
+          "title": "Max Entries Per Group",
+          "type": "integer"
+        },
+        "observed_at": {
+          "format": "date-time",
+          "title": "Observed At",
+          "type": "string"
+        },
+        "operation_id": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Operation Id",
+          "type": "string"
+        },
+        "other_required_checks": {
+          "$ref": "#/$defs/MainMergeGroupChecks"
+        },
+        "package_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Package Digest",
+          "type": "string"
+        },
+        "preparation_authorization_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Preparation Authorization Digest",
+          "type": "string"
+        },
+        "protection_manifest_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Protection Manifest Digest",
+          "type": "string"
+        },
+        "pull_request_number": {
+          "exclusiveMinimum": 0,
+          "title": "Pull Request Number",
+          "type": "integer"
+        },
+        "queue_generation_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Queue Generation Digest",
+          "type": "string"
+        },
+        "queue_members": {
+          "items": {
+            "type": "integer"
+          },
+          "maxItems": 1,
+          "minItems": 1,
+          "title": "Queue Members",
+          "type": "array"
+        },
+        "repository_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Repository Digest",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "target_ref": {
+          "const": "refs/heads/main",
+          "default": "refs/heads/main",
+          "title": "Target Ref",
+          "type": "string"
+        },
+        "validation_app_id": {
+          "const": 15368,
+          "default": 15368,
+          "title": "Validation App Id",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "repository_digest",
+        "operation_id",
+        "preparation_authorization_digest",
+        "admission_observation_digest",
+        "package_digest",
+        "composition_digest",
+        "pull_request_number",
+        "group_sha",
+        "group_tree",
+        "group_parents",
+        "base_commit",
+        "base_tree",
+        "composition_tree",
+        "queue_generation_digest",
+        "queue_members",
+        "hold_run_id",
+        "hold_nonce",
+        "issuer_identity",
+        "issuer_isolation_digest",
+        "other_required_checks",
+        "protection_manifest_digest",
+        "attestation_manifest_digest",
+        "observed_at"
+      ],
+      "title": "MainReleaseHoldObservation",
+      "type": "object"
+    },
+    "MainReleaseTransitionReceipt": {
+      "additionalProperties": false,
+      "properties": {
+        "deploy_performed": {
+          "const": false,
+          "default": false,
+          "title": "Deploy Performed",
+          "type": "boolean"
+        },
+        "group_sha": {
+          "pattern": "^[0-9a-f]{40}(?:[0-9a-f]{24})?$",
+          "title": "Group Sha",
+          "type": "string"
+        },
+        "hold_nonce": {
+          "minLength": 1,
+          "title": "Hold Nonce",
+          "type": "string"
+        },
+        "hold_run_id": {
+          "minLength": 1,
+          "title": "Hold Run Id",
+          "type": "string"
+        },
+        "issuer_identity": {
+          "minLength": 1,
+          "title": "Issuer Identity",
+          "type": "string"
+        },
+        "observed_at": {
+          "format": "date-time",
+          "title": "Observed At",
+          "type": "string"
+        },
+        "operation_id": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Operation Id",
+          "type": "string"
+        },
+        "outcome": {
+          "enum": [
+            "transitioned",
+            "already_transitioned",
+            "reconciliation_required"
+          ],
+          "title": "Outcome",
+          "type": "string"
+        },
+        "release_authorization_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Release Authorization Digest",
+          "type": "string"
+        },
+        "repository_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Repository Digest",
+          "type": "string"
+        },
+        "response_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Response Digest",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "target_ref": {
+          "const": "refs/heads/main",
+          "default": "refs/heads/main",
+          "title": "Target Ref",
+          "type": "string"
+        },
+        "transition_count": {
+          "const": 1,
+          "default": 1,
+          "title": "Transition Count",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "repository_digest",
+        "operation_id",
+        "release_authorization_digest",
+        "group_sha",
+        "hold_run_id",
+        "hold_nonce",
+        "issuer_identity",
+        "outcome",
+        "response_digest",
+        "observed_at"
+      ],
+      "title": "MainReleaseTransitionReceipt",
+      "type": "object"
+    },
+    "MainSourcePackageBinding": {
+      "additionalProperties": false,
+      "description": "Immutable binding to a complete successful integration package.",
+      "properties": {
+        "child_artifacts": {
+          "items": {
+            "$ref": "#/$defs/ArtifactRef"
+          },
+          "minItems": 1,
+          "title": "Child Artifacts",
+          "type": "array"
+        },
+        "completion_state": {
+          "const": "successful",
+          "default": "successful",
+          "title": "Completion State",
+          "type": "string"
+        },
+        "deploy_performed": {
+          "const": false,
+          "default": false,
+          "title": "Deploy Performed",
+          "type": "boolean"
+        },
+        "operation_id": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Operation Id",
+          "type": "string"
+        },
+        "package_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Package Digest",
+          "type": "string"
+        },
+        "repository_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Repository Digest",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "source_issuer": {
+          "minLength": 1,
+          "title": "Source Issuer",
+          "type": "string"
+        },
+        "source_result_commit": {
+          "pattern": "^[0-9a-f]{40}(?:[0-9a-f]{24})?$",
+          "title": "Source Result Commit",
+          "type": "string"
+        },
+        "source_result_parent": {
+          "pattern": "^[0-9a-f]{40}(?:[0-9a-f]{24})?$",
+          "title": "Source Result Parent",
+          "type": "string"
+        },
+        "source_result_tree": {
+          "pattern": "^[0-9a-f]{40}(?:[0-9a-f]{24})?$",
+          "title": "Source Result Tree",
+          "type": "string"
+        },
+        "target_ref": {
+          "const": "refs/heads/main",
+          "default": "refs/heads/main",
+          "title": "Target Ref",
+          "type": "string"
+        }
+      },
+      "required": [
+        "repository_digest",
+        "operation_id",
+        "package_digest",
+        "child_artifacts",
+        "source_result_commit",
+        "source_result_tree",
+        "source_result_parent",
+        "source_issuer"
+      ],
+      "title": "MainSourcePackageBinding",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Final immutable package; its child refs are checked by the journal.",
+  "properties": {
+    "admission_observation": {
+      "$ref": "#/$defs/MainQueueAdmissionObservation"
+    },
+    "artifacts": {
+      "items": {
+        "$ref": "#/$defs/ArtifactRef"
+      },
+      "minItems": 1,
+      "title": "Artifacts",
+      "type": "array"
+    },
+    "deploy_performed": {
+      "const": false,
+      "default": false,
+      "title": "Deploy Performed",
+      "type": "boolean"
+    },
+    "hold_observation": {
+      "$ref": "#/$defs/MainReleaseHoldObservation"
+    },
+    "intent": {
+      "$ref": "#/$defs/MainGraduationIntent"
+    },
+    "operation_id": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Operation Id",
+      "type": "string"
+    },
+    "plan": {
+      "$ref": "#/$defs/MainGraduationPlan"
+    },
+    "preparation_authorization": {
+      "$ref": "#/$defs/MainPreparationAuthorization"
+    },
+    "provider_receipt": {
+      "$ref": "#/$defs/MainProviderReceipt"
+    },
+    "reconciliation": {
+      "$ref": "#/$defs/MainReconciliation"
+    },
+    "release_authorization": {
+      "$ref": "#/$defs/MainReleaseAuthorization"
+    },
+    "repository_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Repository Digest",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "target_ref": {
+      "const": "refs/heads/main",
+      "default": "refs/heads/main",
+      "title": "Target Ref",
+      "type": "string"
+    },
+    "transition_receipt": {
+      "$ref": "#/$defs/MainReleaseTransitionReceipt"
+    }
+  },
+  "required": [
+    "repository_digest",
+    "operation_id",
+    "plan",
+    "intent",
+    "preparation_authorization",
+    "admission_observation",
+    "hold_observation",
+    "release_authorization",
+    "transition_receipt",
+    "provider_receipt",
+    "reconciliation",
+    "artifacts"
+  ],
+  "title": "MainCompletionPackage",
+  "type": "object"
+}

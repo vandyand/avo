@@ -1,0 +1,140 @@
+{
+  "$defs": {
+    "MainCheckObservation": {
+      "additionalProperties": false,
+      "properties": {
+        "app_id": {
+          "exclusiveMinimum": 0,
+          "title": "App Id",
+          "type": "integer"
+        },
+        "conclusion": {
+          "enum": [
+            "success",
+            "neutral",
+            "failure",
+            "pending"
+          ],
+          "title": "Conclusion",
+          "type": "string"
+        },
+        "context": {
+          "minLength": 1,
+          "title": "Context",
+          "type": "string"
+        },
+        "name": {
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "nonce": {
+          "minLength": 1,
+          "title": "Nonce",
+          "type": "string"
+        },
+        "observed_at": {
+          "format": "date-time",
+          "title": "Observed At",
+          "type": "string"
+        },
+        "run_id": {
+          "minLength": 1,
+          "title": "Run Id",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "sha": {
+          "pattern": "^[0-9a-f]{40}(?:[0-9a-f]{24})?$",
+          "title": "Sha",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "completed",
+            "in_progress",
+            "queued"
+          ],
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "context",
+        "app_id",
+        "sha",
+        "status",
+        "conclusion",
+        "run_id",
+        "nonce",
+        "observed_at"
+      ],
+      "title": "MainCheckObservation",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "checks": {
+      "items": {
+        "$ref": "#/$defs/MainCheckObservation"
+      },
+      "minItems": 1,
+      "title": "Checks",
+      "type": "array"
+    },
+    "group_sha": {
+      "pattern": "^[0-9a-f]{40}(?:[0-9a-f]{24})?$",
+      "title": "Group Sha",
+      "type": "string"
+    },
+    "observed_at": {
+      "format": "date-time",
+      "title": "Observed At",
+      "type": "string"
+    },
+    "operation_id": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Operation Id",
+      "type": "string"
+    },
+    "repository_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Repository Digest",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "target_ref": {
+      "const": "refs/heads/main",
+      "default": "refs/heads/main",
+      "title": "Target Ref",
+      "type": "string"
+    },
+    "validation_app_id": {
+      "const": 15368,
+      "default": 15368,
+      "title": "Validation App Id",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "repository_digest",
+    "operation_id",
+    "group_sha",
+    "checks",
+    "observed_at"
+  ],
+  "title": "MainMergeGroupChecks",
+  "type": "object"
+}

@@ -1,0 +1,97 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "deploy_performed": {
+      "const": false,
+      "default": false,
+      "title": "Deploy Performed",
+      "type": "boolean"
+    },
+    "group_sha": {
+      "pattern": "^[0-9a-f]{40}(?:[0-9a-f]{24})?$",
+      "title": "Group Sha",
+      "type": "string"
+    },
+    "hold_nonce": {
+      "minLength": 1,
+      "title": "Hold Nonce",
+      "type": "string"
+    },
+    "hold_run_id": {
+      "minLength": 1,
+      "title": "Hold Run Id",
+      "type": "string"
+    },
+    "issuer_identity": {
+      "minLength": 1,
+      "title": "Issuer Identity",
+      "type": "string"
+    },
+    "observed_at": {
+      "format": "date-time",
+      "title": "Observed At",
+      "type": "string"
+    },
+    "operation_id": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Operation Id",
+      "type": "string"
+    },
+    "outcome": {
+      "enum": [
+        "transitioned",
+        "already_transitioned",
+        "reconciliation_required"
+      ],
+      "title": "Outcome",
+      "type": "string"
+    },
+    "release_authorization_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Release Authorization Digest",
+      "type": "string"
+    },
+    "repository_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Repository Digest",
+      "type": "string"
+    },
+    "response_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Response Digest",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "target_ref": {
+      "const": "refs/heads/main",
+      "default": "refs/heads/main",
+      "title": "Target Ref",
+      "type": "string"
+    },
+    "transition_count": {
+      "const": 1,
+      "default": 1,
+      "title": "Transition Count",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "repository_digest",
+    "operation_id",
+    "release_authorization_digest",
+    "group_sha",
+    "hold_run_id",
+    "hold_nonce",
+    "issuer_identity",
+    "outcome",
+    "response_digest",
+    "observed_at"
+  ],
+  "title": "MainReleaseTransitionReceipt",
+  "type": "object"
+}

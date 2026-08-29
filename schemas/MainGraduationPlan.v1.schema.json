@@ -1,0 +1,396 @@
+{
+  "$defs": {
+    "ArtifactRef": {
+      "additionalProperties": false,
+      "properties": {
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Digest",
+          "type": "string"
+        },
+        "media_type": {
+          "minLength": 1,
+          "title": "Media Type",
+          "type": "string"
+        },
+        "role": {
+          "minLength": 1,
+          "title": "Role",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "size_bytes": {
+          "minimum": 0,
+          "title": "Size Bytes",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "digest",
+        "size_bytes",
+        "media_type",
+        "role",
+        "created_at"
+      ],
+      "title": "ArtifactRef",
+      "type": "object"
+    },
+    "MainCompositionArtifact": {
+      "additionalProperties": false,
+      "description": "Deterministic application of the source delta to one fresh main base.",
+      "properties": {
+        "base_commit": {
+          "pattern": "^[0-9a-f]{40}(?:[0-9a-f]{24})?$",
+          "title": "Base Commit",
+          "type": "string"
+        },
+        "base_tree": {
+          "pattern": "^[0-9a-f]{40}(?:[0-9a-f]{24})?$",
+          "title": "Base Tree",
+          "type": "string"
+        },
+        "candidate_commit": {
+          "pattern": "^[0-9a-f]{40}(?:[0-9a-f]{24})?$",
+          "title": "Candidate Commit",
+          "type": "string"
+        },
+        "candidate_parent_commit": {
+          "pattern": "^[0-9a-f]{40}(?:[0-9a-f]{24})?$",
+          "title": "Candidate Parent Commit",
+          "type": "string"
+        },
+        "candidate_ref": {
+          "minLength": 1,
+          "title": "Candidate Ref",
+          "type": "string"
+        },
+        "candidate_tree": {
+          "pattern": "^[0-9a-f]{40}(?:[0-9a-f]{24})?$",
+          "title": "Candidate Tree",
+          "type": "string"
+        },
+        "composition_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Composition Digest",
+          "type": "string"
+        },
+        "delta_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Delta Digest",
+          "type": "string"
+        },
+        "deploy_performed": {
+          "const": false,
+          "default": false,
+          "title": "Deploy Performed",
+          "type": "boolean"
+        },
+        "operation_id": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Operation Id",
+          "type": "string"
+        },
+        "package_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Package Digest",
+          "type": "string"
+        },
+        "repository_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Repository Digest",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "target_ref": {
+          "const": "refs/heads/main",
+          "default": "refs/heads/main",
+          "title": "Target Ref",
+          "type": "string"
+        }
+      },
+      "required": [
+        "repository_digest",
+        "operation_id",
+        "package_digest",
+        "delta_digest",
+        "base_commit",
+        "base_tree",
+        "candidate_commit",
+        "candidate_tree",
+        "candidate_parent_commit",
+        "composition_digest",
+        "candidate_ref"
+      ],
+      "title": "MainCompositionArtifact",
+      "type": "object"
+    },
+    "MainDeltaManifest": {
+      "additionalProperties": false,
+      "description": "The exact sole-parent-to-result delta selected from the source package.",
+      "properties": {
+        "changed_paths": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Changed Paths",
+          "type": "array"
+        },
+        "delta_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Delta Digest",
+          "type": "string"
+        },
+        "deploy_performed": {
+          "const": false,
+          "default": false,
+          "title": "Deploy Performed",
+          "type": "boolean"
+        },
+        "operation_id": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Operation Id",
+          "type": "string"
+        },
+        "ordinary_risk": {
+          "const": "ordinary",
+          "default": "ordinary",
+          "title": "Ordinary Risk",
+          "type": "string"
+        },
+        "ordinary_risk_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Ordinary Risk Digest",
+          "type": "string"
+        },
+        "package_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Package Digest",
+          "type": "string"
+        },
+        "path_manifest_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Path Manifest Digest",
+          "type": "string"
+        },
+        "repository_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Repository Digest",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "source_result_commit": {
+          "pattern": "^[0-9a-f]{40}(?:[0-9a-f]{24})?$",
+          "title": "Source Result Commit",
+          "type": "string"
+        },
+        "source_result_parent": {
+          "pattern": "^[0-9a-f]{40}(?:[0-9a-f]{24})?$",
+          "title": "Source Result Parent",
+          "type": "string"
+        },
+        "source_result_tree": {
+          "pattern": "^[0-9a-f]{40}(?:[0-9a-f]{24})?$",
+          "title": "Source Result Tree",
+          "type": "string"
+        },
+        "target_ref": {
+          "const": "refs/heads/main",
+          "default": "refs/heads/main",
+          "title": "Target Ref",
+          "type": "string"
+        }
+      },
+      "required": [
+        "repository_digest",
+        "operation_id",
+        "package_digest",
+        "source_result_commit",
+        "source_result_parent",
+        "source_result_tree",
+        "changed_paths",
+        "path_manifest_digest",
+        "delta_digest",
+        "ordinary_risk_digest"
+      ],
+      "title": "MainDeltaManifest",
+      "type": "object"
+    },
+    "MainSourcePackageBinding": {
+      "additionalProperties": false,
+      "description": "Immutable binding to a complete successful integration package.",
+      "properties": {
+        "child_artifacts": {
+          "items": {
+            "$ref": "#/$defs/ArtifactRef"
+          },
+          "minItems": 1,
+          "title": "Child Artifacts",
+          "type": "array"
+        },
+        "completion_state": {
+          "const": "successful",
+          "default": "successful",
+          "title": "Completion State",
+          "type": "string"
+        },
+        "deploy_performed": {
+          "const": false,
+          "default": false,
+          "title": "Deploy Performed",
+          "type": "boolean"
+        },
+        "operation_id": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Operation Id",
+          "type": "string"
+        },
+        "package_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Package Digest",
+          "type": "string"
+        },
+        "repository_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Repository Digest",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "source_issuer": {
+          "minLength": 1,
+          "title": "Source Issuer",
+          "type": "string"
+        },
+        "source_result_commit": {
+          "pattern": "^[0-9a-f]{40}(?:[0-9a-f]{24})?$",
+          "title": "Source Result Commit",
+          "type": "string"
+        },
+        "source_result_parent": {
+          "pattern": "^[0-9a-f]{40}(?:[0-9a-f]{24})?$",
+          "title": "Source Result Parent",
+          "type": "string"
+        },
+        "source_result_tree": {
+          "pattern": "^[0-9a-f]{40}(?:[0-9a-f]{24})?$",
+          "title": "Source Result Tree",
+          "type": "string"
+        },
+        "target_ref": {
+          "const": "refs/heads/main",
+          "default": "refs/heads/main",
+          "title": "Target Ref",
+          "type": "string"
+        }
+      },
+      "required": [
+        "repository_digest",
+        "operation_id",
+        "package_digest",
+        "child_artifacts",
+        "source_result_commit",
+        "source_result_tree",
+        "source_result_parent",
+        "source_issuer"
+      ],
+      "title": "MainSourcePackageBinding",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "composition": {
+      "$ref": "#/$defs/MainCompositionArtifact"
+    },
+    "controller_config_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Controller Config Digest",
+      "type": "string"
+    },
+    "delta": {
+      "$ref": "#/$defs/MainDeltaManifest"
+    },
+    "deploy_performed": {
+      "const": false,
+      "default": false,
+      "title": "Deploy Performed",
+      "type": "boolean"
+    },
+    "evidence_artifacts": {
+      "items": {
+        "$ref": "#/$defs/ArtifactRef"
+      },
+      "minItems": 1,
+      "title": "Evidence Artifacts",
+      "type": "array"
+    },
+    "operation_id": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Operation Id",
+      "type": "string"
+    },
+    "package": {
+      "$ref": "#/$defs/MainSourcePackageBinding"
+    },
+    "policy_epoch": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Policy Epoch",
+      "type": "string"
+    },
+    "repository_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Repository Digest",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "target_ref": {
+      "const": "refs/heads/main",
+      "default": "refs/heads/main",
+      "title": "Target Ref",
+      "type": "string"
+    }
+  },
+  "required": [
+    "repository_digest",
+    "operation_id",
+    "package",
+    "delta",
+    "composition",
+    "policy_epoch",
+    "controller_config_digest",
+    "evidence_artifacts"
+  ],
+  "title": "MainGraduationPlan",
+  "type": "object"
+}

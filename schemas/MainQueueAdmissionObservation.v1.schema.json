@@ -1,0 +1,172 @@
+{
+  "additionalProperties": false,
+  "description": "One-use, PR-head-only admission proof (never group evidence).",
+  "properties": {
+    "admission_nonce": {
+      "minLength": 1,
+      "title": "Admission Nonce",
+      "type": "string"
+    },
+    "admission_run_id": {
+      "minLength": 1,
+      "title": "Admission Run Id",
+      "type": "string"
+    },
+    "admission_sha": {
+      "pattern": "^[0-9a-f]{40}(?:[0-9a-f]{24})?$",
+      "title": "Admission Sha",
+      "type": "string"
+    },
+    "base_commit": {
+      "pattern": "^[0-9a-f]{40}(?:[0-9a-f]{24})?$",
+      "title": "Base Commit",
+      "type": "string"
+    },
+    "base_tree": {
+      "pattern": "^[0-9a-f]{40}(?:[0-9a-f]{24})?$",
+      "title": "Base Tree",
+      "type": "string"
+    },
+    "check_conclusion": {
+      "const": "success",
+      "default": "success",
+      "title": "Check Conclusion",
+      "type": "string"
+    },
+    "check_context": {
+      "const": "avo-main-release",
+      "default": "avo-main-release",
+      "title": "Check Context",
+      "type": "string"
+    },
+    "check_state": {
+      "const": "completed",
+      "default": "completed",
+      "title": "Check State",
+      "type": "string"
+    },
+    "composition_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Composition Digest",
+      "type": "string"
+    },
+    "head_commit": {
+      "pattern": "^[0-9a-f]{40}(?:[0-9a-f]{24})?$",
+      "title": "Head Commit",
+      "type": "string"
+    },
+    "head_tree": {
+      "pattern": "^[0-9a-f]{40}(?:[0-9a-f]{24})?$",
+      "title": "Head Tree",
+      "type": "string"
+    },
+    "issuer_identity": {
+      "minLength": 1,
+      "title": "Issuer Identity",
+      "type": "string"
+    },
+    "issuer_isolation_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Issuer Isolation Digest",
+      "type": "string"
+    },
+    "observed_at": {
+      "format": "date-time",
+      "title": "Observed At",
+      "type": "string"
+    },
+    "one_use": {
+      "const": true,
+      "default": true,
+      "title": "One Use",
+      "type": "boolean"
+    },
+    "operation_id": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Operation Id",
+      "type": "string"
+    },
+    "package_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Package Digest",
+      "type": "string"
+    },
+    "preparation_authorization_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Preparation Authorization Digest",
+      "type": "string"
+    },
+    "protection_manifest_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Protection Manifest Digest",
+      "type": "string"
+    },
+    "pull_request_number": {
+      "exclusiveMinimum": 0,
+      "title": "Pull Request Number",
+      "type": "integer"
+    },
+    "pull_request_url": {
+      "minLength": 1,
+      "title": "Pull Request Url",
+      "type": "string"
+    },
+    "queue_generation_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Queue Generation Digest",
+      "type": "string"
+    },
+    "release_transition": {
+      "const": false,
+      "default": false,
+      "title": "Release Transition",
+      "type": "boolean"
+    },
+    "repository_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Repository Digest",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "target_ref": {
+      "const": "refs/heads/main",
+      "default": "refs/heads/main",
+      "title": "Target Ref",
+      "type": "string"
+    },
+    "validation_app_id": {
+      "const": 15368,
+      "default": 15368,
+      "title": "Validation App Id",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "repository_digest",
+    "operation_id",
+    "preparation_authorization_digest",
+    "package_digest",
+    "composition_digest",
+    "pull_request_number",
+    "pull_request_url",
+    "base_commit",
+    "base_tree",
+    "head_commit",
+    "head_tree",
+    "admission_sha",
+    "admission_run_id",
+    "admission_nonce",
+    "queue_generation_digest",
+    "protection_manifest_digest",
+    "issuer_identity",
+    "issuer_isolation_digest",
+    "observed_at"
+  ],
+  "title": "MainQueueAdmissionObservation",
+  "type": "object"
+}
