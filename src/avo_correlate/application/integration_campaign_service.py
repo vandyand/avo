@@ -9,6 +9,7 @@ observed before the bundle which carries its attestations can be frozen.
 
 from __future__ import annotations
 
+import hashlib
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -403,13 +404,14 @@ class IntegrationCampaignService:
             main_after_commit=main_after,
             deploy_performed=False,
         )
+        package_data = canonical_bytes(package)
         package_ref = self._artifact_writer.put_bytes(
-            canonical_bytes(package.model_dump(mode="json")),
+            package_data,
             media_type="application/vnd.avo.integration-campaign+json",
             role="integration-campaign-evidence",
             max_bytes=self._max_package_bytes,
         )
-        if package_ref.digest != canonical_digest(package):
+        if package_ref.digest != "sha256:" + hashlib.sha256(package_data).hexdigest():
             raise IntegrationCampaignUnsafeError("campaign package artifact digest mismatch")
         return IntegrationCampaignResult(
             report=report, package=package, package_artifact=package_ref
@@ -501,14 +503,14 @@ class IntegrationCampaignService:
                 main_after_commit=main_after,
                 deploy_performed=False,
             )
-            data = canonical_bytes(package.model_dump(mode="json"))
+            data = canonical_bytes(package)
             written = self._artifact_writer.put_bytes(
                 data,
                 media_type="application/vnd.avo.integration-campaign+json",
                 role="integration-campaign-evidence",
                 max_bytes=self._max_package_bytes,
             )
-            if written.digest != canonical_digest(package):
+            if written.digest != "sha256:" + hashlib.sha256(data).hexdigest():
                 raise IntegrationCampaignUnsafeError("campaign package artifact digest mismatch")
             package_ref = store.record_package(package)
             self._release_recovered_lease(intent)

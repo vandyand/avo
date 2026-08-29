@@ -1,0 +1,58 @@
+{
+  "additionalProperties": false,
+  "description": "Authenticated read-only proof that a candidate has no hosted residue.",
+  "properties": {
+    "base_commit": {
+      "title": "Base Commit",
+      "type": "string"
+    },
+    "candidate_commit": {
+      "title": "Candidate Commit",
+      "type": "string"
+    },
+    "candidate_ref": {
+      "minLength": 1,
+      "title": "Candidate Ref",
+      "type": "string"
+    },
+    "observation_id": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Observation Id",
+      "type": "string"
+    },
+    "pull_request_numbers": {
+      "items": {
+        "type": "integer"
+      },
+      "maxItems": 0,
+      "title": "Pull Request Numbers",
+      "type": "array"
+    },
+    "ref_absent": {
+      "const": true,
+      "default": true,
+      "title": "Ref Absent",
+      "type": "boolean"
+    },
+    "repository_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Repository Digest",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "repository_digest",
+    "candidate_ref",
+    "candidate_commit",
+    "base_commit",
+    "observation_id"
+  ],
+  "title": "RollbackRemoteAbsenceObservation",
+  "type": "object"
+}

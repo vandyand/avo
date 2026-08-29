@@ -40,6 +40,7 @@ D = github_repository_digest("acme", "widget")
 G = "a" * 40
 H = "b" * 40
 C = "c" * 40
+RECOVERY_REF = "refs/heads/avo/candidate/" + "d" * 64
 
 
 def valid_intent(**updates: object) -> IntegrationPromotionIntent:
@@ -1267,6 +1268,87 @@ def test_observe_failed_soak_uses_filename_endpoint_and_binds_restore_parent() -
     assert observed.marker_blob_digest == SOAK_MARKER_BLOB_DIGEST
     assert any("actions/workflows/integration-soak.yml/runs?" in url for url in calls)
     assert not any("actions/workflows/.github" in url for url in calls)
+
+
+def test_verify_recovery_absence_requires_missing_ref_and_empty_all_pr_pages() -> None:
+    calls: list[str] = []
+
+    def transport(
+        method: str, url: str, body: JsonBody | None, headers: Mapping[str, str]
+    ) -> tuple[int, JsonValue]:
+        del method, body, headers
+        calls.append(url)
+        if "/git/ref/heads/" in url:
+            return 404, {}
+        if "/pulls?state=all" in url:
+            return 200, []
+        raise AssertionError(url)
+
+    provider = GitHubIntegrationProvider(
+        owner="acme",
+        repo="widget",
+        repository_digest=D,
+        target_ref="refs/heads/integration",
+        trusted_checks=(("ci", 7),),
+        protection_checks=(("ci", 7),),
+        freshness_cutoff=datetime(2026, 1, 1, tzinfo=UTC),
+        transport=transport,
+        token="trusted",
+    )
+    provider.verify_recovery_absence(RECOVERY_REF, H, G)
+    assert any("state=all" in url for url in calls)
+
+
+def test_verify_recovery_absence_rejects_any_matching_pull_request() -> None:
+    def transport(
+        method: str, url: str, body: JsonBody | None, headers: Mapping[str, str]
+    ) -> tuple[int, JsonValue]:
+        del method, body, headers
+        if "/git/ref/heads/" in url:
+            return 404, {}
+        if "/pulls?state=all" in url:
+            return 200, [{"number": 17}]
+        raise AssertionError(url)
+
+    provider = GitHubIntegrationProvider(
+        owner="acme",
+        repo="widget",
+        repository_digest=D,
+        target_ref="refs/heads/integration",
+        trusted_checks=(("ci", 7),),
+        protection_checks=(("ci", 7),),
+        freshness_cutoff=datetime(2026, 1, 1, tzinfo=UTC),
+        transport=transport,
+        token="trusted",
+    )
+    with pytest.raises(ValueError, match="existing pull request"):
+        provider.verify_recovery_absence(RECOVERY_REF, H, G)
+
+
+@pytest.mark.parametrize("ref_status", [200, 403])
+def test_verify_recovery_absence_rejects_existing_or_unauthorized_ref(ref_status: int) -> None:
+    def transport(
+        method: str, url: str, body: JsonBody | None, headers: Mapping[str, str]
+    ) -> tuple[int, JsonValue]:
+        del method, body, headers
+        if "/git/ref/heads/" in url:
+            return ref_status, {}
+        raise AssertionError(url)
+
+    provider = GitHubIntegrationProvider(
+        owner="acme",
+        repo="widget",
+        repository_digest=D,
+        target_ref="refs/heads/integration",
+        trusted_checks=(("ci", 7),),
+        protection_checks=(("ci", 7),),
+        freshness_cutoff=datetime(2026, 1, 1, tzinfo=UTC),
+        transport=transport,
+        token="trusted",
+    )
+    match = "already exists" if ref_status == 200 else "rejected"
+    with pytest.raises((ValueError, GitHubRejected), match=match):
+        provider.verify_recovery_absence(RECOVERY_REF, H, G)
 
 
 @pytest.mark.parametrize(

@@ -19,6 +19,8 @@ from avo_correlate.contracts.base import ArtifactRef
 from avo_correlate.contracts.integration_live_rollback_completion import (
     LiveRollbackCompletionPackage,
 )
+from avo_correlate.contracts.integration_soak import FailedSoakAttestation
+from avo_correlate.contracts.prepublication import RollbackPublicationAuthorization
 from avo_correlate.domain.canonical import canonical_bytes, canonical_digest
 from scripts.run_avo0046_live_rollback import (
     ROLLBACK_BASE_ISSUER,
@@ -27,10 +29,12 @@ from scripts.run_avo0046_live_rollback import (
     ROLLBACK_PUBLISHER_ID,
     LiveRollbackHostedRunner,
     LiveRollbackOperator,
+    _assert_not_quarantined,  # pyright: ignore[reportPrivateUsage]
     _assert_safe_roots,  # pyright: ignore[reportPrivateUsage]
     _authority_config,  # pyright: ignore[reportPrivateUsage]
     _check_operation_id,  # pyright: ignore[reportPrivateUsage]
     _main_head,  # pyright: ignore[reportPrivateUsage]
+    _read_legacy_recovery_soak,  # pyright: ignore[reportPrivateUsage]
     _rollback_controller_config,  # pyright: ignore[reportPrivateUsage]
     _validate_completed_canary,  # pyright: ignore[reportPrivateUsage]
     build_parser,
@@ -39,6 +43,7 @@ from scripts.run_avo0046_live_rollback import (
 from tests.unit.test_integration_live_rollback_completion import (  # pyright: ignore[reportPrivateUsage]
     _completion_fixture,  # pyright: ignore[reportPrivateUsage]
 )
+from tests.unit.test_rollback_bundle_authority import Fixture as AuthorityFixture
 
 
 class _DurableCompletionJournal:
@@ -192,6 +197,81 @@ def test_runner_rejects_candidate_vcs_metadata_before_execution(tmp_path: Path) 
     (candidate / ".git").mkdir()
     with pytest.raises(ValueError, match="VCS-free"):
         _assert_safe_roots(tmp_path / "state", repository, candidate)
+
+
+def test_runner_missing_legacy_recovery_input_does_not_write_state(tmp_path: Path) -> None:
+    operation_id = "sha256:" + "a" * 64
+    existing = RollbackPublicationAuthorization.model_construct(operation_id=operation_id)
+
+    class Journal:
+        def read_failed_soak_data(self, _authorization: object) -> None:
+            return None
+
+    with pytest.raises(RuntimeError, match="recovery input is missing"):
+        _read_legacy_recovery_soak(tmp_path / "state", operation_id, Journal(), existing)  # type: ignore[arg-type]
+    assert not (tmp_path / "state").exists()
+
+
+def test_runner_reads_only_canonical_operation_keyed_legacy_soak(tmp_path: Path) -> None:
+    fixture = AuthorityFixture(tmp_path / "authority")
+    operation_id = fixture.operation.operation_id
+    existing = RollbackPublicationAuthorization.model_construct(operation_id=operation_id)
+
+    class Journal:
+        def read_failed_soak_data(self, _authorization: object) -> None:
+            return None
+
+    recovery_dir = tmp_path / "state" / "rollback-recovery"
+    recovery_dir.mkdir(parents=True)
+    path = recovery_dir / (operation_id.removeprefix("sha256:") + ".json")
+    path.write_bytes(canonical_bytes(fixture.soak))
+    recovered = _read_legacy_recovery_soak(
+        tmp_path / "state", operation_id, Journal(), existing  # type: ignore[arg-type]
+    )
+    assert isinstance(recovered, FailedSoakAttestation)
+    assert recovered == fixture.soak
+
+    path.write_bytes(b'{"schema_version":1}')
+    with pytest.raises(RuntimeError, match="recovery input is malformed"):
+        _read_legacy_recovery_soak(
+            tmp_path / "state", operation_id, Journal(), existing  # type: ignore[arg-type]
+        )
+
+
+def test_runner_rejects_terminal_quarantine_before_provider_reads(tmp_path: Path) -> None:
+    fixture = AuthorityFixture(tmp_path / "authority")
+    authorization = fixture.authorize()
+    quarantine = tmp_path / "state" / "rollback-quarantine"
+    quarantine.mkdir(parents=True)
+    remote_absence: dict[str, Any] = {
+        "schema_version": 1,
+        "repository_digest": authorization.repository_digest,
+        "candidate_ref": authorization.candidate_ref,
+        "candidate_commit": authorization.rollback_candidate_commit,
+        "base_commit": authorization.failed_integration_head_commit,
+        "ref_absent": True,
+        "pull_request_numbers": [],
+    }
+    values: dict[str, Any] = {
+        "schema_version": 1,
+        "operation_id": authorization.operation_id,
+        "authorization_id": authorization.authorization_id,
+        "authorization_index_digest": "sha256:" + "a" * 64,
+        "canary_operation_id": authorization.canary_operation_id,
+        "canary_package_digest": authorization.canary_package_digest,
+        "publication_plan_digest": authorization.publication_plan_digest,
+        "publication_plan_artifact_digest": fixture.plan_ref.digest,
+        "candidate_ref": authorization.candidate_ref,
+        "candidate_commit": authorization.rollback_candidate_commit,
+        "candidate_parent_commit": authorization.rollback_candidate_parent_commit,
+        "reason": "operator abandoned before publication",
+        "remote_absence": remote_absence,
+    }
+    remote_absence["observation_id"] = canonical_digest(remote_absence)
+    values["quarantine_id"] = canonical_digest(values)
+    (quarantine / (authorization.operation_id[7:] + ".json")).write_bytes(canonical_bytes(values))
+    with pytest.raises(RuntimeError, match="terminally quarantined"):
+        _assert_not_quarantined(tmp_path / "state", authorization.operation_id)
 
 
 def test_runner_reads_protected_main_with_explicit_authority_opt_in() -> None:

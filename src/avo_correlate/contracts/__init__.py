@@ -12,6 +12,8 @@ from avo_correlate.contracts.integration_campaign import (
     CampaignPreparationEvidence,
     IntegrationCampaignEvidencePackage,
     IntegrationIntentTemplate,
+    campaign_package_bytes,
+    verify_campaign_package_artifact,
 )
 from avo_correlate.contracts.integration_drill import IntegrationRollbackRequest
 from avo_correlate.contracts.integration_live_rollback import LiveRollbackEvidencePackage
@@ -39,8 +41,10 @@ from avo_correlate.contracts.integration_promotion import (
 from avo_correlate.contracts.integration_soak import FailedSoakAttestation
 from avo_correlate.contracts.policy import PolicyDecision
 from avo_correlate.contracts.prepublication import (
+    RollbackOperationQuarantine,
     RollbackPublicationAuthorityConfig,
     RollbackPublicationAuthorization,
+    RollbackRemoteAbsenceObservation,
     RollbackSnapshotRestoreFacts,
 )
 from avo_correlate.contracts.promotion_bundle import (
@@ -128,9 +132,11 @@ __all__ = [
     "PromotionReplayReport",
     "PromotionRequest",
     "ReconciliationCaseRecord",
+    "RollbackOperationQuarantine",
     "RollbackPromotionBundleAuthorization",
     "RollbackPublicationAuthorityConfig",
     "RollbackPublicationAuthorization",
+    "RollbackRemoteAbsenceObservation",
     "RollbackSnapshotRestoreFacts",
     "RuntimeCapabilityReport",
     "RuntimeEvent",
@@ -143,4 +149,6 @@ __all__ = [
     "VariationSessionResult",
     "VersionedComponentRef",
     "WorkspaceComparison",
+    "campaign_package_bytes",
+    "verify_campaign_package_artifact",
 ]
