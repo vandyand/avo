@@ -345,6 +345,7 @@ def test_provider_receipt_rejects_provider_identity_substitution(tmp_path: Path)
         outcome="observed",
         result_tree=TREE,
         result_parents=[BASE],
+        observed_at=datetime.now(UTC) + timedelta(seconds=1),
     )
     journal = MainGraduationJournal(tmp_path)
     transition = MainReleaseTransitionReceipt.model_construct(
@@ -352,6 +353,7 @@ def test_provider_receipt_rejects_provider_identity_substitution(tmp_path: Path)
         repository_digest=DIGEST,
         target_ref="refs/heads/main",
         release_authorization_digest=canonical_digest(authorization),
+        observed_at=datetime.now(UTC),
     )
     records = {
         "release-authorization": authorization,
@@ -436,6 +438,7 @@ def test_provider_recovery_receipts_do_not_claim_success_and_remain_verifiable(
         result_commit=None,
         result_tree=None,
         result_parents=[],
+        observed_at=datetime.now(UTC) + timedelta(seconds=1),
     )
     journal = MainGraduationJournal(tmp_path)
     transition = MainReleaseTransitionReceipt.model_construct(
@@ -443,6 +446,7 @@ def test_provider_recovery_receipts_do_not_claim_success_and_remain_verifiable(
         repository_digest=DIGEST,
         target_ref="refs/heads/main",
         release_authorization_digest=canonical_digest(authorization),
+        observed_at=datetime.now(UTC),
     )
     records = {
         "release-authorization": authorization,
@@ -532,6 +536,7 @@ def test_reconciliation_rejects_wrong_composition_tree_or_repository(tmp_path: P
         result_commit=HEAD,
         result_tree=TREE,
         result_parents=[BASE],
+        observed_at=now + timedelta(seconds=1),
     )
     reconciliation = MainReconciliation.model_construct(
         operation_id=DIGEST,

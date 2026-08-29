@@ -546,6 +546,8 @@ class MainGraduationJournal:
             or preparation.policy_epoch != plan.policy_epoch
         ):
             raise MainGraduationJournalError("preparation plan/intent binding differs")
+        if intent.recorded_at > preparation.authorized_at:
+            raise MainGraduationJournalError("preparation predates intent")
 
     def _require_queue_admission(self, admission: MainQueueAdmissionObservation) -> None:
         """Admission independently closes the queue/base/protection snapshot."""
@@ -781,6 +783,8 @@ class MainGraduationJournal:
             raise MainGraduationJournalError("provider receipt requires durable release transition")
         transition = cast(MainReleaseTransitionReceipt, transition_prior[0])
         self._require_release_authorization(transition)
+        if receipt.observed_at < transition.observed_at:
+            raise MainGraduationJournalError("provider receipt predates release transition")
         queue_prior = self._read("queue", receipt.operation_id)
         protection_prior = self._read("protection", receipt.operation_id)
         plan_prior = self._read("plan", receipt.operation_id)
