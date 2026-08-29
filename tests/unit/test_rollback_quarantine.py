@@ -2,20 +2,26 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 import pytest
 
 from avo_correlate.adapters.artifacts.rollback_quarantine import (
     RollbackOperationQuarantineJournal,
 )
-from avo_correlate.contracts.prepublication import RollbackRemoteAbsenceObservation
+from avo_correlate.contracts.prepublication import (
+    RollbackPublicationAuthorization,
+    RollbackRemoteAbsenceObservation,
+)
 from avo_correlate.domain.canonical import canonical_digest
 from scripts.run_avo0046_live_rollback import quarantine_rollback_operation
 from tests.unit.test_rollback_bundle_authority import Fixture
 
 
-def _absence(authorization: object) -> RollbackRemoteAbsenceObservation:
-    values = {
+def _absence(
+    authorization: RollbackPublicationAuthorization,
+) -> RollbackRemoteAbsenceObservation:
+    values: dict[str, Any] = {
         "schema_version": 1,
         "repository_digest": authorization.repository_digest,
         "candidate_ref": authorization.candidate_ref,
@@ -83,6 +89,10 @@ def test_quarantine_rejects_mixed_or_tampered_authority_index(tmp_path: Path) ->
     value = json.loads(index_path.read_bytes())
     value["authorization"]["operation_id"] = "sha256:" + "f" * 64
     journal = RollbackOperationQuarantineJournal(tmp_path / "quarantine")
+
+    def forbidden_absence_verifier(_ref: str, _commit: str, _base: str) -> object:
+        pytest.fail("absence must not be checked")
+
     with pytest.raises(ValueError, match="authorization index"):
         journal.create_for_authorization(
             authorization,
@@ -90,7 +100,7 @@ def test_quarantine_rejects_mixed_or_tampered_authority_index(tmp_path: Path) ->
             canary_package_artifact=fixture.canary_ref,
             publication_plan_artifact=fixture.plan_ref,
             reason="abandoned",
-            absence_verifier=lambda *_: pytest.fail("absence must not be checked"),
+            absence_verifier=forbidden_absence_verifier,
         )
 
 

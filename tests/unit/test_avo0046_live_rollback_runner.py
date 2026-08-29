@@ -243,7 +243,16 @@ def test_runner_rejects_terminal_quarantine_before_provider_reads(tmp_path: Path
     authorization = fixture.authorize()
     quarantine = tmp_path / "state" / "rollback-quarantine"
     quarantine.mkdir(parents=True)
-    values = {
+    remote_absence: dict[str, Any] = {
+        "schema_version": 1,
+        "repository_digest": authorization.repository_digest,
+        "candidate_ref": authorization.candidate_ref,
+        "candidate_commit": authorization.rollback_candidate_commit,
+        "base_commit": authorization.failed_integration_head_commit,
+        "ref_absent": True,
+        "pull_request_numbers": [],
+    }
+    values: dict[str, Any] = {
         "schema_version": 1,
         "operation_id": authorization.operation_id,
         "authorization_id": authorization.authorization_id,
@@ -256,17 +265,9 @@ def test_runner_rejects_terminal_quarantine_before_provider_reads(tmp_path: Path
         "candidate_commit": authorization.rollback_candidate_commit,
         "candidate_parent_commit": authorization.rollback_candidate_parent_commit,
         "reason": "operator abandoned before publication",
-        "remote_absence": {
-            "schema_version": 1,
-            "repository_digest": authorization.repository_digest,
-            "candidate_ref": authorization.candidate_ref,
-            "candidate_commit": authorization.rollback_candidate_commit,
-            "base_commit": authorization.failed_integration_head_commit,
-            "ref_absent": True,
-            "pull_request_numbers": [],
-        },
+        "remote_absence": remote_absence,
     }
-    values["remote_absence"]["observation_id"] = canonical_digest(values["remote_absence"])
+    remote_absence["observation_id"] = canonical_digest(remote_absence)
     values["quarantine_id"] = canonical_digest(values)
     (quarantine / (authorization.operation_id[7:] + ".json")).write_bytes(canonical_bytes(values))
     with pytest.raises(RuntimeError, match="terminally quarantined"):
