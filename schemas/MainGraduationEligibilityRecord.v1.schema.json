@@ -1,0 +1,153 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "classification": {
+      "enum": [
+        "eligible",
+        "excluded"
+      ],
+      "title": "Classification",
+      "type": "string"
+    },
+    "deploy_performed": {
+      "const": false,
+      "default": false,
+      "title": "Deploy Performed",
+      "type": "boolean"
+    },
+    "disposition_digest": {
+      "anyOf": [
+        {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Disposition Digest"
+    },
+    "exclusion_evidence_digest": {
+      "anyOf": [
+        {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Exclusion Evidence Digest"
+    },
+    "exclusion_reason": {
+      "anyOf": [
+        {
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Exclusion Reason"
+    },
+    "nonempty": {
+      "title": "Nonempty",
+      "type": "boolean"
+    },
+    "operation_id": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Operation Id",
+      "type": "string"
+    },
+    "ordinary": {
+      "title": "Ordinary",
+      "type": "boolean"
+    },
+    "previous_scheduler_sequence": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Previous Scheduler Sequence"
+    },
+    "repository_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Repository Digest",
+      "type": "string"
+    },
+    "scheduler_sequence": {
+      "exclusiveMinimum": 0,
+      "title": "Scheduler Sequence",
+      "type": "integer"
+    },
+    "scheduler_watermark": {
+      "anyOf": [
+        {
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Scheduler Watermark"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "submission_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Submission Digest",
+      "type": "string"
+    },
+    "target_ref": {
+      "const": "refs/heads/main",
+      "default": "refs/heads/main",
+      "title": "Target Ref",
+      "type": "string"
+    },
+    "terminal_disposition": {
+      "anyOf": [
+        {
+          "enum": [
+            "success",
+            "failed",
+            "quarantined",
+            "reconciliation_required",
+            "reset"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Terminal Disposition"
+    }
+  },
+  "required": [
+    "repository_digest",
+    "operation_id",
+    "scheduler_sequence",
+    "submission_digest",
+    "classification",
+    "ordinary",
+    "nonempty"
+  ],
+  "title": "MainGraduationEligibilityRecord",
+  "type": "object"
+}

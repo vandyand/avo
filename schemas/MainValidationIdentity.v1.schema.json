@@ -1,0 +1,22 @@
+{
+  "additionalProperties": false,
+  "description": "The validation principal is fixed to App 15368.",
+  "properties": {
+    "app_id": {
+      "const": 15368,
+      "default": 15368,
+      "title": "App Id",
+      "type": "integer"
+    },
+    "identity": {
+      "minLength": 1,
+      "title": "Identity",
+      "type": "string"
+    }
+  },
+  "required": [
+    "identity"
+  ],
+  "title": "MainValidationIdentity",
+  "type": "object"
+}

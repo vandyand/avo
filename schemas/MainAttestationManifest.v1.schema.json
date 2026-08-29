@@ -1,0 +1,87 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "composition_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Composition Digest",
+      "type": "string"
+    },
+    "deploy_performed": {
+      "const": false,
+      "default": false,
+      "title": "Deploy Performed",
+      "type": "boolean"
+    },
+    "evaluator_evidence_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Evaluator Evidence Digest",
+      "type": "string"
+    },
+    "evaluator_identity": {
+      "minLength": 1,
+      "title": "Evaluator Identity",
+      "type": "string"
+    },
+    "independent": {
+      "const": true,
+      "default": true,
+      "title": "Independent",
+      "type": "boolean"
+    },
+    "operation_id": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Operation Id",
+      "type": "string"
+    },
+    "package_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Package Digest",
+      "type": "string"
+    },
+    "policy_epoch": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Policy Epoch",
+      "type": "string"
+    },
+    "repository_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Repository Digest",
+      "type": "string"
+    },
+    "reviewer_evidence_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Reviewer Evidence Digest",
+      "type": "string"
+    },
+    "reviewer_identity": {
+      "minLength": 1,
+      "title": "Reviewer Identity",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "target_ref": {
+      "const": "refs/heads/main",
+      "default": "refs/heads/main",
+      "title": "Target Ref",
+      "type": "string"
+    }
+  },
+  "required": [
+    "repository_digest",
+    "operation_id",
+    "package_digest",
+    "composition_digest",
+    "policy_epoch",
+    "reviewer_identity",
+    "reviewer_evidence_digest",
+    "evaluator_identity",
+    "evaluator_evidence_digest"
+  ],
+  "title": "MainAttestationManifest",
+  "type": "object"
+}
