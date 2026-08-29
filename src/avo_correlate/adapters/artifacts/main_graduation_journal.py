@@ -1024,16 +1024,15 @@ class MainGraduationJournal:
     def _check_eligibility_predecessor(self, record: MainGraduationEligibilityRecord) -> None:
         path = self._sequence_path(record.scheduler_sequence)
         if path.is_file():
-            try:
-                old_data = path.read_text(encoding="utf-8").encode("utf-8")
-                old = json.loads(old_data, object_pairs_hook=_strict_pairs)
-                if canonical_bytes(old) != old_data:
-                    raise ValueError("scheduler sequence index is not canonical JSON")
-            except (OSError, ValueError, TypeError, UnicodeError, json.JSONDecodeError) as exc:
-                raise MainGraduationJournalError("scheduler sequence index is malformed") from exc
-            if old.get("operation_id") != record.operation_id:
+            existing = self.read_eligibility_sequence(record.scheduler_sequence)
+            if existing is None or existing[0] != record.operation_id:
                 raise MainGraduationRecordConflictError(
                     "scheduler sequence is already occupied"
+                ) from None
+            durable = self._read("eligibility", existing[0])
+            if durable is None or canonical_bytes(durable[0]) != canonical_bytes(record):
+                raise MainGraduationRecordConflictError(
+                    "scheduler sequence differs from canonical eligibility record"
                 ) from None
             return
         if record.previous_scheduler_sequence is not None:
@@ -1071,16 +1070,31 @@ class MainGraduationJournal:
                 os.fsync(handle.fileno())
             _sync_directory(path.parent)
         except FileExistsError:
-            try:
-                existing_data = path.read_text(encoding="utf-8").encode("utf-8")
-                existing = json.loads(existing_data, object_pairs_hook=_strict_pairs)
-                if canonical_bytes(existing) != existing_data:
-                    raise ValueError("scheduler sequence index is not canonical JSON")
-            except (OSError, ValueError, TypeError, UnicodeError, json.JSONDecodeError) as exc:
-                raise MainGraduationJournalError("scheduler sequence index is malformed") from exc
-            if existing.get("operation_id") != record.operation_id:
+            existing = self.read_eligibility_sequence(record.scheduler_sequence)
+            if existing is None or existing[0] != record.operation_id:
                 raise MainGraduationRecordConflictError(
                     "scheduler sequence is already occupied"
+                ) from None
+            durable = self._read("eligibility", existing[0])
+            immutable_existing = (
+                existing[1].digest,
+                existing[1].role,
+                existing[1].media_type,
+                existing[1].size_bytes,
+            )
+            immutable_reference = (
+                reference.digest,
+                reference.role,
+                reference.media_type,
+                reference.size_bytes,
+            )
+            if (
+                durable is None
+                or canonical_bytes(durable[0]) != canonical_bytes(record)
+                or immutable_existing != immutable_reference
+            ):
+                raise MainGraduationRecordConflictError(
+                    "scheduler sequence differs from canonical eligibility record"
                 ) from None
         except OSError as exc:
             raise MainGraduationJournalError("scheduler sequence was not durably indexed") from exc

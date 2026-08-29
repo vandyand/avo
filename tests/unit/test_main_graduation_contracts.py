@@ -745,7 +745,8 @@ def test_first_post_watermark_eligibility_is_adjacent_without_predecessor(tmp_pa
         nonempty=True,
     )
     journal = MainGraduationJournal(tmp_path)
-    journal.record_eligibility(record)
+    first = journal.record_eligibility(record)
+    assert journal.record_eligibility(record) == first
     assert journal.read_eligibility_sequence(8) is not None
     with pytest.raises(MainGraduationJournalError, match="adjacent"):
         journal.record_eligibility(
