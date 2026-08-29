@@ -52,6 +52,17 @@ class MainGraduationRecordConflictError(MainGraduationJournalError):
     """A create-once key was already bound to different canonical bytes."""
 
 
+class _RunNonceEnvelope(StrictModel):
+    """Canonical global one-use identity bound to the original local record ref."""
+
+    schema_version: Literal[1] = 1
+    stage: Literal["admission", "hold"]
+    operation_id: str
+    run_id: str
+    nonce: str
+    reference: ArtifactRef
+
+
 _MODELS: dict[str, type[StrictModel]] = {
     "ledger-started": EligibilityLedgerStarted,
     "plan": MainGraduationPlan,
@@ -966,7 +977,15 @@ class MainGraduationJournal:
             run_id, nonce = record.hold_run_id, record.hold_nonce
         path = self._run_nonce_path(stage, run_id, nonce)
         path.parent.mkdir(parents=True, exist_ok=True)
-        payload = canonical_bytes({"operation_id": record.operation_id, "reference": reference})
+        payload = canonical_bytes(
+            _RunNonceEnvelope(
+                stage=stage,
+                operation_id=record.operation_id,
+                run_id=run_id,
+                nonce=nonce,
+                reference=reference,
+            )
+        )
         try:
             with path.open("xb") as handle:
                 handle.write(payload)
@@ -976,37 +995,32 @@ class MainGraduationJournal:
             return None
         except FileExistsError:
             try:
-                current = json.loads(
-                    path.read_text(encoding="utf-8"), object_pairs_hook=_strict_pairs
-                )
-                if canonical_bytes(current) != path.read_text(encoding="utf-8").encode("utf-8"):
+                raw = path.read_text(encoding="utf-8").encode("utf-8")
+                parsed = json.loads(raw, object_pairs_hook=_strict_pairs)
+                current = _RunNonceEnvelope.model_validate(parsed)
+                if canonical_bytes(current) != raw:
                     raise ValueError("run/nonce index is noncanonical")
             except (OSError, ValueError, TypeError, UnicodeError, json.JSONDecodeError) as exc:
                 raise MainGraduationJournalError("run/nonce index is malformed") from exc
-            original = ArtifactRef.model_validate(current.get("reference"))
-            immutable_original = (
-                original.digest,
-                original.role,
-                original.media_type,
-                original.size_bytes,
-            )
-            immutable_replay = (
-                reference.digest,
-                reference.role,
-                reference.media_type,
-                reference.size_bytes,
-            )
-            original_bytes = self._store.read_bytes(original)
-            replay_bytes = self._store.read_bytes(reference)
+            kind = "queue-admission" if stage == "admission" else "release-hold"
+            local = self._read(kind, record.operation_id)
+            if local is None:
+                raise MainGraduationRecordConflictError(
+                    f"{stage} run/nonce is not bound to a local record"
+                ) from None
+            local_record, local_reference = local
             if (
-                current.get("operation_id") != record.operation_id
-                or immutable_original != immutable_replay
-                or original_bytes != replay_bytes
+                current.stage != stage
+                or current.operation_id != record.operation_id
+                or current.run_id != run_id
+                or current.nonce != nonce
+                or canonical_bytes(local_record) != canonical_bytes(record)
+                or current.reference != local_reference
             ):
                 raise MainGraduationRecordConflictError(
                     f"{stage} run/nonce is already bound"
                 ) from None
-            return original
+            return local_reference
         except OSError as exc:
             raise MainGraduationJournalError("run/nonce was not durably indexed") from exc
 

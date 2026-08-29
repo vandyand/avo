@@ -680,6 +680,9 @@ def test_global_admission_run_nonce_replay_uses_original_reference(tmp_path: Pat
         operation_id=DIGEST, admission_run_id="run", admission_nonce="nonce"
     )
     assert journal._index_run_nonce("admission", admission, first_ref) is None  # pyright: ignore[reportPrivateUsage]
+    journal._read = lambda _kind, operation_id: (
+        (admission, first_ref) if operation_id == DIGEST else None
+    )  # type: ignore[method-assign]
     assert journal._index_run_nonce("admission", admission, replay_ref) == first_ref  # pyright: ignore[reportPrivateUsage]
     conflicting = admission.model_copy(update={"operation_id": "sha256:" + "2" * 64})
     with pytest.raises(MainGraduationRecordConflictError):
