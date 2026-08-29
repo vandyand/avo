@@ -445,6 +445,12 @@
           "title": "Lease Digest",
           "type": "string"
         },
+        "lease_evidence": {
+          "$ref": "#/$defs/MainLeaseEvidence"
+        },
+        "lease_evidence_artifact": {
+          "$ref": "#/$defs/ArtifactRef"
+        },
         "lease_identity": {
           "minLength": 1,
           "title": "Lease Identity",
@@ -512,6 +518,8 @@
         "candidate_ref",
         "lease_identity",
         "lease_digest",
+        "lease_evidence",
+        "lease_evidence_artifact",
         "policy_epoch",
         "intent_digest",
         "recorded_at"
@@ -560,6 +568,9 @@
           "title": "Policy Epoch",
           "type": "string"
         },
+        "release_issuer_binding": {
+          "$ref": "#/$defs/MainReleaseIssuerBinding"
+        },
         "repository_digest": {
           "pattern": "^sha256:[0-9a-f]{64}$",
           "title": "Repository Digest",
@@ -586,9 +597,68 @@
         "composition",
         "policy_epoch",
         "controller_config_digest",
+        "release_issuer_binding",
         "evidence_artifacts"
       ],
       "title": "MainGraduationPlan",
+      "type": "object"
+    },
+    "MainLeaseEvidence": {
+      "additionalProperties": false,
+      "description": "Durable main-target lease proof; opaque lease digests are insufficient.",
+      "properties": {
+        "acquired_at": {
+          "format": "date-time",
+          "title": "Acquired At",
+          "type": "string"
+        },
+        "expires_at": {
+          "format": "date-time",
+          "title": "Expires At",
+          "type": "string"
+        },
+        "identity": {
+          "minLength": 1,
+          "title": "Identity",
+          "type": "string"
+        },
+        "lease_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Lease Digest",
+          "type": "string"
+        },
+        "operation_id": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Operation Id",
+          "type": "string"
+        },
+        "repository_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Repository Digest",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "target_ref": {
+          "const": "refs/heads/main",
+          "default": "refs/heads/main",
+          "title": "Target Ref",
+          "type": "string"
+        }
+      },
+      "required": [
+        "repository_digest",
+        "operation_id",
+        "identity",
+        "acquired_at",
+        "expires_at",
+        "lease_digest"
+      ],
+      "title": "MainLeaseEvidence",
       "type": "object"
     },
     "MainMergeGroupChecks": {
@@ -1860,6 +1930,88 @@
       "title": "MainReleaseHoldObservation",
       "type": "object"
     },
+    "MainReleaseIssuerBinding": {
+      "additionalProperties": false,
+      "description": "Immutable controller root for release and integration-package authority.",
+      "properties": {
+        "app_id": {
+          "exclusiveMinimum": 0,
+          "title": "App Id",
+          "type": "integer"
+        },
+        "binding_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Binding Digest",
+          "type": "string"
+        },
+        "controller_config_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Controller Config Digest",
+          "type": "string"
+        },
+        "isolation_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Isolation Digest",
+          "type": "string"
+        },
+        "issuer_domain": {
+          "const": "isolated-release-check",
+          "default": "isolated-release-check",
+          "title": "Issuer Domain",
+          "type": "string"
+        },
+        "issuer_id": {
+          "minLength": 1,
+          "title": "Issuer Id",
+          "type": "string"
+        },
+        "operation_id": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Operation Id",
+          "type": "string"
+        },
+        "repository_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Repository Digest",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "target_ref": {
+          "const": "refs/heads/main",
+          "default": "refs/heads/main",
+          "title": "Target Ref",
+          "type": "string"
+        },
+        "trusted_source_domain": {
+          "const": "integration-campaign",
+          "default": "integration-campaign",
+          "title": "Trusted Source Domain",
+          "type": "string"
+        },
+        "trusted_source_issuer": {
+          "minLength": 1,
+          "title": "Trusted Source Issuer",
+          "type": "string"
+        }
+      },
+      "required": [
+        "repository_digest",
+        "operation_id",
+        "controller_config_digest",
+        "issuer_id",
+        "app_id",
+        "isolation_digest",
+        "trusted_source_issuer",
+        "binding_digest"
+      ],
+      "title": "MainReleaseIssuerBinding",
+      "type": "object"
+    },
     "MainReleaseTransitionReceipt": {
       "additionalProperties": false,
       "properties": {
@@ -2023,6 +2175,12 @@
           "title": "Schema Version",
           "type": "integer"
         },
+        "source_domain": {
+          "const": "integration-campaign",
+          "default": "integration-campaign",
+          "title": "Source Domain",
+          "type": "string"
+        },
         "source_issuer": {
           "minLength": 1,
           "title": "Source Issuer",
@@ -2135,6 +2293,9 @@
     "release_authorization": {
       "$ref": "#/$defs/MainReleaseAuthorization"
     },
+    "release_issuer_binding": {
+      "$ref": "#/$defs/MainReleaseIssuerBinding"
+    },
     "repository_digest": {
       "pattern": "^sha256:[0-9a-f]{64}$",
       "title": "Repository Digest",
@@ -2171,6 +2332,7 @@
     "attestation_manifest",
     "merge_group_checks",
     "intent",
+    "release_issuer_binding",
     "preparation_authorization",
     "admission_observation",
     "hold_observation",

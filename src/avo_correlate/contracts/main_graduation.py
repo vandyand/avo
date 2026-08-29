@@ -66,17 +66,54 @@ class MainValidationIdentity(StrictModel):
     identity: NonEmptyString
 
 
-class MainReleaseIssuerBinding(StrictModel):
-    """Controller-pinned isolated release issuer, structurally distinct from validation."""
+class MainReleaseIssuerBinding(MainBound):
+    """Immutable controller root for release and integration-package authority."""
 
+    schema_version: Literal[1] = 1
+    operation_id: Sha256Digest
+    controller_config_digest: Sha256Digest
     issuer_id: NonEmptyString
     app_id: StrictInt = Field(gt=0)
     isolation_digest: Sha256Digest
+    issuer_domain: Literal["isolated-release-check"] = "isolated-release-check"
+    trusted_source_issuer: NonEmptyString
+    trusted_source_domain: Literal["integration-campaign"] = "integration-campaign"
+    binding_digest: Sha256Digest
 
     @model_validator(mode="after")
     def validate_isolation(self) -> MainReleaseIssuerBinding:
         if self.app_id == 15368:
             raise ValueError("validation App 15368 cannot be the release issuer")
+        if self.issuer_id == self.trusted_source_issuer:
+            raise ValueError("release issuer cannot approve its own source package")
+        if self.binding_digest != canonical_digest(
+            self.model_dump(exclude={"binding_digest"}, mode="json")
+        ):
+            raise ValueError("release issuer binding digest mismatch")
+        return self
+
+
+class MainLeaseEvidence(MainBound):
+    """Durable main-target lease proof; opaque lease digests are insufficient."""
+
+    schema_version: Literal[1] = 1
+    operation_id: Sha256Digest
+    identity: NonEmptyString
+    acquired_at: datetime
+    expires_at: datetime
+    lease_digest: Sha256Digest
+
+    _aware_acquired_at = field_validator("acquired_at")(_aware)
+    _aware_expires_at = field_validator("expires_at")(_aware)
+
+    @model_validator(mode="after")
+    def validate_lease_evidence(self) -> MainLeaseEvidence:
+        if self.expires_at <= self.acquired_at:
+            raise ValueError("main lease evidence must expire after acquisition")
+        if self.lease_digest != canonical_digest(
+            self.model_dump(exclude={"lease_digest"}, mode="json")
+        ):
+            raise ValueError("main lease evidence digest mismatch")
         return self
 
 
@@ -99,6 +136,7 @@ class MainSourcePackageBinding(MainBound):
     source_result_tree: GitObject
     source_result_parent: GitObject
     source_issuer: NonEmptyString
+    source_domain: Literal["integration-campaign"] = "integration-campaign"
     completion_state: Literal["successful"] = "successful"
     deploy_performed: Literal[False] = False
 
@@ -299,15 +337,16 @@ class MainMergeGroupChecks(MainBound):
             raise ValueError("all merge-group checks must bind the exact group SHA")
         contexts = {check.context for check in self.checks}
         allowed = set(self.allowlisted_contexts)
-        if contexts != allowed or len(allowed) != len(self.allowlisted_contexts):
+        if (
+            contexts != allowed
+            or len(allowed) != len(self.allowlisted_contexts)
+            or len(self.checks) != len(contexts)
+        ):
             raise ValueError("checks must exactly match the allowlisted contexts")
         if self.observed_at < self.freshness_cutoff or any(
             check.observed_at < self.freshness_cutoff for check in self.checks
         ):
             raise ValueError("merge-group checks are stale")
-        keys = [(check.context, check.app_id, check.run_id) for check in self.checks]
-        if len(keys) != len(set(keys)):
-            raise ValueError("merge-group checks must be unique")
         return self
 
 
@@ -343,6 +382,7 @@ class MainGraduationPlan(MainBound):
     )
     policy_epoch: Sha256Digest
     controller_config_digest: Sha256Digest
+    release_issuer_binding: MainReleaseIssuerBinding
     evidence_artifacts: list[ArtifactRef] = Field(min_length=1)
     deploy_performed: Literal[False] = False
 
@@ -366,6 +406,16 @@ class MainGraduationPlan(MainBound):
             raise ValueError("plan source package binding differs")
         if self.composition.delta_digest != self.delta.delta_digest:
             raise ValueError("plan composition delta differs")
+        binding = self.release_issuer_binding
+        if (
+            binding.operation_id != self.operation_id
+            or binding.repository_digest != self.repository_digest
+            or binding.target_ref != self.target_ref
+            or binding.controller_config_digest != self.controller_config_digest
+            or binding.trusted_source_issuer != self.package.source_issuer
+            or binding.trusted_source_domain != self.package.source_domain
+        ):
+            raise ValueError("plan controller authority binding differs")
         refs = {item.digest for item in self.evidence_artifacts}
         if len(refs) != len(self.evidence_artifacts):
             raise ValueError("plan evidence artifacts must be unique")
@@ -385,6 +435,8 @@ class MainGraduationIntent(MainBound):
     candidate_ref: NonEmptyString
     lease_identity: NonEmptyString
     lease_digest: Sha256Digest
+    lease_evidence: MainLeaseEvidence
+    lease_evidence_artifact: ArtifactRef
     policy_epoch: Sha256Digest
     intent_digest: Sha256Digest
     state: Literal["intent_recorded"] = "intent_recorded"
@@ -394,6 +446,20 @@ class MainGraduationIntent(MainBound):
 
     @model_validator(mode="after")
     def validate_intent(self) -> MainGraduationIntent:
+        lease_bytes = canonical_bytes(self.lease_evidence)
+        if (
+            self.lease_evidence.operation_id != self.operation_id
+            or self.lease_evidence.repository_digest != self.repository_digest
+            or self.lease_evidence.target_ref != self.target_ref
+            or self.lease_evidence.identity != self.lease_identity
+            or self.lease_evidence.lease_digest != self.lease_digest
+            or self.lease_evidence_artifact.role != "main-graduation-lease-evidence"
+            or self.lease_evidence_artifact.media_type
+            != "application/vnd.avo.main-graduation-lease-evidence+json"
+            or self.lease_evidence_artifact.digest != canonical_digest(self.lease_evidence)
+            or self.lease_evidence_artifact.size_bytes != len(lease_bytes)
+        ):
+            raise ValueError("intent lease evidence is not bound")
         if self.intent_digest != canonical_digest(
             self.model_dump(exclude={"intent_digest"}, mode="json")
         ):
@@ -685,6 +751,7 @@ class MainCompletionPackage(MainBound):
     attestation_manifest: MainAttestationManifest
     merge_group_checks: MainMergeGroupChecks
     intent: MainGraduationIntent
+    release_issuer_binding: MainReleaseIssuerBinding
     preparation_authorization: MainPreparationAuthorization
     admission_observation: MainQueueAdmissionObservation
     hold_observation: MainReleaseHoldObservation
@@ -706,6 +773,7 @@ class MainCompletionPackage(MainBound):
             self.protection_manifest,
             self.attestation_manifest,
             self.merge_group_checks,
+            self.release_issuer_binding,
             self.transition_receipt,
             self.provider_receipt,
             self.reconciliation,
@@ -731,6 +799,8 @@ class MainCompletionPackage(MainBound):
             raise ValueError("completion requires completed reconciliation")
         if self.reconciliation.main_tree != self.composition.candidate_tree:
             raise ValueError("final main tree differs from deterministic composition")
+        if self.release_issuer_binding != self.plan.release_issuer_binding:
+            raise ValueError("completion issuer binding differs from plan")
         if self.reconciliation.expected_tree != self.composition.candidate_tree:
             raise ValueError("reconciliation expected tree differs from composition")
         if self.reconciliation.main_parents != [self.composition.base_commit]:
@@ -807,6 +877,8 @@ class MainCompletionPackage(MainBound):
         )
         if len(set(issuer_stages)) != 1:
             raise ValueError("release issuer isolation differs across stages")
+        if self.release_issuer_binding.isolation_digest != issuer_stages[0]:
+            raise ValueError("controller-pinned issuer isolation differs across stages")
         issuer_apps = (
             self.protection_manifest.release_issuer_app_id,
             self.queue_observation.release_issuer_app_id,
@@ -817,6 +889,8 @@ class MainCompletionPackage(MainBound):
         )
         if len(set(issuer_apps)) != 1 or issuer_apps[0] == 15368:
             raise ValueError("release issuer identity is not stable and isolated")
+        if self.release_issuer_binding.app_id != issuer_apps[0]:
+            raise ValueError("controller-pinned issuer app differs across stages")
         if (
             self.admission_observation.issuer_identity != self.hold_observation.issuer_identity
             or self.hold_observation.issuer_identity
@@ -825,6 +899,8 @@ class MainCompletionPackage(MainBound):
             != self.transition_receipt.issuer_identity
         ):
             raise ValueError("release issuer differs across stages")
+        if self.release_issuer_binding.issuer_id != self.admission_observation.issuer_identity:
+            raise ValueError("controller-pinned issuer differs across stages")
         if (
             self.queue_observation.queue_generation_digest
             != self.admission_observation.queue_generation_digest
@@ -931,6 +1007,7 @@ class MainCompletionPackage(MainBound):
             "main-graduation-protection-manifest",
             "main-graduation-attestation-manifest",
             "main-graduation-merge-group-checks",
+            "main-graduation-release-issuer-binding",
             "main-graduation-plan",
             "main-graduation-intent",
             "main-graduation-preparation-authorization",
@@ -1136,6 +1213,7 @@ __all__ = [
     "MainGraduationIntent",
     "MainGraduationPlan",
     "MainInverseDeltaArtifact",
+    "MainLeaseEvidence",
     "MainMergeGroupChecks",
     "MainPreparationAuthorization",
     "MainProtectionManifest",

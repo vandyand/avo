@@ -27,6 +27,7 @@ from avo_correlate.contracts.main_graduation import (
     MainGraduationIntent,
     MainGraduationPlan,
     MainInverseDeltaArtifact,
+    MainLeaseEvidence,
     MainMergeGroupChecks,
     MainPreparationAuthorization,
     MainProtectionManifest,
@@ -36,6 +37,7 @@ from avo_correlate.contracts.main_graduation import (
     MainReconciliation,
     MainReleaseAuthorization,
     MainReleaseHoldObservation,
+    MainReleaseIssuerBinding,
     MainReleaseTransitionReceipt,
     MainRollbackAuthorization,
     MainRollbackIntent,
@@ -73,6 +75,7 @@ _MODELS: dict[str, type[StrictModel]] = {
     "protection": MainProtectionManifest,
     "attestations": MainAttestationManifest,
     "merge-group-checks": MainMergeGroupChecks,
+    "release-issuer-binding": MainReleaseIssuerBinding,
     "intent": MainGraduationIntent,
     "preparation-authorization": MainPreparationAuthorization,
     "queue-admission": MainQueueAdmissionObservation,
@@ -124,6 +127,7 @@ class MainGraduationJournal:
         root: Path,
         *,
         artifact_store: FilesystemArtifactStore | None = None,
+        release_issuer_binding: MainReleaseIssuerBinding | None = None,
         max_record_bytes: int = 32 * 1024 * 1024,
     ) -> None:
         if max_record_bytes <= 0:
@@ -131,6 +135,7 @@ class MainGraduationJournal:
         self._root = root.resolve()
         self._indexes = self._root / "main-graduation-index"
         self._store = artifact_store or FilesystemArtifactStore(self._root / "artifacts")
+        self._release_issuer_binding = release_issuer_binding
         self._max = max_record_bytes
 
     @property
@@ -152,6 +157,8 @@ class MainGraduationJournal:
             checked = model.model_validate_json(data)
             data = canonical_bytes(checked)
             operation_id = _operation_id(checked)
+            if kind == "release-issuer-binding":
+                self._require_controller_issuer_binding(cast(MainReleaseIssuerBinding, checked))
             if kind == "eligibility":
                 self._check_eligibility_predecessor(cast(MainGraduationEligibilityRecord, checked))
             if kind == "attempt":
@@ -160,6 +167,8 @@ class MainGraduationJournal:
                 self._verify_source_package(cast(MainSourcePackageBinding, checked))
             elif kind == "plan":
                 self._verify_plan_evidence(cast(MainGraduationPlan, checked))
+            elif kind == "intent":
+                self._verify_intent_lease(cast(MainGraduationIntent, checked))
             elif kind == "preparation-authorization":
                 self._require_preparation_chain(cast(MainPreparationAuthorization, checked))
             elif kind == "queue-admission":
@@ -268,6 +277,8 @@ class MainGraduationJournal:
                 self._verify_source_package(cast(MainSourcePackageBinding, record))
             elif kind == "plan":
                 self._verify_plan_evidence(cast(MainGraduationPlan, record))
+            elif kind == "intent":
+                self._verify_intent_lease(cast(MainGraduationIntent, record))
             elif kind == "preparation-authorization":
                 self._require_preparation_chain(cast(MainPreparationAuthorization, record))
             elif kind == "queue-admission":
@@ -317,6 +328,7 @@ class MainGraduationJournal:
             "main-graduation-protection-manifest": package.protection_manifest,
             "main-graduation-attestation-manifest": package.attestation_manifest,
             "main-graduation-merge-group-checks": package.merge_group_checks,
+            "main-graduation-release-issuer-binding": package.release_issuer_binding,
             "main-graduation-plan": package.plan,
             "main-graduation-intent": package.intent,
             "main-graduation-preparation-authorization": package.preparation_authorization,
@@ -401,6 +413,7 @@ class MainGraduationJournal:
             ("protection", package.protection_manifest),
             ("attestations", package.attestation_manifest),
             ("merge-group-checks", package.merge_group_checks),
+            ("release-issuer-binding", package.release_issuer_binding),
             ("plan", package.plan),
             ("intent", package.intent),
             ("preparation-authorization", package.preparation_authorization),
@@ -498,6 +511,25 @@ class MainGraduationJournal:
         # Do not rely on the durable-record lookup alone: this repeats the
         # raw upstream package and child semantic closure at the plan boundary.
         self._verify_source_package(plan.package)
+        issuer_prior = self._read("release-issuer-binding", plan.operation_id)
+        if issuer_prior is None:
+            raise MainGraduationJournalError("plan requires durable release-issuer-binding")
+        issuer_binding = cast(MainReleaseIssuerBinding, issuer_prior[0])
+        self._require_controller_issuer_binding(issuer_binding)
+        if canonical_bytes(issuer_binding) != canonical_bytes(plan.release_issuer_binding):
+            raise MainGraduationJournalError(
+                "plan release issuer binding differs from durable record"
+            )
+        if (
+            issuer_binding.repository_digest != plan.repository_digest
+            or issuer_binding.target_ref != plan.target_ref
+            or issuer_binding.controller_config_digest != plan.controller_config_digest
+            or issuer_binding.trusted_source_issuer != plan.package.source_issuer
+            or issuer_binding.trusted_source_domain != plan.package.source_domain
+        ):
+            raise MainGraduationJournalError(
+                "plan source authority differs from controller binding"
+            )
         expected = {plan.package.package_artifact.digest: plan.package.package_artifact}
         expected.update({item.digest: item for item in plan.package.child_artifacts})
         actual = {item.digest: item for item in plan.evidence_artifacts}
@@ -515,6 +547,52 @@ class MainGraduationJournal:
                 raise MainGraduationJournalError("plan evidence artifact is unavailable") from exc
             if len(raw) != reference.size_bytes or _digest_bytes(raw) != reference.digest:
                 raise MainGraduationJournalError("plan evidence artifact is tampered")
+
+    def _require_controller_issuer_binding(self, binding: MainReleaseIssuerBinding) -> None:
+        """Accept authority only when it matches the journal's controller-owned root."""
+        configured = self._release_issuer_binding
+        if configured is None:
+            raise MainGraduationJournalError(
+                "journal lacks controller-pinned release issuer binding"
+            )
+        try:
+            configured_data = canonical_bytes(configured)
+            checked = MainReleaseIssuerBinding.model_validate_json(configured_data)
+        except (TypeError, ValueError, json.JSONDecodeError) as exc:
+            raise MainGraduationJournalError(
+                "controller release issuer binding is invalid"
+            ) from exc
+        if canonical_bytes(checked) != canonical_bytes(binding):
+            raise MainGraduationJournalError("release issuer binding differs from controller root")
+
+    def _verify_intent_lease(self, intent: MainGraduationIntent) -> None:
+        """Reparse durable lease evidence before it can authorize preparation."""
+        evidence = intent.lease_evidence
+        reference = intent.lease_evidence_artifact
+        if (
+            evidence.operation_id != intent.operation_id
+            or evidence.repository_digest != intent.repository_digest
+            or evidence.target_ref != intent.target_ref
+            or evidence.identity != intent.lease_identity
+            or evidence.lease_digest != intent.lease_digest
+            or reference.role != "main-graduation-lease-evidence"
+            or reference.media_type != "application/vnd.avo.main-graduation-lease-evidence+json"
+        ):
+            raise MainGraduationJournalError("intent lease evidence binding differs")
+        try:
+            raw = self._store.read_bytes(reference)
+            parsed = json.loads(raw.decode("utf-8"), object_pairs_hook=_strict_pairs)
+            if canonical_bytes(parsed) != raw:
+                raise ValueError("lease evidence is not canonical JSON")
+            durable = MainLeaseEvidence.model_validate(parsed)
+        except (OSError, ValueError, TypeError, UnicodeError, json.JSONDecodeError) as exc:
+            raise MainGraduationJournalError("intent lease evidence is unverifiable") from exc
+        if (
+            canonical_bytes(durable) != canonical_bytes(evidence)
+            or reference.digest != _digest_bytes(raw)
+            or reference.size_bytes != len(raw)
+        ):
+            raise MainGraduationJournalError("intent lease evidence contents differ")
 
     def _require_exact(self, kind: str, record: StrictModel) -> None:
         durable = self._read(kind, _operation_id(record))
@@ -1176,6 +1254,14 @@ class MainGraduationJournal:
 
     def read_plan(self, operation_id: str) -> tuple[StrictModel, ArtifactRef] | None:
         return self._read("plan", operation_id)
+
+    def record_release_issuer_binding(self, record: MainReleaseIssuerBinding) -> ArtifactRef:
+        return self._record("release-issuer-binding", record)
+
+    def read_release_issuer_binding(
+        self, operation_id: str
+    ) -> tuple[StrictModel, ArtifactRef] | None:
+        return self._read("release-issuer-binding", operation_id)
 
     def record_source_package(self, record: MainSourcePackageBinding) -> ArtifactRef:
         return self._record("source-package", record)

@@ -93,6 +93,12 @@
       "title": "Schema Version",
       "type": "integer"
     },
+    "source_domain": {
+      "const": "integration-campaign",
+      "default": "integration-campaign",
+      "title": "Source Domain",
+      "type": "string"
+    },
     "source_issuer": {
       "minLength": 1,
       "title": "Source Issuer",

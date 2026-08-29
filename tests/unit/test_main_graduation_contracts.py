@@ -19,6 +19,7 @@ from avo_correlate.contracts.main_graduation import (
     MainGraduationIntent,
     MainGraduationPlan,
     MainInverseDeltaArtifact,
+    MainLeaseEvidence,
     MainMergeGroupChecks,
     MainPreparationAuthorization,
     MainProtectionManifest,
@@ -31,7 +32,7 @@ from avo_correlate.contracts.main_graduation import (
     MainReleaseTransitionReceipt,
     MainSourcePackageBinding,
 )
-from avo_correlate.domain.canonical import canonical_digest
+from avo_correlate.domain.canonical import canonical_bytes, canonical_digest
 
 DIGEST = "sha256:" + "1" * 64
 BASE = "a" * 40
@@ -135,6 +136,149 @@ def test_queue_topology_digest_is_canonical_and_binds_two_parent_form() -> None:
     assert MainQueueObservation.model_validate(values).expected_group_parents == [BASE, HEAD]
     with pytest.raises(ValidationError, match="topology digest"):
         MainQueueObservation.model_validate({**values, "group_topology_digest": DIGEST})
+
+
+def test_merge_group_checks_reject_duplicate_context_rerun() -> None:
+    now = datetime.now(UTC)
+    first = MainCheckObservation(
+        name="validation",
+        context="validate",
+        app_id=15368,
+        sha=HEAD,
+        status="completed",
+        conclusion="success",
+        run_id="original-run",
+        nonce="original-nonce",
+        observed_at=now,
+    )
+    with pytest.raises(ValidationError, match="exactly match"):
+        MainMergeGroupChecks(
+            operation_id=DIGEST,
+            repository_digest=DIGEST,
+            package_digest=DIGEST,
+            composition_digest=DIGEST,
+            group_sha=HEAD,
+            checks=[first, first.model_copy(update={"run_id": "rerun", "nonce": "rerun-nonce"})],
+            allowlisted_contexts=["validate"],
+            config_digest=DIGEST,
+            freshness_cutoff=now - timedelta(minutes=1),
+            observed_at=now,
+        )
+
+
+def _issuer_binding(
+    *, issuer_id: str = "isolated-release", app_id: int = 9001
+) -> MainReleaseIssuerBinding:
+    probe = MainReleaseIssuerBinding.model_construct(
+        operation_id=DIGEST,
+        repository_digest=DIGEST,
+        controller_config_digest=DIGEST,
+        issuer_id=issuer_id,
+        app_id=app_id,
+        isolation_digest=DIGEST,
+        trusted_source_issuer="integration-controller",
+        binding_digest=DIGEST,
+    )
+    return MainReleaseIssuerBinding(
+        operation_id=DIGEST,
+        repository_digest=DIGEST,
+        controller_config_digest=DIGEST,
+        issuer_id=issuer_id,
+        app_id=app_id,
+        isolation_digest=DIGEST,
+        trusted_source_issuer="integration-controller",
+        binding_digest=canonical_digest(probe.model_dump(exclude={"binding_digest"}, mode="json")),
+    )
+
+
+def test_plan_requires_durable_controller_pinned_issuer_and_source_binding(tmp_path: Path) -> None:
+    binding = _issuer_binding()
+    journal = MainGraduationJournal(tmp_path, release_issuer_binding=binding)
+    with pytest.raises(MainGraduationJournalError, match="controller root"):
+        MainGraduationJournal(
+            tmp_path / "wrong-root", release_issuer_binding=_issuer_binding(issuer_id="other")
+        ).record_release_issuer_binding(binding)
+    journal.record_release_issuer_binding(binding)
+    package_artifact = journal._store.put_bytes(  # pyright: ignore[reportPrivateUsage]
+        b"{}",
+        media_type="application/vnd.avo.integration-campaign+json",
+        role="integration-campaign-package",
+        max_bytes=1024,
+    )
+    package = MainSourcePackageBinding.model_construct(
+        operation_id=DIGEST,
+        repository_digest=DIGEST,
+        target_ref="refs/heads/main",
+        package_digest=package_artifact.digest,
+        package_artifact=package_artifact,
+        child_artifacts=[],
+        source_issuer="integration-controller",
+        source_domain="integration-campaign",
+    )
+    plan = MainGraduationPlan.model_construct(
+        operation_id=DIGEST,
+        repository_digest=DIGEST,
+        target_ref="refs/heads/main",
+        package=package,
+        controller_config_digest=DIGEST,
+        release_issuer_binding=binding,
+        evidence_artifacts=[package_artifact],
+    )
+    original_read = journal._read  # pyright: ignore[reportPrivateUsage]
+    journal._verify_source_package = lambda _package: None  # type: ignore[method-assign, reportPrivateUsage]
+    journal._read = lambda kind, operation_id: (  # type: ignore[method-assign]
+        (package, None)
+        if kind == "source-package" and operation_id == DIGEST
+        else original_read(kind, operation_id)
+    )
+    journal._verify_plan_evidence(plan)  # pyright: ignore[reportPrivateUsage]
+    with pytest.raises(MainGraduationJournalError, match="release issuer binding differs"):
+        journal._verify_plan_evidence(  # pyright: ignore[reportPrivateUsage]
+            plan.model_copy(update={"release_issuer_binding": _issuer_binding(issuer_id="other")})
+        )
+
+
+def test_intent_requires_content_addressed_main_lease_evidence(tmp_path: Path) -> None:
+    now = datetime.now(UTC)
+    lease_probe = MainLeaseEvidence.model_construct(
+        operation_id=DIGEST,
+        repository_digest=DIGEST,
+        identity="main-lease",
+        acquired_at=now,
+        expires_at=now + timedelta(minutes=5),
+        lease_digest=DIGEST,
+    )
+    lease = MainLeaseEvidence(
+        operation_id=DIGEST,
+        repository_digest=DIGEST,
+        identity="main-lease",
+        acquired_at=now,
+        expires_at=now + timedelta(minutes=5),
+        lease_digest=canonical_digest(
+            lease_probe.model_dump(exclude={"lease_digest"}, mode="json")
+        ),
+    )
+    journal = MainGraduationJournal(tmp_path)
+    artifact = journal._store.put_bytes(  # pyright: ignore[reportPrivateUsage]
+        canonical_bytes(lease),
+        media_type="application/vnd.avo.main-graduation-lease-evidence+json",
+        role="main-graduation-lease-evidence",
+        max_bytes=1024,
+    )
+    intent = MainGraduationIntent.model_construct(
+        operation_id=DIGEST,
+        repository_digest=DIGEST,
+        target_ref="refs/heads/main",
+        lease_identity=lease.identity,
+        lease_digest=lease.lease_digest,
+        lease_evidence=lease,
+        lease_evidence_artifact=artifact,
+    )
+    journal._verify_intent_lease(intent)  # pyright: ignore[reportPrivateUsage]
+    with pytest.raises(MainGraduationJournalError, match="binding differs"):
+        journal._verify_intent_lease(  # pyright: ignore[reportPrivateUsage]
+            intent.model_copy(update={"lease_identity": "substituted"})
+        )
 
 
 def test_inverse_delta_digest_is_canonical() -> None:
@@ -797,7 +941,7 @@ def test_journal_rejects_traversal_kind_and_duplicate_sequence(tmp_path: Path) -
 
 def test_issuer_type_and_group_check_semantics_are_structural() -> None:
     with pytest.raises(ValidationError):
-        MainReleaseIssuerBinding(issuer_id="release", app_id=15368, isolation_digest=DIGEST)
+        _issuer_binding(app_id=15368)
     now = datetime.now(UTC)
     check = MainCheckObservation(
         name="validation",
