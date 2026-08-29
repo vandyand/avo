@@ -731,6 +731,35 @@ def test_journal_blocks_later_open_eligible_sequence(tmp_path: Path) -> None:
         journal.record_eligibility(second)
 
 
+def test_first_post_watermark_eligibility_is_adjacent_without_predecessor(tmp_path: Path) -> None:
+    record = MainGraduationEligibilityRecord(
+        operation_id=DIGEST,
+        repository_digest=DIGEST,
+        scheduler_sequence=8,
+        scheduler_watermark=7,
+        submission_digest=DIGEST,
+        classification="excluded",
+        exclusion_reason="watermark reset",
+        exclusion_evidence_digest=DIGEST,
+        ordinary=False,
+        nonempty=True,
+    )
+    journal = MainGraduationJournal(tmp_path)
+    journal.record_eligibility(record)
+    assert journal.read_eligibility_sequence(8) is not None
+    with pytest.raises(MainGraduationJournalError, match="adjacent"):
+        journal.record_eligibility(
+            record.model_copy(
+                update={
+                    "operation_id": "sha256:" + "2" * 64,
+                    "scheduler_sequence": 9,
+                    "scheduler_watermark": 7,
+                    "submission_digest": "sha256:" + "2" * 64,
+                }
+            )
+        )
+
+
 def test_journal_rejects_traversal_kind_and_duplicate_sequence(tmp_path: Path) -> None:
     journal = MainGraduationJournal(tmp_path)
     with pytest.raises(ValueError):

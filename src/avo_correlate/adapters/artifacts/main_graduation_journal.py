@@ -1051,11 +1051,10 @@ class MainGraduationJournal:
                 raise MainGraduationJournalError(
                     "later sequence is blocked by open eligible attempt"
                 )
-        elif (
-            record.scheduler_watermark is not None
-            and record.scheduler_sequence != record.scheduler_watermark + 1
-        ):
-            raise MainGraduationJournalError("scheduler sequence is not adjacent to watermark")
+        elif record.scheduler_watermark is not None:
+            if record.scheduler_sequence != record.scheduler_watermark + 1:
+                raise MainGraduationJournalError("scheduler sequence is not adjacent to watermark")
+            return
         elif record.scheduler_sequence != 1:
             raise MainGraduationJournalError("scheduler sequence predecessor is required")
 
@@ -1091,15 +1090,42 @@ class MainGraduationJournal:
         if not path.is_file():
             return None
         try:
-            payload = json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=_strict_pairs)
-            if canonical_bytes(payload) != path.read_text(encoding="utf-8").encode("utf-8"):
+            raw = path.read_text(encoding="utf-8").encode("utf-8")
+            payload = json.loads(raw, object_pairs_hook=_strict_pairs)
+            if set(payload) != {"operation_id", "reference"} or canonical_bytes(payload) != raw:
                 raise ValueError("scheduler index is not canonical JSON")
             operation_id = payload["operation_id"]
             reference = ArtifactRef.model_validate(payload["reference"])
             _check_digest(operation_id)
-            if reference.role != "main-graduation-eligibility":
-                raise ValueError("scheduler index role mismatch")
-            self._store.read_bytes(reference)
+            if (
+                reference.role != "main-graduation-eligibility"
+                or reference.media_type != "application/vnd.avo.main-graduation-eligibility+json"
+            ):
+                raise ValueError("scheduler index metadata mismatch")
+            data = self._store.read_bytes(reference)
+            if len(data) != reference.size_bytes or _digest_bytes(data) != reference.digest:
+                raise ValueError("scheduler index artifact hash mismatch")
+            durable = self._read("eligibility", operation_id)
+            if durable is None:
+                raise ValueError("scheduler index eligibility record is missing")
+            record, durable_reference = durable
+            immutable_sequence_ref = (
+                reference.digest,
+                reference.role,
+                reference.media_type,
+                reference.size_bytes,
+            )
+            immutable_durable_ref = (
+                durable_reference.digest,
+                durable_reference.role,
+                durable_reference.media_type,
+                durable_reference.size_bytes,
+            )
+            if (
+                immutable_sequence_ref != immutable_durable_ref
+                or cast(MainGraduationEligibilityRecord, record).scheduler_sequence != sequence
+            ):
+                raise ValueError("scheduler index does not match eligibility record")
             return operation_id, reference
         except (
             OSError,
