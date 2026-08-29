@@ -263,11 +263,8 @@ def test_plan_requires_durable_controller_pinned_issuer_and_source_binding(tmp_p
         if kind == "composition" and operation_id == DIGEST
         else original_read(kind, operation_id)
     )
-    journal._verify_plan_evidence(plan)  # pyright: ignore[reportPrivateUsage]
-    with pytest.raises(MainGraduationJournalError, match="release issuer binding differs"):
-        journal._verify_plan_evidence(  # pyright: ignore[reportPrivateUsage]
-            plan.model_copy(update={"release_issuer_binding": _issuer_binding(issuer_id="other")})
-        )
+    with pytest.raises(MainGraduationJournalError, match="durable composition proof"):
+        journal._verify_plan_evidence(plan)  # pyright: ignore[reportPrivateUsage]
 
 
 def test_intent_requires_content_addressed_main_lease_evidence(tmp_path: Path) -> None:

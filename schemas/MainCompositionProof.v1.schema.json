@@ -1,0 +1,184 @@
+{
+  "additionalProperties": false,
+  "description": "Durable, controller-rooted proof of the exact C2 composition.\n\nThe proof is intentionally data, rather than a verifier object.  A journal\ncan therefore validate it after restart without importing or trusting a\ncaller supplied implementation.  The implementation and base-observer\nidentities are allow-listed by the journal's controller root.",
+  "properties": {
+    "base_commit": {
+      "pattern": "^[0-9a-f]{40}(?:[0-9a-f]{24})?$",
+      "title": "Base Commit",
+      "type": "string"
+    },
+    "base_observer_identity": {
+      "minLength": 1,
+      "title": "Base Observer Identity",
+      "type": "string"
+    },
+    "base_tree": {
+      "pattern": "^[0-9a-f]{40}(?:[0-9a-f]{24})?$",
+      "title": "Base Tree",
+      "type": "string"
+    },
+    "candidate_commit": {
+      "pattern": "^[0-9a-f]{40}(?:[0-9a-f]{24})?$",
+      "title": "Candidate Commit",
+      "type": "string"
+    },
+    "candidate_parent_commit": {
+      "pattern": "^[0-9a-f]{40}(?:[0-9a-f]{24})?$",
+      "title": "Candidate Parent Commit",
+      "type": "string"
+    },
+    "candidate_ref": {
+      "minLength": 1,
+      "title": "Candidate Ref",
+      "type": "string"
+    },
+    "candidate_tree": {
+      "pattern": "^[0-9a-f]{40}(?:[0-9a-f]{24})?$",
+      "title": "Candidate Tree",
+      "type": "string"
+    },
+    "composition_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Composition Digest",
+      "type": "string"
+    },
+    "controller_config_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Controller Config Digest",
+      "type": "string"
+    },
+    "delta_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Delta Digest",
+      "type": "string"
+    },
+    "git_root_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Git Root Digest",
+      "type": "string"
+    },
+    "operation_id": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Operation Id",
+      "type": "string"
+    },
+    "ordinary_risk_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Ordinary Risk Digest",
+      "type": "string"
+    },
+    "package_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Package Digest",
+      "type": "string"
+    },
+    "path_manifest_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Path Manifest Digest",
+      "type": "string"
+    },
+    "policy_epoch": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Policy Epoch",
+      "type": "string"
+    },
+    "proof_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Proof Digest",
+      "type": "string"
+    },
+    "repository_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Repository Digest",
+      "type": "string"
+    },
+    "retention_ref": {
+      "minLength": 1,
+      "title": "Retention Ref",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "source_domain": {
+      "const": "integration-campaign",
+      "default": "integration-campaign",
+      "title": "Source Domain",
+      "type": "string"
+    },
+    "source_issuer": {
+      "minLength": 1,
+      "title": "Source Issuer",
+      "type": "string"
+    },
+    "source_operation_id": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Source Operation Id",
+      "type": "string"
+    },
+    "source_result_commit": {
+      "pattern": "^[0-9a-f]{40}(?:[0-9a-f]{24})?$",
+      "title": "Source Result Commit",
+      "type": "string"
+    },
+    "source_result_parent": {
+      "pattern": "^[0-9a-f]{40}(?:[0-9a-f]{24})?$",
+      "title": "Source Result Parent",
+      "type": "string"
+    },
+    "source_result_tree": {
+      "pattern": "^[0-9a-f]{40}(?:[0-9a-f]{24})?$",
+      "title": "Source Result Tree",
+      "type": "string"
+    },
+    "target_ref": {
+      "const": "refs/heads/main",
+      "default": "refs/heads/main",
+      "title": "Target Ref",
+      "type": "string"
+    },
+    "verifier_identity": {
+      "minLength": 1,
+      "title": "Verifier Identity",
+      "type": "string"
+    },
+    "verifier_version": {
+      "minLength": 1,
+      "title": "Verifier Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "repository_digest",
+    "operation_id",
+    "source_operation_id",
+    "package_digest",
+    "source_result_commit",
+    "source_result_parent",
+    "source_result_tree",
+    "delta_digest",
+    "path_manifest_digest",
+    "ordinary_risk_digest",
+    "composition_digest",
+    "base_commit",
+    "base_tree",
+    "candidate_commit",
+    "candidate_tree",
+    "candidate_parent_commit",
+    "candidate_ref",
+    "retention_ref",
+    "controller_config_digest",
+    "policy_epoch",
+    "source_issuer",
+    "verifier_identity",
+    "verifier_version",
+    "base_observer_identity",
+    "git_root_digest",
+    "proof_digest"
+  ],
+  "title": "MainCompositionProof",
+  "type": "object"
+}

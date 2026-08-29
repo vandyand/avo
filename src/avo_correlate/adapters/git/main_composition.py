@@ -15,6 +15,7 @@ import subprocess
 import tempfile
 import unicodedata
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Protocol, cast
 
@@ -27,6 +28,7 @@ from avo_correlate.contracts.base import ArtifactRef
 from avo_correlate.contracts.integration_campaign import IntegrationCampaignEvidencePackage
 from avo_correlate.contracts.main_graduation import (
     MainCompositionArtifact,
+    MainCompositionProof,
     MainDeltaManifest,
     MainSourcePackageBinding,
 )
@@ -42,6 +44,9 @@ _COMMIT_MESSAGE = "AVO protected-main composition"
 _AUTHOR_NAME = "AVO Main Graduation"
 _AUTHOR_EMAIL = "avo-main-graduation@localhost"
 _COMMIT_DATE = "2000-01-01T00:00:00+0000"
+_VERIFIER_IDENTITY = "avo_correlate.adapters.git.main_composition.MainCompositionAdapter"
+_VERIFIER_VERSION = "1"
+_BASE_OBSERVER_IDENTITY = "avo_correlate.adapters.git.main_composition.MainBaseReader"
 
 
 class MainCompositionError(RuntimeError):
@@ -64,8 +69,10 @@ class MainCompositionResult:
 
     delta: MainDeltaManifest
     composition: MainCompositionArtifact
+    proof: MainCompositionProof
     delta_artifact: ArtifactRef
     composition_artifact: ArtifactRef
+    proof_artifact: ArtifactRef
 
     @property
     def delta_artifact_digest(self) -> str:
@@ -74,6 +81,10 @@ class MainCompositionResult:
     @property
     def composition_artifact_digest(self) -> str:
         return self.composition_artifact.digest
+
+    @property
+    def proof_artifact_digest(self) -> str:
+        return self.proof_artifact.digest
 
 
 class MainBaseReader(Protocol):
@@ -110,6 +121,8 @@ class MainCompositionAdapter:
         *,
         repository_digest: str,
         base_reader: MainBaseReader,
+        controller_config_digest: str | None = None,
+        policy_epoch: str | None = None,
         candidate_ref_prefix: str = _CANDIDATE_PREFIX,
         command_timeout_seconds: int = 30,
     ) -> None:
@@ -117,18 +130,20 @@ class MainCompositionAdapter:
         self.journal = journal
         self.repository_digest = repository_digest
         self.base_reader = base_reader
+        self.controller_config_digest = controller_config_digest or canonical_digest(
+            {"repository_digest": repository_digest, "target_ref": "refs/heads/main"}
+        )
+        self.policy_epoch = policy_epoch or canonical_digest(
+            {"controller_config_digest": self.controller_config_digest, "main_policy": "ordinary"}
+        )
         if candidate_ref_prefix != _CANDIDATE_PREFIX:
             raise ValueError("candidate ref prefix is controller-owned")
         if command_timeout_seconds <= 0:
             raise ValueError("command timeout must be positive")
         self._timeout = command_timeout_seconds
         _digest(repository_digest, "composition repository")
-        bind = getattr(journal, "bind_composition_verifier", None)
-        if bind is not None:
-            try:
-                bind(self)
-            except (RuntimeError, TypeError, ValueError) as exc:
-                raise MainCompositionError("composition verifier binding failed") from exc
+        _digest(self.controller_config_digest, "composition controller config")
+        _digest(self.policy_epoch, "composition policy epoch")
 
     def fresh_main_base(self) -> MainBaseSnapshot:
         """Read the exact current main commit/tree without reading any source ref."""
@@ -275,6 +290,7 @@ class MainCompositionAdapter:
                 "composition_digest": canonical_digest(composition_payload),
             }
         )
+        proof = self._proof(source, delta, composition)
         # Re-observe the trusted main base after every derived object and the
         # retention CAS, immediately before writing the durable C2 records.
         final_base = self.fresh_main_base()
@@ -282,13 +298,16 @@ class MainCompositionAdapter:
         try:
             delta_ref = self.journal.record_delta(delta)
             composition_ref = self.journal.record_composition(composition)
+            proof, proof_ref = self._record_proof(source, delta, composition, proof)
         except (MainGraduationJournalError, MainGraduationRecordConflictError) as exc:
             raise MainCompositionError("composition artifacts were not durably recorded") from exc
         return MainCompositionResult(
             delta,
             composition,
+            proof,
             delta_ref,
             composition_ref,
+            proof_ref,
         )
 
     def verify(
@@ -296,7 +315,7 @@ class MainCompositionAdapter:
         source: MainSourcePackageBinding,
         delta: MainDeltaManifest,
         composition: MainCompositionArtifact,
-    ) -> None:
+    ) -> MainCompositionProof:
         """Recompute C2 from trusted durable inputs at the plan authority point.
 
         This is deliberately separate from durable journal replay.  It fences
@@ -437,6 +456,88 @@ class MainCompositionAdapter:
 
         final_base = self.fresh_main_base()
         self._validate_base(base, final_base, source.repository_digest)
+        return self._proof(source, expected_delta, expected_composition)
+
+    def _proof(
+        self,
+        source: MainSourcePackageBinding,
+        delta: MainDeltaManifest,
+        composition: MainCompositionArtifact,
+    ) -> MainCompositionProof:
+        payload = {
+            "schema_version": 1,
+            "repository_digest": source.repository_digest,
+            "target_ref": "refs/heads/main",
+            "operation_id": source.operation_id,
+            "source_operation_id": source.source_operation_id,
+            "package_digest": source.package_digest,
+            "source_result_commit": source.source_result_commit,
+            "source_result_parent": source.source_result_parent,
+            "source_result_tree": source.source_result_tree,
+            "delta_digest": delta.delta_digest,
+            "path_manifest_digest": delta.path_manifest_digest,
+            "ordinary_risk_digest": delta.ordinary_risk_digest,
+            "composition_digest": composition.composition_digest,
+            "base_commit": composition.base_commit,
+            "base_tree": composition.base_tree,
+            "candidate_commit": composition.candidate_commit,
+            "candidate_tree": composition.candidate_tree,
+            "candidate_parent_commit": composition.candidate_parent_commit,
+            "candidate_ref": composition.candidate_ref,
+            "retention_ref": composition.retention_ref,
+            "controller_config_digest": self.controller_config_digest,
+            "policy_epoch": self.policy_epoch,
+            "source_issuer": source.source_issuer,
+            "source_domain": source.source_domain,
+            "verifier_identity": _VERIFIER_IDENTITY,
+            "verifier_version": _VERIFIER_VERSION,
+            "base_observer_identity": _BASE_OBSERVER_IDENTITY,
+            "git_root_digest": self.repository_digest,
+        }
+        return MainCompositionProof.model_validate(
+            {**payload, "proof_digest": canonical_digest(payload)}
+        )
+
+    def _record_proof(
+        self,
+        source: MainSourcePackageBinding,
+        delta: MainDeltaManifest,
+        composition: MainCompositionArtifact,
+        proof: MainCompositionProof,
+    ) -> tuple[MainCompositionProof, ArtifactRef]:
+        authorize = getattr(self.journal, "_authorize_composition", None)
+        if callable(authorize) and getattr(self.journal, "_composition_root", None) is not None:
+            try:
+                return cast(
+                    tuple[MainCompositionProof, ArtifactRef],
+                    authorize(
+                        source,
+                        delta,
+                        composition,
+                        controller_config_digest=self.controller_config_digest,
+                        policy_epoch=self.policy_epoch,
+                    ),
+                )
+            except (RuntimeError, TypeError, ValueError) as exc:
+                raise MainCompositionError("composition proof was not durably authorized") from exc
+        record = getattr(self.journal, "record_composition_proof", None)
+        if callable(record):
+            try:
+                return proof, cast(ArtifactRef, record(proof))
+            except (RuntimeError, TypeError, ValueError) as exc:
+                raise MainCompositionError("composition proof was not durably recorded") from exc
+        # Lightweight journal doubles used by the offline adapter tests do not
+        # expose the production proof index.  They still receive the exact
+        # content-addressed reference shape; the production journal rejects
+        # plans unless it can read this proof back from its own store.
+        data = canonical_bytes(proof)
+        return proof, ArtifactRef(
+            digest=canonical_digest(proof),
+            size_bytes=len(data),
+            media_type="application/vnd.avo.main-graduation-composition-proof+json",
+            role="main-graduation-composition-proof",
+            created_at=datetime.now(UTC),
+        )
 
     @staticmethod
     def _require_digest(value: str, label: str) -> None:

@@ -25,6 +25,7 @@ from avo_correlate.contracts.main_graduation import (
     MainCheckObservation,
     MainCompletionPackage,
     MainCompositionArtifact,
+    MainCompositionProof,
     MainDeltaManifest,
     MainGraduationAttempt,
     MainGraduationEligibilityRecord,
@@ -51,7 +52,7 @@ from avo_correlate.contracts.main_graduation import (
     main_record_digest,
 )
 from avo_correlate.contracts.promotion_policy import path_manifest_digest
-from avo_correlate.domain.canonical import canonical_digest
+from avo_correlate.domain.canonical import canonical_bytes, canonical_digest
 
 # This file intentionally exercises journal seams and model validators directly.
 # Keep those focused white-box tests type-checked without making private seams public.
@@ -155,12 +156,50 @@ def plan() -> MainGraduationPlan:
     )
     comp = composition()
     binding = issuer()
+    proof = MainCompositionProof.model_construct(
+        operation_id=D,
+        repository_digest=R,
+        target_ref="refs/heads/main",
+        package_digest=D,
+        delta_digest=D2,
+        composition_digest=comp.composition_digest,
+        source_operation_id=D2,
+        source_result_commit=HEAD,
+        source_result_parent=BASE,
+        source_result_tree=TREE,
+        path_manifest_digest=D,
+        ordinary_risk_digest=D,
+        base_commit=BASE,
+        base_tree=TREE,
+        candidate_commit=HEAD,
+        candidate_tree=TREE,
+        candidate_parent_commit=BASE,
+        candidate_ref=comp.candidate_ref,
+        retention_ref=comp.retention_ref,
+        controller_config_digest=D2,
+        policy_epoch=D,
+        source_issuer="source-controller",
+        source_domain="integration-campaign",
+        verifier_identity="avo_correlate.adapters.git.main_composition.MainCompositionAdapter",
+        verifier_version="1",
+        base_observer_identity="avo_correlate.adapters.git.main_composition.MainBaseReader",
+        git_root_digest=R,
+        proof_digest=D,
+    )
+    proof_bytes = canonical_bytes(proof)
+    proof_ref = ref(
+        canonical_digest(proof),
+        role="main-graduation-composition-proof",
+        media_type="application/vnd.avo.main-graduation-composition-proof+json",
+    ).model_copy(update={"size_bytes": len(proof_bytes)})
     return MainGraduationPlan.model_construct(
         operation_id=D,
         repository_digest=R,
         package=package,
         delta=delta,
         composition=comp,
+        composition_proof=proof,
+        composition_proof_artifact=proof_ref,
         policy_epoch=D,
         controller_config_digest=D2,
         release_issuer_binding=binding,
@@ -230,6 +269,47 @@ def authority_plan() -> MainGraduationPlan:
     composition = MainCompositionArtifact.model_validate(
         composition_values | {"composition_digest": canonical_digest(composition_values)}
     )
+    proof_values = {
+        "schema_version": 1,
+        "repository_digest": R,
+        "target_ref": "refs/heads/main",
+        "operation_id": D,
+        "source_operation_id": D2,
+        "package_digest": D,
+        "source_result_commit": HEAD,
+        "source_result_parent": BASE,
+        "source_result_tree": TREE,
+        "delta_digest": delta.delta_digest,
+        "path_manifest_digest": delta.path_manifest_digest,
+        "ordinary_risk_digest": delta.ordinary_risk_digest,
+        "composition_digest": composition.composition_digest,
+        "base_commit": BASE,
+        "base_tree": TREE,
+        "candidate_commit": HEAD,
+        "candidate_tree": TREE,
+        "candidate_parent_commit": BASE,
+        "candidate_ref": composition.candidate_ref,
+        "retention_ref": composition.retention_ref,
+        "controller_config_digest": D2,
+        "policy_epoch": D,
+        "source_issuer": "source-controller",
+        "source_domain": "integration-campaign",
+        "verifier_identity": "avo_correlate.adapters.git.main_composition.MainCompositionAdapter",
+        "verifier_version": "1",
+        "base_observer_identity": "avo_correlate.adapters.git.main_composition.MainBaseReader",
+        "git_root_digest": R,
+    }
+    proof = MainCompositionProof.model_validate(
+        {**proof_values, "proof_digest": canonical_digest(proof_values)}
+    )
+    proof_bytes = canonical_bytes(proof)
+    proof_ref = ArtifactRef(
+        digest=canonical_digest(proof),
+        size_bytes=len(proof_bytes),
+        media_type="application/vnd.avo.main-graduation-composition-proof+json",
+        role="main-graduation-composition-proof",
+        created_at=NOW,
+    )
     return MainGraduationPlan.model_validate(
         {
             "operation_id": D,
@@ -238,6 +318,8 @@ def authority_plan() -> MainGraduationPlan:
             "package": package,
             "delta": delta,
             "composition": composition,
+            "composition_proof": proof,
+            "composition_proof_artifact": proof_ref,
             "policy_epoch": D,
             "controller_config_digest": D2,
             "release_issuer_binding": issuer(),
@@ -985,23 +1067,11 @@ def test_journal_wrappers_and_low_level_guards(tmp_path: Path) -> None:
     _sync_directory(tmp_path)
 
 
-def test_composition_verifier_binding_is_fail_closed_and_one_time(tmp_path: Path) -> None:
+def test_composition_verifier_binding_is_not_public(tmp_path: Path) -> None:
     journal = MainGraduationJournal(tmp_path)
-    with pytest.raises(MainGraduationJournalError, match="composition verifier"):
-        journal._verify_plan_composition(plan())
-
-    class Verifier:
-        calls = 0
-
-        def verify(self, _source: object, _delta: object, _composition: object) -> None:
-            self.calls += 1
-
-    verifier = Verifier()
-    journal.bind_composition_verifier(verifier)  # type: ignore[arg-type]
-    journal._verify_plan_composition(plan())
-    assert verifier.calls == 1
-    with pytest.raises(MainGraduationJournalError, match="already bound"):
-        journal.bind_composition_verifier(verifier)  # type: ignore[arg-type]
+    assert not hasattr(journal, "bind_composition_verifier")
+    with pytest.raises(TypeError):
+        MainGraduationJournal(tmp_path / "other", composition_verifier=object())  # type: ignore[call-arg]
 
 
 @pytest.mark.parametrize(
@@ -1039,7 +1109,7 @@ def test_new_plan_requires_verifier_even_after_hand_recording_c2(
     value = authority_plan()
     journal = MainGraduationJournal(tmp_path)
     monkeypatch.setattr(journal, "_verify_plan_evidence", lambda _plan: None)
-    with pytest.raises(MainGraduationJournalError, match="composition verifier"):
+    with pytest.raises(MainGraduationJournalError, match="composition authority"):
         journal.record_plan(value)
     assert not (tmp_path / "main-graduation-index" / "plan").exists()
 
@@ -1054,27 +1124,15 @@ def test_hand_recorded_valid_looking_c2_cannot_bypass_plan_authority(
     journal.record_source_package(value.package)
     journal.record_delta(value.delta)
     journal.record_composition(value.composition)
-    with pytest.raises(MainGraduationJournalError, match="composition verifier"):
+    with pytest.raises(MainGraduationJournalError, match="composition authority"):
         journal.record_plan(value)
 
 
-def test_restart_can_rebind_live_verifier_while_plan_reads_stay_durable(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    value = authority_plan()
+def test_restart_has_no_live_verifier_rebind_seam(tmp_path: Path) -> None:
     first = MainGraduationJournal(tmp_path)
-    monkeypatch.setattr(first, "_verify_plan_evidence", lambda _plan: None)
-
-    class Verifier:
-        def verify(self, _source: object, _delta: object, _composition: object) -> None:
-            return None
-
-    first.bind_composition_verifier(Verifier())  # type: ignore[arg-type]
-    first.record_plan(value)
     second = MainGraduationJournal(tmp_path)
-    second.bind_composition_verifier(Verifier())  # type: ignore[arg-type]
-    monkeypatch.setattr(second, "_verify_plan_evidence", lambda _plan: None)
-    assert second.read_plan(D) is not None
+    assert not hasattr(first, "bind_composition_verifier")
+    assert not hasattr(second, "bind_composition_verifier")
 
 
 def test_journal_ledger_indexes_and_tamper_detection(tmp_path: Path) -> None:
