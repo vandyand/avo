@@ -224,6 +224,17 @@ class RollbackBundleAuthority:
                 and existing.failed_soak_attestation_digest == canonical_digest(failed_soak)
             )
             stored_soak_data = self.journal.read_failed_soak_data(existing)
+            bridge_exists = self.journal.recovery_bridge_exists(existing)
+            if bridge_exists:
+                self.journal.require_recovery_bridge(existing)
+                legacy_data = stored_soak_data
+                if legacy_data is None:
+                    legacy_data = self.journal.read_recovery_bridge_legacy_soak_data(existing)
+                legacy_soak = FailedSoakAttestation.model_validate_json(legacy_data)
+                if not _same_soak_observation(legacy_soak, failed_soak):
+                    raise ValueError("fresh failed soak differs from durable recovery bridge")
+                self.journal.require(existing)
+                return existing
             if exact_soak and stored_soak_data is not None:
                 self.journal.require(existing)
                 return existing
@@ -498,3 +509,13 @@ class RollbackBundleAuthority:
 
 
 __all__ = ["RollbackBundleAuthority", "prepared_publication_evidence_digest"]
+
+
+def _same_soak_observation(
+    left: FailedSoakAttestation, right: FailedSoakAttestation
+) -> bool:
+    """Compare all provider facts except freshness-derived identity fields."""
+
+    return left.model_dump(
+        exclude={"freshness_cutoff", "attestation_id"}, mode="json"
+    ) == right.model_dump(exclude={"freshness_cutoff", "attestation_id"}, mode="json")

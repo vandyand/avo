@@ -76,10 +76,15 @@ from avo_correlate.contracts.integration_promotion import (
     CandidatePublicationBinding,
     IntegrationPromotionIntent,
 )
-from avo_correlate.contracts.integration_soak import SOAK_CONTEXT, SOAK_WORKFLOW_PATH
+from avo_correlate.contracts.integration_soak import (
+    SOAK_CONTEXT,
+    SOAK_WORKFLOW_PATH,
+    FailedSoakAttestation,
+)
 from avo_correlate.contracts.prepublication import (
     SOAK_ISSUER_ID,
     RollbackPublicationAuthorityConfig,
+    RollbackPublicationAuthorization,
     RollbackSnapshotRestoreFacts,
 )
 from avo_correlate.contracts.promotion_bundle import (
@@ -89,7 +94,7 @@ from avo_correlate.contracts.promotion_bundle import (
 )
 from avo_correlate.contracts.promotion_policy import PromotionConfig
 from avo_correlate.contracts.synthetic_validation import SyntheticValidationCreateAuthorization
-from avo_correlate.domain.canonical import canonical_digest
+from avo_correlate.domain.canonical import canonical_bytes, canonical_digest
 
 REMOTE = "https://github.com/vandyand/avo.git"
 OWNER = "vandyand"
@@ -399,6 +404,43 @@ def _validate_durable_canary(
         raise RuntimeError("preflight canary is not the durable semantic package")
 
 
+def _read_legacy_recovery_soak(
+    state_root: Path,
+    operation_id: str,
+    authority_journal: RollbackBundleAuthorityJournal,
+    existing: object | None,
+) -> FailedSoakAttestation | None:
+    """Read only the fixed, operation-keyed historical recovery child.
+
+    The file is an operator-provisioned recovery input, never a CLI authority
+    argument.  It is consulted only when the immutable authority index lacks
+    its original soak child; the authority service still binds its exact ID
+    and full digest before creating a bridge.
+    """
+
+    if existing is None:
+        return None
+    if not isinstance(existing, RollbackPublicationAuthorization):
+        raise RuntimeError("durable rollback authorization has an invalid type")
+    if authority_journal.read_failed_soak_data(existing) is not None:
+        return None
+    path = state_root.resolve() / "rollback-recovery" / (
+        operation_id.removeprefix("sha256:") + ".json"
+    )
+    if path.is_symlink() or not path.is_file():
+        raise RuntimeError("exact legacy failed-soak recovery input is missing")
+    data = path.read_bytes()
+    if len(data) > 2_000_000:
+        raise RuntimeError("legacy failed-soak recovery input is oversized")
+    try:
+        raw = json.loads(data, object_pairs_hook=_strict_object_pairs)
+        if canonical_bytes(raw) != data:
+            raise ValueError("legacy failed-soak recovery input is not canonical")
+        return FailedSoakAttestation.model_validate(raw)
+    except (TypeError, ValueError, json.JSONDecodeError) as exc:
+        raise RuntimeError("legacy failed-soak recovery input is malformed") from exc
+
+
 def _rollback_request(
     preflight: LiveRollbackPreflight,
     rollback_candidate_commit: str,
@@ -556,7 +598,18 @@ def execute_live(
         restore_tree=facts.restore_tree,
     )
     authority_journal = RollbackBundleAuthorityJournal(artifact_store)
-    authority = RollbackBundleAuthority(_authority_config(), authority_journal)
+    existing_authorization = authority_journal.read_authorization(provisional_request.operation_id)
+    recovery_failed_soak = _read_legacy_recovery_soak(
+        state_root,
+        provisional_request.operation_id,
+        authority_journal,
+        existing_authorization,
+    )
+    authority = RollbackBundleAuthority(
+        _authority_config(),
+        authority_journal,
+        recovery_absence_verifier=provider.verify_recovery_absence,
+    )
     preauthorization = authority.authorize(
         provisional_request,
         canary_package_artifact=preflight.canary_package_artifact,
@@ -564,6 +617,7 @@ def execute_live(
         failed_soak=failed_soak,
         facts=facts,
         prepared=prepared,
+        recovery_failed_soak=recovery_failed_soak,
     )
     # A drill authorization is a projection of the durable preauthorization
     # and provider observation; the runner never asserts authorization itself.
@@ -842,6 +896,15 @@ def _roots_overlap(left: Path, right: Path) -> bool:
 def _check_operation_id(value: str) -> None:
     if _SHA256_ID.fullmatch(value) is None:
         raise ValueError("operation ID must be a lowercase SHA-256 digest")
+
+
+def _strict_object_pairs(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    result: dict[str, object] = {}
+    for key, item in pairs:
+        if key in result:
+            raise ValueError(f"duplicate JSON key: {key}")
+        result[key] = item
+    return result
 
 
 def _validate_completed_canary(

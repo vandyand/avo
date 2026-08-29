@@ -100,6 +100,16 @@ class RollbackBundleAuthorityJournal:
         except (OSError, KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
             raise ValueError("durable publication plan reference is malformed") from exc
 
+    def recovery_bridge_exists(
+        self, authorization: RollbackPublicationAuthorization
+    ) -> bool:
+        """Report only physical bridge presence; malformed bridges are not absent."""
+
+        bridge = self._root / f"{authorization.operation_id.removeprefix('sha256:')}.bridge"
+        if bridge.exists() and not bridge.is_file():
+            raise ValueError("rollback recovery bridge has invalid type")
+        return bridge.is_file()
+
     def record(
         self,
         authorization: RollbackPublicationAuthorization,
@@ -429,6 +439,17 @@ class RollbackBundleAuthorityJournal:
             json.JSONDecodeError,
         ) as exc:
             raise ValueError("rollback recovery bridge is not durably recorded") from exc
+
+    def read_recovery_bridge_legacy_soak_data(
+        self, authorization: RollbackPublicationAuthorization
+    ) -> bytes:
+        """Read the exact legacy observation after validating its bridge."""
+
+        self.require_recovery_bridge(authorization)
+        bridge = self._root / f"{authorization.operation_id.removeprefix('sha256:')}.bridge"
+        value = json.loads(bridge.read_bytes())
+        reference = ArtifactRef.model_validate(value["legacy_failed_soak_artifact"])
+        return self._store.read_bytes(reference)
 
     def read_artifact(self, reference: ArtifactRef) -> bytes:
         """Read a referenced authority artifact with content-address verification."""
