@@ -110,6 +110,11 @@
           "title": "Repository Digest",
           "type": "string"
         },
+        "retention_ref": {
+          "minLength": 1,
+          "title": "Retention Ref",
+          "type": "string"
+        },
         "schema_version": {
           "const": 1,
           "default": 1,
@@ -134,7 +139,8 @@
         "candidate_tree",
         "candidate_parent_commit",
         "composition_digest",
-        "candidate_ref"
+        "candidate_ref",
+        "retention_ref"
       ],
       "title": "MainCompositionArtifact",
       "type": "object"

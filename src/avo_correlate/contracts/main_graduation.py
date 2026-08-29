@@ -27,7 +27,11 @@ from avo_correlate.contracts.base import (
     StrictModel,
     require_aware_datetime,
 )
-from avo_correlate.contracts.promotion_policy import PromotionPolicy, RiskClass
+from avo_correlate.contracts.promotion_policy import (
+    PromotionPolicy,
+    RiskClass,
+    path_manifest_digest,
+)
 from avo_correlate.domain.canonical import canonical_bytes, canonical_digest
 
 GitObject = Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{40}(?:[0-9a-f]{24})?$")]
@@ -46,6 +50,14 @@ def _paths(paths: list[str]) -> list[str]:
     if PromotionPolicy.derive_risk(paths) is not RiskClass.ORDINARY:
         raise ValueError("main delta paths must classify as ordinary")
     return paths
+
+
+def _main_candidate_ref(operation_id: str) -> str:
+    return f"refs/heads/avo/candidate/{operation_id.removeprefix('sha256:')}"
+
+
+def _main_retention_ref(operation_id: str) -> str:
+    return f"refs/avo/main-composition/{operation_id.removeprefix('sha256:')}"
 
 
 def _aware(value: datetime) -> datetime:
@@ -183,6 +195,24 @@ class MainDeltaManifest(MainBound):
     def validate_delta(self) -> MainDeltaManifest:
         if self.source_result_parent == self.source_result_commit:
             raise ValueError("delta must have a distinct sole parent")
+        if PromotionPolicy.derive_risk(self.changed_paths) is not RiskClass.ORDINARY:
+            raise ValueError("main delta paths must classify as ordinary")
+        expected_path = path_manifest_digest(self.changed_paths)
+        if self.path_manifest_digest != expected_path:
+            raise ValueError("delta path manifest digest mismatch")
+        expected_risk = canonical_digest(
+            {
+                "ordinary_risk": "ordinary",
+                "changed_paths": self.changed_paths,
+                "path_manifest_digest": self.path_manifest_digest,
+            }
+        )
+        if self.ordinary_risk_digest != expected_risk:
+            raise ValueError("delta ordinary risk digest mismatch")
+        if self.delta_digest != canonical_digest(
+            self.model_dump(exclude={"delta_digest"}, mode="json")
+        ):
+            raise ValueError("delta digest mismatch")
         return self
 
 
@@ -200,6 +230,7 @@ class MainCompositionArtifact(MainBound):
     candidate_parent_commit: GitObject
     composition_digest: Sha256Digest
     candidate_ref: NonEmptyString
+    retention_ref: NonEmptyString
     deploy_performed: Literal[False] = False
 
     @model_validator(mode="after")
@@ -208,6 +239,14 @@ class MainCompositionArtifact(MainBound):
             raise ValueError("composed candidate must be parented by fresh main base")
         if self.candidate_commit == self.base_commit:
             raise ValueError("composed candidate must be a new commit")
+        if self.candidate_ref != _main_candidate_ref(self.operation_id):
+            raise ValueError("composed candidate ref is outside controller namespace")
+        if self.retention_ref != _main_retention_ref(self.operation_id):
+            raise ValueError("composition retention ref is outside controller namespace")
+        if self.composition_digest != canonical_digest(
+            self.model_dump(exclude={"composition_digest"}, mode="json")
+        ):
+            raise ValueError("composition digest mismatch")
         return self
 
 
@@ -406,6 +445,12 @@ class MainGraduationPlan(MainBound):
             raise ValueError("plan source package binding differs")
         if self.composition.delta_digest != self.delta.delta_digest:
             raise ValueError("plan composition delta differs")
+        if (
+            self.delta.source_result_commit != self.package.source_result_commit
+            or self.delta.source_result_tree != self.package.source_result_tree
+            or self.delta.source_result_parent != self.package.source_result_parent
+        ):
+            raise ValueError("plan delta source differs from package result")
         binding = self.release_issuer_binding
         if (
             binding.operation_id != self.operation_id

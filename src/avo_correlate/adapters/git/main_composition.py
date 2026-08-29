@@ -13,6 +13,7 @@ import os
 import re
 import subprocess
 import tempfile
+import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol, cast
@@ -78,7 +79,7 @@ class MainCompositionResult:
 class MainBaseReader(Protocol):
     """Minimal read-only seam used by tests and alternate trusted readers."""
 
-    def fresh_main_base(self) -> MainBaseSnapshot: ...
+    def fresh_main_base(self) -> object: ...
 
 
 def _object(value: str, label: str) -> str:
@@ -127,11 +128,12 @@ class MainCompositionAdapter:
         """Read the exact current main commit/tree without reading any source ref."""
 
         try:
-            snapshot = self.base_reader.fresh_main_base()
+            snapshot_value: object = self.base_reader.fresh_main_base()
         except Exception as exc:
             raise MainCompositionError("trusted main base observation failed") from exc
-        if not isinstance(snapshot, MainBaseSnapshot):
+        if not isinstance(snapshot_value, MainBaseSnapshot):
             raise MainCompositionError("trusted main base observation has the wrong type")
+        snapshot = snapshot_value
         if snapshot.repository_digest != self.repository_digest:
             raise MainCompositionError("trusted main base repository differs from composition")
         if snapshot.target_ref != "refs/heads/main":
@@ -156,10 +158,7 @@ class MainCompositionAdapter:
         self._require_digest(source.operation_id, "main operation")
         self._require_digest(source.repository_digest, "source repository")
         self._require_digest(source.package_digest, "source package")
-        if (
-            self.repository_digest is not None
-            and source.repository_digest != self.repository_digest
-        ):
+        if source.repository_digest != self.repository_digest:
             raise MainCompositionError("source repository differs from composition repository")
 
         durable = self.journal.read_source_package(source.operation_id)
@@ -245,9 +244,9 @@ class MainCompositionAdapter:
             raise MainCompositionError("composed candidate changed paths differ from source delta")
         if PromotionPolicy.derive_risk(composed_paths).value != "ordinary":
             raise MainCompositionError("composed candidate contains disallowed risk paths")
-        final_base = self.fresh_main_base()
-        self._validate_base(base, final_base, source.repository_digest)
         candidate_ref = f"{_CANDIDATE_PREFIX}{source.operation_id.removeprefix('sha256:')}"
+        retention_ref = f"refs/avo/main-composition/{source.operation_id.removeprefix('sha256:')}"
+        self._retain_candidate(retention_ref, candidate_commit)
         composition_payload = {
             "schema_version": 1,
             "repository_digest": source.repository_digest,
@@ -261,6 +260,7 @@ class MainCompositionAdapter:
             "candidate_tree": candidate_tree,
             "candidate_parent_commit": base.commit,
             "candidate_ref": candidate_ref,
+            "retention_ref": retention_ref,
             "deploy_performed": False,
         }
         composition = MainCompositionArtifact.model_validate(
@@ -269,6 +269,10 @@ class MainCompositionAdapter:
                 "composition_digest": canonical_digest(composition_payload),
             }
         )
+        # Re-observe the trusted main base after every derived object and the
+        # retention CAS, immediately before writing the durable C2 records.
+        final_base = self.fresh_main_base()
+        self._validate_base(base, final_base, source.repository_digest)
         try:
             delta_ref = self.journal.record_delta(delta)
             composition_ref = self.journal.record_composition(composition)
@@ -295,10 +299,7 @@ class MainCompositionAdapter:
         if store is None:
             raise MainCompositionError("journal does not expose its artifact store")
         data = store.read_bytes(durable.package_artifact)
-        package = cast(
-            IntegrationCampaignEvidencePackage,
-            IntegrationCampaignEvidencePackage.model_validate_json(data),
-        )
+        package = IntegrationCampaignEvidencePackage.model_validate_json(data)
         if package.intent.operation_id != source.source_operation_id:
             raise MainCompositionError("source package operation drift")
         if package.receipt.outcome not in {"applied", "already_applied"}:
@@ -361,6 +362,7 @@ class MainCompositionAdapter:
         patch = self._git_bytes(
             "diff",
             "--no-ext-diff",
+            "--no-textconv",
             "--binary",
             "--full-index",
             "--no-renames",
@@ -387,7 +389,49 @@ class MainCompositionAdapter:
     def _safe_path(path: str) -> bool:
         from avo_correlate.contracts.promotion_policy import is_valid_promotion_path
 
-        return is_valid_promotion_path(path) and path == path.replace("\\", "/")
+        return (
+            is_valid_promotion_path(path)
+            and path == path.replace("\\", "/")
+            and all(part.casefold() != ".git" for part in path.split("/"))
+        )
+
+    def _retain_candidate(self, retention_ref: str, candidate_commit: str) -> None:
+        """CAS-create the local object-retention ref, never a hosted ref."""
+
+        if not re.fullmatch(r"refs/avo/main-composition/[0-9a-f]{64}", retention_ref):
+            raise MainCompositionError("retention ref is outside controller namespace")
+        existing = self._run_bytes(
+            ["git", "rev-parse", "--verify", "--end-of-options", f"{retention_ref}^{{commit}}"],
+            check=False,
+        )
+        if existing:
+            if existing.decode("ascii", "strict").strip() != candidate_commit:
+                raise MainCompositionError("retention ref points at a conflicting commit")
+            return
+        try:
+            self._run(
+                ["git", "update-ref", retention_ref, candidate_commit, "0" * len(candidate_commit)]
+            )
+        except MainCompositionError:
+            observed = self._run_bytes(
+                [
+                    "git",
+                    "rev-parse",
+                    "--verify",
+                    "--end-of-options",
+                    f"{retention_ref}^{{commit}}",
+                ],
+                check=False,
+            )
+            if not observed or observed.decode("ascii", "strict").strip() != candidate_commit:
+                raise MainCompositionError(
+                    "retention ref create was ambiguous or conflicting"
+                ) from None
+        observed = self._git(
+            "rev-parse", "--verify", "--end-of-options", f"{retention_ref}^{{commit}}"
+        )
+        if observed != candidate_commit:
+            raise MainCompositionError("retention ref does not retain candidate")
 
     def _apply_delta(self, base_commit: str, patch: bytes) -> str:
         with tempfile.TemporaryDirectory(prefix="avo-main-compose-") as temporary:
@@ -416,7 +460,20 @@ class MainCompositionAdapter:
         )
         return _object(
             self._run(
-                ["git", "commit-tree", tree, "-p", parent],
+                [
+                    "git",
+                    "-c",
+                    "i18n.commitEncoding=UTF-8",
+                    "-c",
+                    "commit.gpgSign=false",
+                    "-c",
+                    "tag.gpgSign=false",
+                    "commit-tree",
+                    tree,
+                    "-p",
+                    parent,
+                    "--no-gpg-sign",
+                ],
                 env=env,
                 input_bytes=_COMMIT_MESSAGE.encode(),
             ),
@@ -424,23 +481,47 @@ class MainCompositionAdapter:
         )
 
     def _verify_candidate(self, commit: str, tree: str, parent: str) -> None:
-        actual_tree = self._git("rev-parse", "--verify", "--end-of-options", f"{commit}^{{tree}}")
+        actual_tree, parents = self._commit_topology(commit)
         if actual_tree != tree:
             raise MainCompositionError("candidate tree observation differs from composed tree")
-        parents = self._git("rev-list", "--parents", "-n", "1", commit).split()
-        if parents != [commit, parent]:
+        if parents != [parent]:
             raise MainCompositionError("candidate does not have the exact sole main parent")
 
     def _require_sole_parent(self, parent: str, result: str) -> None:
-        topology = self._git("rev-list", "--parents", "-n", "1", result).split()
-        if topology != [result, parent]:
+        _tree, parents = self._commit_topology(result)
+        if parents != [parent]:
             raise MainCompositionError("source result is not an exact sole-parent commit")
 
+    def _commit_topology(self, commit: str) -> tuple[str, list[str]]:
+        raw = self._git_bytes("cat-file", "-p", commit)
+        headers = raw.split(b"\n\n", 1)[0].splitlines()
+        try:
+            tree_header = b"tree "
+            parent_header = b"parent "
+            trees = [
+                line[len(tree_header) :].decode("ascii")
+                for line in headers
+                if line.startswith(tree_header)
+            ]
+            parents = [
+                line[len(parent_header) :].decode("ascii")
+                for line in headers
+                if line.startswith(parent_header)
+            ]
+        except UnicodeDecodeError as exc:
+            raise MainCompositionError("Git commit headers are not ASCII") from exc
+        if len(trees) != 1 or any(
+            not _GIT_OBJECT.fullmatch(item) for item in [trees[0], *parents]
+        ):
+            raise MainCompositionError("Git commit object topology is malformed")
+        return trees[0], parents
+
     def _verify_commit_tree(self, commit: str, expected_tree: str | None, label: str) -> None:
-        actual = self._git("rev-parse", "--verify", "--end-of-options", f"{commit}^{{tree}}")
+        actual, _parents = self._commit_topology(commit)
         if expected_tree is not None and actual != expected_tree:
             raise MainCompositionError(f"{label} tree differs from trusted package")
         entries = self._git_bytes("ls-tree", "-r", "-z", commit)
+        seen_paths: set[str] = set()
         for entry in entries.rstrip(b"\0").split(b"\0"):
             if not entry:
                 continue
@@ -455,8 +536,13 @@ class MainCompositionAdapter:
             ):
                 raise MainCompositionError(f"{label} tree contains a VCS/reparse hazard")
             path = raw_path.decode("utf-8", "strict")
-            if not self._safe_path(path):
+            if (
+                not self._safe_path(path)
+                or unicodedata.normalize("NFC", path) != path
+                or path.casefold() in seen_paths
+            ):
                 raise MainCompositionError(f"{label} tree contains an unsafe path")
+            seen_paths.add(path.casefold())
 
     def _environment(self) -> dict[str, str]:
         environment = {
@@ -480,6 +566,7 @@ class MainCompositionAdapter:
                 "GIT_CONFIG_NOSYSTEM": "1",
                 "GIT_CONFIG_GLOBAL": os.devnull,
                 "GIT_CONFIG_SYSTEM": os.devnull,
+                "GIT_NO_REPLACE_OBJECTS": "1",
             }
         )
         return environment
@@ -496,9 +583,10 @@ class MainCompositionAdapter:
         *,
         env: dict[str, str] | None = None,
         input_bytes: bytes | None = None,
+        check: bool = True,
     ) -> str:
         return (
-            self._run_bytes(command, env=env, input_bytes=input_bytes)
+            self._run_bytes(command, env=env, input_bytes=input_bytes, check=check)
             .decode("utf-8", "strict")
             .strip()
         )
@@ -509,12 +597,13 @@ class MainCompositionAdapter:
         *,
         env: dict[str, str] | None = None,
         input_bytes: bytes | None = None,
+        check: bool = True,
     ) -> bytes:
         try:
             result = subprocess.run(
                 command,
                 cwd=self.root,
-                check=True,
+                check=check,
                 capture_output=True,
                 input=input_bytes,
                 timeout=self._timeout,

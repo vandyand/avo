@@ -547,6 +547,19 @@ class MainGraduationJournal:
                 raise MainGraduationJournalError("plan evidence artifact is unavailable") from exc
             if len(raw) != reference.size_bytes or _digest_bytes(raw) != reference.digest:
                 raise MainGraduationJournalError("plan evidence artifact is tampered")
+        durable_delta = self._read("delta", plan.operation_id)
+        durable_composition = self._read("composition", plan.operation_id)
+        if durable_delta is None or durable_composition is None:
+            raise MainGraduationJournalError(
+                "plan requires durable exact delta and composition records"
+            )
+        if (
+            canonical_bytes(durable_delta[0]) != canonical_bytes(plan.delta)
+            or canonical_bytes(durable_composition[0]) != canonical_bytes(plan.composition)
+        ):
+            raise MainGraduationJournalError(
+                "plan delta/composition differs from durable records"
+            )
 
     def _require_controller_issuer_binding(self, binding: MainReleaseIssuerBinding) -> None:
         """Accept authority only when it matches the journal's controller-owned root."""

@@ -48,6 +48,7 @@ from avo_correlate.contracts.main_graduation import (
     main_record_bytes,
     main_record_digest,
 )
+from avo_correlate.contracts.promotion_policy import path_manifest_digest
 from avo_correlate.domain.canonical import canonical_digest
 
 # This file intentionally exercises journal seams and model validators directly.
@@ -108,7 +109,8 @@ def composition() -> MainCompositionArtifact:
         candidate_tree=TREE,
         candidate_parent_commit=BASE,
         composition_digest=D2,
-        candidate_ref="refs/heads/avo/candidate/" + "a" * 64,
+        candidate_ref="refs/heads/avo/candidate/" + "1" * 64,
+        retention_ref="refs/avo/main-composition/" + "1" * 64,
     )
 
 
@@ -543,9 +545,37 @@ def test_simple_contract_validators_cover_success_and_failure_edges() -> None:
         source_result_tree=TREE,
         source_result_parent=BASE,
         changed_paths=["src/feature.py"],
-        path_manifest_digest=D,
-        delta_digest=D2,
-        ordinary_risk_digest=D,
+        path_manifest_digest=path_manifest_digest(["src/feature.py"]),
+        delta_digest=canonical_digest(
+            {
+                "schema_version": 1,
+                "repository_digest": R,
+                "target_ref": "refs/heads/main",
+                "operation_id": D,
+                "package_digest": D,
+                "source_result_commit": HEAD,
+                "source_result_parent": BASE,
+                "source_result_tree": TREE,
+                "changed_paths": ["src/feature.py"],
+                "path_manifest_digest": path_manifest_digest(["src/feature.py"]),
+                "ordinary_risk_digest": canonical_digest(
+                    {
+                        "ordinary_risk": "ordinary",
+                        "changed_paths": ["src/feature.py"],
+                        "path_manifest_digest": path_manifest_digest(["src/feature.py"]),
+                    }
+                ),
+                "ordinary_risk": "ordinary",
+                "deploy_performed": False,
+            }
+        ),
+        ordinary_risk_digest=canonical_digest(
+            {
+                "ordinary_risk": "ordinary",
+                "changed_paths": ["src/feature.py"],
+                "path_manifest_digest": path_manifest_digest(["src/feature.py"]),
+            }
+        ),
     )
     assert delta.changed_paths == ["src/feature.py"]
     with pytest.raises(ValidationError):
@@ -560,8 +590,26 @@ def test_simple_contract_validators_cover_success_and_failure_edges() -> None:
         candidate_commit=HEAD,
         candidate_tree=TREE,
         candidate_parent_commit=BASE,
-        composition_digest=D2,
-        candidate_ref="refs/heads/avo/candidate/" + "a" * 64,
+        composition_digest=canonical_digest(
+            {
+                "schema_version": 1,
+                "repository_digest": R,
+                "target_ref": "refs/heads/main",
+                "operation_id": D,
+                "package_digest": D,
+                "delta_digest": D2,
+                "base_commit": BASE,
+                "base_tree": TREE,
+                "candidate_commit": HEAD,
+                "candidate_tree": TREE,
+                "candidate_parent_commit": BASE,
+                "candidate_ref": "refs/heads/avo/candidate/" + "1" * 64,
+                "retention_ref": "refs/avo/main-composition/" + "1" * 64,
+                "deploy_performed": False,
+            }
+        ),
+        candidate_ref="refs/heads/avo/candidate/" + "1" * 64,
+        retention_ref="refs/avo/main-composition/" + "1" * 64,
     )
     assert valid_comp.candidate_parent_commit == BASE
     with pytest.raises(ValidationError):

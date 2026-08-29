@@ -215,11 +215,39 @@ def test_plan_requires_durable_controller_pinned_issuer_and_source_binding(tmp_p
         source_issuer="integration-controller",
         source_domain="integration-campaign",
     )
+    delta = MainDeltaManifest.model_construct(
+        operation_id=DIGEST,
+        repository_digest=DIGEST,
+        package_digest=package.package_digest,
+        source_result_commit="a" * 40,
+        source_result_tree="b" * 40,
+        source_result_parent="c" * 40,
+        changed_paths=["src/feature.py"],
+        path_manifest_digest=DIGEST,
+        delta_digest=DIGEST,
+        ordinary_risk_digest=DIGEST,
+    )
+    composition = MainCompositionArtifact.model_construct(
+        operation_id=DIGEST,
+        repository_digest=DIGEST,
+        package_digest=package.package_digest,
+        delta_digest=delta.delta_digest,
+        base_commit="c" * 40,
+        base_tree="b" * 40,
+        candidate_commit="a" * 40,
+        candidate_tree="b" * 40,
+        candidate_parent_commit="c" * 40,
+        composition_digest=DIGEST,
+        candidate_ref="refs/heads/avo/candidate/" + "1" * 64,
+        retention_ref="refs/avo/main-composition/" + "1" * 64,
+    )
     plan = MainGraduationPlan.model_construct(
         operation_id=DIGEST,
         repository_digest=DIGEST,
         target_ref="refs/heads/main",
         package=package,
+        delta=delta,
+        composition=composition,
         controller_config_digest=DIGEST,
         release_issuer_binding=binding,
         evidence_artifacts=[package_artifact],
@@ -229,6 +257,10 @@ def test_plan_requires_durable_controller_pinned_issuer_and_source_binding(tmp_p
     journal._read = lambda kind, operation_id: (  # type: ignore[method-assign]
         (package, None)
         if kind == "source-package" and operation_id == DIGEST
+        else (delta, None)
+        if kind == "delta" and operation_id == DIGEST
+        else (composition, None)
+        if kind == "composition" and operation_id == DIGEST
         else original_read(kind, operation_id)
     )
     journal._verify_plan_evidence(plan)  # pyright: ignore[reportPrivateUsage]
