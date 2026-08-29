@@ -34,7 +34,7 @@ from avo_correlate.contracts.prepublication import (
 from avo_correlate.contracts.promotion_bundle import RollbackPromotionBundleAuthorization
 from avo_correlate.domain.canonical import canonical_bytes, canonical_digest
 
-_CANDIDATE_REF = re.compile(r"^refs/heads/avo/candidate/[0-9a-f]{32}$")
+_CANDIDATE_REF = re.compile(r"^refs/heads/avo/candidate/[0-9a-f]{64}$")
 
 
 def prepared_publication_evidence_digest(prepared: PreparedPublication) -> str:

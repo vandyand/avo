@@ -14,6 +14,7 @@ from avo_correlate.adapters.artifacts.rollback_bundle_authority import (
 )
 from avo_correlate.adapters.git.publisher import PreparedPublication, PublicationPlan
 from avo_correlate.application.rollback_bundle_authority import (
+    _CANDIDATE_REF,  # pyright: ignore[reportPrivateUsage]
     RollbackBundleAuthority,
     prepared_publication_evidence_digest,
 )
@@ -53,7 +54,13 @@ J = "c" * 40
 C = "d" * 40
 K = "sha256:" + "b" * 64
 NOW = datetime(2026, 1, 1, tzinfo=UTC)
-REF = "refs/heads/avo/candidate/" + "e" * 32
+REF = "refs/heads/avo/candidate/" + "e" * 64
+
+
+def test_publisher_candidate_ref_namespace_requires_64_hex() -> None:
+    assert _CANDIDATE_REF.fullmatch(REF)
+    assert _CANDIDATE_REF.fullmatch("refs/heads/avo/candidate/" + "e" * 32) is None
+    assert _CANDIDATE_REF.fullmatch("refs/heads/avo/candidate/" + "e" * 64 + "/child") is None
 
 
 def _complete_package() -> tuple[IntegrationCampaignEvidencePackage, bytes, ArtifactRef]:
@@ -636,7 +643,7 @@ def test_finalize_rejects_publication_mismatch(tmp_path: Path, field: str) -> No
         "candidate_commit": H,
         "candidate_tree": H,
         "candidate_digest": D,
-        "candidate_ref": "refs/heads/avo/candidate/" + "f" * 32,
+        "candidate_ref": "refs/heads/avo/candidate/" + "f" * 64,
         "controller_publisher_identity": "other",
         "publication_evidence_digest": D,
         "changed_paths": ["src/y.py"],
