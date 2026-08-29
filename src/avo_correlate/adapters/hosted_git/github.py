@@ -46,6 +46,7 @@ type JsonObject = dict[str, JsonValue]
 type JsonBody = Mapping[str, JsonValue]
 
 _MAX_RESPONSE_BYTES = 4 * 1024 * 1024
+_RECOVERY_CANDIDATE_REF = re.compile(r"^refs/heads/avo/candidate/[0-9a-f]{64}$")
 
 
 class GitHubTransportError(RuntimeError):
@@ -484,6 +485,60 @@ class GitHubIntegrationProvider:
     # Short aliases keep application wiring readable while the explicit name
     # documents that this read is an authority boundary.
     observe_authority_ref = read_authority_ref
+
+    def verify_recovery_absence(
+        self, candidate_ref: str, candidate_commit: str, base_commit: str
+    ) -> None:
+        """Prove a legacy candidate has not been published or opened as a PR.
+
+        This is deliberately read-only.  A missing candidate ref is the only
+        acceptable ref observation, and every page of the exact all-state PR
+        query must be empty.  Any transport, malformed response, or matching
+        PR fails closed before a recovery bridge can be written.
+        """
+
+        self._require_authenticated()
+        exact_ref = self._authority_ref(candidate_ref, "candidate ref")
+        if _RECOVERY_CANDIDATE_REF.fullmatch(exact_ref) is None:
+            raise ValueError("candidate ref is outside the recovery namespace")
+        _git_object(candidate_commit, "candidate commit")
+        _git_object(base_commit, "candidate base commit")
+        branch = exact_ref.removeprefix("refs/heads/")
+        try:
+            self._call(
+                "GET",
+                self._path(f"git/ref/heads/{quote(branch, safe='')}")
+            )
+        except GitHubRejected as exc:
+            if exc.status != 404:
+                raise
+        else:
+            raise ValueError("recovery candidate ref already exists")
+
+        candidate_branch = self._branch(exact_ref, "candidate ref")
+        target_branch = self._branch(self.target_ref, "target ref")
+        query = (
+            "pulls?state=all&"
+            f"head={quote(f'{self.owner}:{candidate_branch}', safe='')}"
+            f"&base={quote(target_branch, safe='')}"
+        )
+        seen_numbers: set[int] = set()
+        for page in range(1, 101):
+            payload = self._call(
+                "GET", self._path(f"{query}&per_page=100&page={page}")
+            )
+            if not isinstance(payload, list) or len(payload) > 100:
+                raise ValueError("malformed or oversized recovery PR discovery")
+            for item in payload:
+                raw = _object(item, "recovery pull request")
+                number = _required_int(raw, "number", "recovery pull request")
+                if number <= 0 or number in seen_numbers:
+                    raise ValueError("recovery pull request identity is invalid")
+                seen_numbers.add(number)
+                raise ValueError("recovery candidate has an existing pull request")
+            if len(payload) < 100:
+                return
+        raise ValueError("recovery PR discovery exceeded bounded pagination")
 
     def verify_current_target(
         self,

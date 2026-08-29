@@ -253,7 +253,11 @@ class Fixture:
             max_bytes=2_000_000,
         )
         self.prepared = PreparedPublication(plan, root / "candidate", self.plan_ref)
-        self.authority = RollbackBundleAuthority(self.config, self.journal)
+        self.authority = RollbackBundleAuthority(
+            self.config,
+            self.journal,
+            recovery_absence_verifier=lambda _ref, _commit, _base: None,
+        )
 
     @staticmethod
     def _config() -> RollbackPublicationAuthorityConfig:
@@ -385,6 +389,69 @@ def test_authorize_success_replay_and_restart(tmp_path: Path) -> None:
     )
     assert fixture.authorize(authority=restarted) == first
     fixture.journal.require(first)
+
+
+def test_authorize_materializes_plan_from_publisher_store(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    publisher_store = FilesystemArtifactStore(tmp_path / "publisher")
+    plan_bytes = canonical_bytes(fixture.prepared.plan.payload())
+    publisher_ref = publisher_store.put_bytes(
+        plan_bytes,
+        media_type="application/vnd.avo.candidate-publication+json",
+        role="candidate-publication-plan",
+        max_bytes=2_000_000,
+    )
+    prepared = PreparedPublication(
+        fixture.prepared.plan, fixture.prepared.candidate_root, publisher_ref
+    )
+    authorization = fixture.authorize(prepared=prepared)
+    fixture.journal.require(authorization)
+    assert fixture.journal._store.read_bytes(publisher_ref) == plan_bytes  # pyright: ignore[reportPrivateUsage]
+
+
+def test_authorize_reuses_durable_soak_when_freshness_cutoff_changes(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    authorization = fixture.authorize()
+    values = fixture.soak.model_dump(mode="json")
+    values["freshness_cutoff"] = "2025-12-30T00:00:00Z"
+    constructed = FailedSoakAttestation.model_construct(**values)
+    values["attestation_id"] = canonical_digest(
+        constructed.model_dump(exclude={"attestation_id"}, mode="json")
+    )
+    refreshed = FailedSoakAttestation.model_validate(values)
+    assert fixture.authorize(failed_soak=refreshed) == authorization
+    assert (
+        fixture.authority.drill_authorization(authorization, refreshed).failed_soak_attestation_id
+        == authorization.failed_soak_attestation_id
+    )
+
+
+def test_legacy_authorization_requires_exact_attestation_for_recovery_bridge(
+    tmp_path: Path,
+) -> None:
+    fixture = Fixture(tmp_path)
+    authorization = fixture.authorize()
+    index = fixture.journal._root / authorization.operation_id.removeprefix("sha256:")  # pyright: ignore[reportPrivateUsage]
+    value = json.loads(index.read_bytes())
+    value.pop("failed_soak_artifact")
+    index.write_bytes(canonical_bytes(value))
+
+    values = fixture.soak.model_dump(mode="json")
+    values["freshness_cutoff"] = "2025-12-30T00:00:00Z"
+    constructed = FailedSoakAttestation.model_construct(**values)
+    values["attestation_id"] = canonical_digest(
+        constructed.model_dump(exclude={"attestation_id"}, mode="json")
+    )
+    refreshed = FailedSoakAttestation.model_validate(values)
+    with pytest.raises(ValueError, match="stored authority"):
+        fixture.authorize(failed_soak=refreshed)
+
+    recovered = fixture.authorize(
+        failed_soak=refreshed,
+        recovery_failed_soak=fixture.soak,
+    )
+    assert recovered == authorization
+    fixture.journal.require(recovered)
 
 
 def test_journal_rejects_create_once_conflict_and_path_traversal(tmp_path: Path) -> None:
