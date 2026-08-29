@@ -1085,3 +1085,23 @@ def test_finalize_type_fences_after_authorization(tmp_path: Path) -> None:
             evidence=wrong_ref,
             drill_authorization=drill,
         )
+
+
+def test_finalize_rejects_tampered_canary_child_before_authority_output(
+    tmp_path: Path,
+) -> None:
+    fixture = Fixture(tmp_path)
+    authorization = fixture.authorize()
+    drill = fixture.authority.drill_authorization(authorization, fixture.soak)
+    index_path = fixture.journal._root / authorization.operation_id.removeprefix("sha256:")  # pyright: ignore[reportPrivateUsage]
+    index = json.loads(index_path.read_bytes())
+    index["canary_package_artifact"]["role"] = "tampered"
+    index_path.write_bytes(canonical_bytes(index))
+
+    with pytest.raises(ValueError, match="not durably recorded"):
+        fixture.authority.finalize(
+            authorization,
+            _publication(fixture, authorization),
+            evidence=_evidence(fixture, authorization),
+            drill_authorization=drill,
+        )

@@ -9,9 +9,13 @@ from avo_correlate.adapters.artifacts import FilesystemArtifactStore
 from avo_correlate.application.promotion_service import PromotionController
 from avo_correlate.contracts.base import ArtifactRef
 from avo_correlate.contracts.integration_promotion import CandidatePublicationBinding
-from avo_correlate.contracts.promotion_bundle import GitRefSnapshot, PromotionControllerConfig
+from avo_correlate.contracts.promotion_bundle import (
+    GitRefSnapshot,
+    PromotionControllerConfig,
+    RollbackPromotionBundleAuthorization,
+)
 from avo_correlate.contracts.promotion_policy import PromotionConfig
-from avo_correlate.domain.canonical import canonical_bytes
+from avo_correlate.domain.canonical import canonical_bytes, canonical_digest
 from tests.unit.test_rollback_bundle_authority import (  # pyright: ignore[reportPrivateUsage]
     Fixture,
     _evidence,  # pyright: ignore[reportPrivateUsage]
@@ -156,6 +160,91 @@ def test_create_rollback_bundle_builds_allow_bundle_and_durable_authority(
     assert result.bundle.rollback_operation_id == preauth.operation_id
     assert result.bundle.comparison.changed_paths == ["src/x.py"]
     control.replay(result.bundle, bundle_digest=result.bundle_digest)
+
+
+def test_create_rollback_bundle_accepts_finalized_durable_authority(
+    tmp_path: Path,
+) -> None:
+    fixture, preauth, drill, publication, package_ref = _inputs(tmp_path)
+    finalized = fixture.authority.finalize(
+        preauth,
+        publication,
+        evidence=_evidence(fixture, preauth),
+        drill_authorization=drill,
+    )
+    control, store, candidate = controller(tmp_path)
+    store.put_bytes(
+        canonical_bytes(fixture.package),
+        media_type=package_ref.media_type,
+        role=package_ref.role,
+        max_bytes=2_000_000,
+    )
+    store.put_bytes(
+        _evidence(fixture, preauth),
+        media_type="application/json",
+        role="publication",
+        max_bytes=2_000_000,
+    )
+
+    result = control.create_rollback_bundle(
+        fixture.operation,
+        canary_package=fixture.package,
+        canary_package_artifact=package_ref,
+        drill_authorization=drill,
+        rollback_authorization=finalized,
+        candidate_root=candidate,
+        publication=publication,
+        config=config(),
+    )
+    assert result.bundle.rollback_authorization == finalized
+    assert finalized.source_tree_digest == fixture.package.intent.candidate_digest
+    assert finalized.restore_tree_digest == finalized.candidate_digest
+
+
+def test_create_rollback_bundle_rejects_mismatched_finalized_authority_before_record(
+    tmp_path: Path,
+) -> None:
+    fixture, preauth, drill, publication, package_ref = _inputs(tmp_path)
+    finalized = fixture.authority.finalize(
+        preauth,
+        publication,
+        evidence=_evidence(fixture, preauth),
+        drill_authorization=drill,
+    )
+    tampered_values = finalized.model_dump(mode="json")
+    tampered_values["source_tree_digest"] = "sha256:" + "f" * 64
+    tampered_values["authorization_id"] = canonical_digest(
+        {key: value for key, value in tampered_values.items() if key != "authorization_id"}
+    )
+    tampered: RollbackPromotionBundleAuthorization = (
+        RollbackPromotionBundleAuthorization.model_validate(tampered_values)
+    )
+    control, store, candidate = controller(tmp_path)
+    store.put_bytes(
+        canonical_bytes(fixture.package),
+        media_type=package_ref.media_type,
+        role=package_ref.role,
+        max_bytes=2_000_000,
+    )
+    store.put_bytes(
+        _evidence(fixture, preauth),
+        media_type="application/json",
+        role="publication",
+        max_bytes=2_000_000,
+    )
+
+    with pytest.raises(ValueError, match="finalized rollback authority"):
+        control.create_rollback_bundle(
+            fixture.operation,
+            canary_package=fixture.package,
+            canary_package_artifact=package_ref,
+            drill_authorization=drill,
+            rollback_authorization=tampered,
+            candidate_root=candidate,
+            publication=publication,
+            config=config(),
+        )
+    assert not (store.root / "rollback-promotion-authorizations").exists()
 
 
 def test_rollback_bundle_rejects_untrusted_input_types_before_store_reads(tmp_path: Path) -> None:
