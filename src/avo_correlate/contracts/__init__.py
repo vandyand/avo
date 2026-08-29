@@ -41,9 +41,9 @@ from avo_correlate.contracts.integration_promotion import (
 from avo_correlate.contracts.integration_soak import FailedSoakAttestation
 from avo_correlate.contracts.policy import PolicyDecision
 from avo_correlate.contracts.prepublication import (
+    RollbackOperationQuarantine,
     RollbackPublicationAuthorityConfig,
     RollbackPublicationAuthorization,
-    RollbackOperationQuarantine,
     RollbackRemoteAbsenceObservation,
     RollbackSnapshotRestoreFacts,
 )
@@ -132,10 +132,10 @@ __all__ = [
     "PromotionReplayReport",
     "PromotionRequest",
     "ReconciliationCaseRecord",
+    "RollbackOperationQuarantine",
     "RollbackPromotionBundleAuthorization",
     "RollbackPublicationAuthorityConfig",
     "RollbackPublicationAuthorization",
-    "RollbackOperationQuarantine",
     "RollbackRemoteAbsenceObservation",
     "RollbackSnapshotRestoreFacts",
     "RuntimeCapabilityReport",
