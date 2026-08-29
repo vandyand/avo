@@ -1,12 +1,13 @@
 # AVO-004.6 failure-drill runbook
 
-Status: draft runbook for the AVO-004.6 gate; the gate is not complete.
+Status: completed runbook and decision record for the AVO-004.6 gate.
 
-This runbook turns the [AVO roadmap's AVO-004.6 sequence](roadmap.md#avo-0046-next-gate-failure-drill-sequence)
+This runbook turns the [AVO roadmap's AVO-004.6 sequence](roadmap.md#avo-0046-failure-drill-sequence)
 into an evidence protocol. It deliberately separates deterministic offline proof from
-the hosted proof that still must be collected. No offline result in this document is a
-substitute for a real GitHub canary, protected integration promotion, or authorized
-rollback.
+the hosted proof collected by the completed live drill. The offline result remains a
+separate evidence class rather than a substitute for the real GitHub canary, protected
+integration promotion, and authorized rollback recorded in the
+[live result](avo-0046-live-failure-drill-result.md).
 
 ## Scope and invariants
 
@@ -43,16 +44,16 @@ artifacts where applicable, and a typed `IntegrationDrillResult` with a recomput
 `result_digest`. The runner's compact JSON is a pointer; the journal/artifact root is
 the evidence authority.
 
-### Live hosted proof (still required)
+### Live hosted proof (completed)
 
-A trusted operator must run a sanitized canary against the public repository and
+A trusted operator ran a sanitized canary against the public repository and
 protected `integration` branch after the implementation/workflow is published. The
 live package must capture the controlling-base workflow blob digest and repository
 variable match, exact synthetic commit/tree, both check sets and their enforcement
 authority, freshness, protection manifest, PR/base/head identities, provider receipts,
 and ref cleanup. The protection manifest must show the normal App 15368 PR-head
 contexts `validate (ubuntu-latest)` and `validate (windows-latest)` as its required
-checks. Separately, the base-controlled attester must post the App 15368 trusted
+checks. Separately, the base-controlled workflow must produce the trusted App 15368
 contexts `avo synthetic validate (ubuntu-latest)` and `avo synthetic validate
 (windows-latest)` on the exact synthetic merge SHA for strict controller validation;
 these exact contexts are not branch-protection-required contexts.
@@ -61,13 +62,14 @@ rollback through the normal protected PR/squash promotion path. The live package
 prove the rollback result has exactly one parent equal to the failed integration head,
 the authorized restore tree, and no change to `main`.
 
-Do not mark AVO-004.6 complete until both evidence classes are independently reviewed,
-the temporary bridge is retired or formally bounded by the base-controlled attester,
-and replay produces no additional provider mutations.
+Both evidence classes were independently reviewed, the exact-ref mechanism is bounded by
+the pinned GitHub Actions App 15368 check identity executing the base-controlled workflow,
+and replay produced no additional provider mutations. The exact identities are retained in
+the live result.
 
 ## Case matrix
 
-| Case | Injected condition and expected behavior | Offline evidence | Live hosted evidence still required |
+| Case | Injected condition and expected behavior | Offline evidence | Live hosted evidence / disposition |
 | --- | --- | --- | --- |
 | 1. Duplicate runners | Two concurrent callers race one durable lease. Exactly one applies; the other fails closed or returns the durable completed result. | Barrier-controlled concurrent `IntegrationPromotionService` calls; lease artifacts, one provider mutation, two typed outcomes, aggregate binding, and read-only replay. | Two independent live invocations using one state/operation identity; provider PR/merge history must show one mutation and the duplicate must reconcile without a second merge. |
 | 2. Stale base/head CAS | Protected integration moves after the planned base. Promotion refuses without merge or target mutation. | Controlled stale-head provider response through the real promotion service; `stale_base` report, no mutation receipt, durable error, main/target identity. | Move or arrange a harmless protected-branch head race in a disposable canary; capture provider rejection, unchanged target/main, and replayable intent. |
@@ -138,14 +140,14 @@ durable identities; it does not mint a new operation to hide ambiguity.
 
 ## Gate decision record
 
-The gate decision remains pending until the offline package and live hosted package are
-linked from the roadmap and independently reviewed. The decision record must state:
+Decision: pass on 2026-08-29. The [offline package](avo-0046-offline-drill-result.md) and
+[live hosted result](avo-0046-live-failure-drill-result.md) are linked from the roadmap
+and were independently reviewed. The live result records:
 
-* exact implementation/workflow/base SHAs and workflow variable digest;
-* offline operation/plan/result digests and replay comparison;
-* hosted canary and rollback PR/commit/check/protection identities;
-* adversarial review disposition and any dedicated-App escalation decision; and
-* explicit confirmation that `main` was unchanged and no deployment occurred.
+* exact implementation, workflow, protected-base, and repository-variable bindings;
+* offline operation, plan, result, and replay digests;
+* hosted canary and rollback PR, commit, check, protection, and cleanup identities;
+* independent adversarial approval with no P0/P1 residual; and
+* explicit proof that `main` was unchanged and `deploy_performed=false`.
 
-Until those fields are populated with real evidence, AVO-004.6 remains `ready` in the
-authoritative roadmap and AVO-004.7 must not begin.
+AVO-004.6 is complete. AVO-004.7 may begin under its own preregistered exit gate.
