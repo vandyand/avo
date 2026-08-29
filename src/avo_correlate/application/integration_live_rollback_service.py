@@ -116,7 +116,9 @@ class LiveIntegrationRollbackService:
         bundle_digest: Sha256Digest,
         intent_factory: Callable[[Any], IntegrationPromotionIntent],
     ) -> LiveRollbackExecution:
-        self._validate_canary(request, canary_package, canary_package_artifact)
+        self._validate_canary(
+            request, canary_package, canary_package_artifact, bundle
+        )
         self._assert_main(request.main_before_commit)
 
         existing = self._package_journal.read_package(request.operation_id)
@@ -281,10 +283,16 @@ class LiveIntegrationRollbackService:
         request: IntegrationRollbackRequest,
         canary: IntegrationCampaignEvidencePackage,
         canary_ref: ArtifactRef,
+        bundle: PromotionBundle,
     ) -> None:
         if (
             canary_ref.role != "integration-campaign-package"
             or canary_ref.media_type != "application/vnd.avo.integration-campaign+json"
+            or bundle.operation_kind != "authorized_rollback"
+            or bundle.rollback_authorization is None
+            or bundle.rollback_authorization.operation_id != request.operation_id
+            or bundle.rollback_authorization.canary_operation_id != canary.intent.operation_id
+            or bundle.rollback_authorization.canary_package_digest != canary_ref.digest
             or canary.report.outcome not in {"applied", "already_applied"}
             or canary.intent.repository_digest != request.repository_digest
             or canary.intent.target_ref != request.target_ref

@@ -5,14 +5,21 @@ from __future__ import annotations
 import hashlib
 import json
 from datetime import UTC, datetime
+from types import SimpleNamespace
+from typing import Any, cast
 
 import pytest
 
+from avo_correlate.application.integration_live_rollback_service import (
+    LiveIntegrationRollbackService,
+    LiveRollbackEvidenceError,
+)
 from avo_correlate.contracts.base import ArtifactRef
 from avo_correlate.contracts.integration_campaign import (
     campaign_package_bytes,
     verify_campaign_package_artifact,
 )
+from avo_correlate.contracts.integration_drill import IntegrationRollbackRequest
 from avo_correlate.contracts.promotion_policy import PromotionConfig
 from tests.unit.test_integration_campaign_contracts import (
     _package,  # pyright: ignore[reportPrivateUsage]
@@ -90,3 +97,62 @@ def test_campaign_package_binding_rejects_unrelated_tampering() -> None:
     tampered = json.dumps(raw, separators=(",", ":"), ensure_ascii=False).encode()
     with pytest.raises(ValueError, match="campaign package"):
         verify_campaign_package_artifact(package, _reference(tampered), tampered)
+
+
+def test_live_service_rejects_canary_ref_mixing_before_rollback() -> None:
+    canary = _package()
+    failed_commit = canary.receipt.applied_result_commit
+    failed_tree = canary.receipt.applied_result_tree
+    assert failed_commit is not None and failed_tree is not None
+    request = IntegrationRollbackRequest.model_construct(
+        operation_id="sha256:" + "b" * 64,
+        repository_digest=canary.intent.repository_digest,
+        target_ref=canary.intent.target_ref,
+        main_before_commit="a" * 40,
+        failed_integration_head_commit=failed_commit,
+        failed_integration_head_tree=failed_tree,
+        restore_to_commit=canary.intent.base_commit,
+        restore_to_tree=canary.intent.base_tree,
+        rollback_candidate_commit="c" * 40,
+        rollback_candidate_parent_commit=failed_commit,
+        promotion_operation_id="sha256:" + "c" * 64,
+    )
+    ref = _reference(campaign_package_bytes(canary))
+    forged = ref.model_copy(update={"digest": "sha256:" + "f" * 64})
+    bundle = SimpleNamespace(
+        operation_kind="authorized_rollback",
+        rollback_authorization=SimpleNamespace(
+            operation_id=request.operation_id,
+            canary_operation_id=canary.intent.operation_id,
+            canary_package_digest=ref.digest,
+        ),
+    )
+    rollback = SimpleNamespace(calls=0)
+
+    def forbidden_run(*_args: Any, **_kwargs: Any) -> None:
+        rollback.calls += 1
+
+    def no_package(_operation_id: str) -> None:
+        return None
+
+    rollback.run = forbidden_run
+    service = LiveIntegrationRollbackService(
+        cast(Any, rollback),
+        cast(Any, SimpleNamespace()),
+        cast(Any, SimpleNamespace(read_package=no_package)),
+        cast(Any, SimpleNamespace()),
+        main_head_reader=lambda: request.main_before_commit,
+        target_observation_reader=lambda: cast(Any, SimpleNamespace()),
+    )
+    with pytest.raises(LiveRollbackEvidenceError, match="successful canary"):
+        service.run(
+            request,
+            canary_package=canary,
+            canary_package_artifact=forged,
+            authorization=cast(Any, SimpleNamespace()),
+            bundle=cast(Any, bundle),
+            publication=cast(Any, SimpleNamespace()),
+            bundle_digest="sha256:" + "d" * 64,
+            intent_factory=lambda _lease: cast(Any, object()),
+        )
+    assert rollback.calls == 0

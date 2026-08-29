@@ -73,6 +73,13 @@ class LiveRollbackEvidencePackage(StrictModel):
             or self.canary_operation_id == self.operation_id
             or request.repository_digest != self.canary_package.intent.repository_digest
             or self.bundle_digest != promotion_bundle_digest(self.bundle)
+            or self.bundle.operation_kind != "authorized_rollback"
+            or self.bundle.rollback_authorization is None
+            or self.bundle.rollback_authorization.operation_id != request.operation_id
+            or self.bundle.rollback_authorization.canary_operation_id
+            != self.canary_operation_id
+            or self.bundle.rollback_authorization.canary_package_digest
+            != self.canary_package_artifact.digest
             or self.main_before_commit != request.main_before_commit
             or self.main_after_commit != request.main_before_commit
             or self.rollback_case.operation_id != self.operation_id
