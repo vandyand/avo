@@ -85,6 +85,41 @@ class RollbackBundleAuthorityJournal:
         ) as exc:
             raise ValueError("durable failed soak child is malformed") from exc
 
+    def read_canary_package(
+        self, authorization: RollbackPublicationAuthorization
+    ) -> IntegrationCampaignEvidencePackage:
+        """Read and verify the exact canary package bound to an authority."""
+
+        index = self._root / authorization.operation_id.removeprefix("sha256:")
+        try:
+            raw = index.read_bytes()
+            value = json.loads(raw)
+            if canonical_bytes(value) != raw:
+                raise ValueError("authorization index is not canonical JSON")
+            reference = ArtifactRef.model_validate(value["canary_package_artifact"])
+            if (
+                reference.role != "integration-campaign-package"
+                or reference.media_type != "application/vnd.avo.integration-campaign+json"
+                or reference.digest != authorization.canary_package_digest
+            ):
+                raise ValueError("durable canary child metadata differs from authority")
+            data = self._store.read_bytes(reference)
+            parsed = json.loads(data, object_pairs_hook=_strict_object_pairs)
+            package = IntegrationCampaignEvidencePackage.model_validate(parsed)
+            verify_campaign_package_artifact(package, reference, data)
+            if package.intent.operation_id != authorization.canary_operation_id:
+                raise ValueError("durable canary child operation differs from authority")
+            return package
+        except (
+            ArtifactIntegrityError,
+            OSError,
+            KeyError,
+            TypeError,
+            ValueError,
+            json.JSONDecodeError,
+        ) as exc:
+            raise ValueError("durable canary package child is malformed") from exc
+
     def read_publication_plan_artifact(
         self, authorization: RollbackPublicationAuthorization
     ) -> ArtifactRef:

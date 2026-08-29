@@ -336,6 +336,20 @@ class RollbackBundleAuthority:
         if not isinstance(authorization, RollbackPublicationAuthorization):
             raise TypeError("authorization must be a trusted RollbackPublicationAuthorization")
         self.journal.require(authorization)
+        canary = self.journal.read_canary_package(authorization)
+        if (
+            canary.intent.operation_id != authorization.canary_operation_id
+            or canary.intent.repository_digest != authorization.repository_digest
+            or canary.intent.target_ref != authorization.target_ref
+            or canary.intent.base_commit != authorization.restore_to_commit
+            or canary.intent.base_tree != authorization.restore_to_tree
+            or canary.receipt.applied_result_commit
+            != authorization.failed_integration_head_commit
+            or canary.receipt.applied_result_tree != authorization.failed_integration_head_tree
+            or canary.main_before_commit != authorization.main_before_commit
+            or canary.main_after_commit != authorization.main_before_commit
+        ):
+            raise ValueError("durable canary package topology differs from authority")
         if not isinstance(publication, CandidatePublicationBinding):
             raise TypeError("publication must be a trusted CandidatePublicationBinding")
         if not isinstance(drill_authorization, IntegrationDrillRollbackAuthorization):
@@ -429,7 +443,7 @@ class RollbackBundleAuthority:
             "rollback_candidate_tree": authorization.rollback_candidate_tree,
             "rollback_candidate_parent_commit": authorization.rollback_candidate_parent_commit,
             "candidate_digest": authorization.candidate_digest,
-            "source_tree_digest": authorization.candidate_digest,
+            "source_tree_digest": canary.intent.candidate_digest,
             "restore_tree_digest": authorization.candidate_digest,
             "publication_evidence_digest": publication.publication_evidence_digest,
             "issuer_id": self.config.controller_identity,
