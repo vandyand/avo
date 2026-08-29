@@ -29,6 +29,7 @@ from scripts.run_avo0046_live_rollback import (
     ROLLBACK_PUBLISHER_ID,
     LiveRollbackHostedRunner,
     LiveRollbackOperator,
+    _assert_not_quarantined,  # pyright: ignore[reportPrivateUsage]
     _assert_safe_roots,  # pyright: ignore[reportPrivateUsage]
     _authority_config,  # pyright: ignore[reportPrivateUsage]
     _check_operation_id,  # pyright: ignore[reportPrivateUsage]
@@ -235,6 +236,41 @@ def test_runner_reads_only_canonical_operation_keyed_legacy_soak(tmp_path: Path)
         _read_legacy_recovery_soak(
             tmp_path / "state", operation_id, Journal(), existing  # type: ignore[arg-type]
         )
+
+
+def test_runner_rejects_terminal_quarantine_before_provider_reads(tmp_path: Path) -> None:
+    fixture = AuthorityFixture(tmp_path / "authority")
+    authorization = fixture.authorize()
+    quarantine = tmp_path / "state" / "rollback-quarantine"
+    quarantine.mkdir(parents=True)
+    values = {
+        "schema_version": 1,
+        "operation_id": authorization.operation_id,
+        "authorization_id": authorization.authorization_id,
+        "authorization_index_digest": "sha256:" + "a" * 64,
+        "canary_operation_id": authorization.canary_operation_id,
+        "canary_package_digest": authorization.canary_package_digest,
+        "publication_plan_digest": authorization.publication_plan_digest,
+        "publication_plan_artifact_digest": fixture.plan_ref.digest,
+        "candidate_ref": authorization.candidate_ref,
+        "candidate_commit": authorization.rollback_candidate_commit,
+        "candidate_parent_commit": authorization.rollback_candidate_parent_commit,
+        "reason": "operator abandoned before publication",
+        "remote_absence": {
+            "schema_version": 1,
+            "repository_digest": authorization.repository_digest,
+            "candidate_ref": authorization.candidate_ref,
+            "candidate_commit": authorization.rollback_candidate_commit,
+            "base_commit": authorization.failed_integration_head_commit,
+            "ref_absent": True,
+            "pull_request_numbers": [],
+        },
+    }
+    values["remote_absence"]["observation_id"] = canonical_digest(values["remote_absence"])
+    values["quarantine_id"] = canonical_digest(values)
+    (quarantine / (authorization.operation_id[7:] + ".json")).write_bytes(canonical_bytes(values))
+    with pytest.raises(RuntimeError, match="terminally quarantined"):
+        _assert_not_quarantined(tmp_path / "state", authorization.operation_id)
 
 
 def test_runner_reads_protected_main_with_explicit_authority_opt_in() -> None:

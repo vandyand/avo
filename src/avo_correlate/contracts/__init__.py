@@ -43,6 +43,8 @@ from avo_correlate.contracts.policy import PolicyDecision
 from avo_correlate.contracts.prepublication import (
     RollbackPublicationAuthorityConfig,
     RollbackPublicationAuthorization,
+    RollbackOperationQuarantine,
+    RollbackRemoteAbsenceObservation,
     RollbackSnapshotRestoreFacts,
 )
 from avo_correlate.contracts.promotion_bundle import (
@@ -133,6 +135,8 @@ __all__ = [
     "RollbackPromotionBundleAuthorization",
     "RollbackPublicationAuthorityConfig",
     "RollbackPublicationAuthorization",
+    "RollbackOperationQuarantine",
+    "RollbackRemoteAbsenceObservation",
     "RollbackSnapshotRestoreFacts",
     "RuntimeCapabilityReport",
     "RuntimeEvent",

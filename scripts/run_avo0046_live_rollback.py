@@ -30,6 +30,9 @@ from avo_correlate.adapters.artifacts.promotion_journal import IntegrationPromot
 from avo_correlate.adapters.artifacts.rollback_bundle_authority import (
     RollbackBundleAuthorityJournal,
 )
+from avo_correlate.adapters.artifacts.rollback_quarantine import (
+    RollbackOperationQuarantineJournal,
+)
 from avo_correlate.adapters.artifacts.synthetic_validation_journal import SyntheticValidationJournal
 from avo_correlate.adapters.git import (
     FilesystemPublicationJournal,
@@ -439,6 +442,42 @@ def _read_legacy_recovery_soak(
         return FailedSoakAttestation.model_validate(raw)
     except (TypeError, ValueError, json.JSONDecodeError) as exc:
         raise RuntimeError("legacy failed-soak recovery input is malformed") from exc
+
+
+def _assert_not_quarantined(state_root: Path, operation_id: str) -> None:
+    """Reject terminal operations before any provider is constructed or read."""
+
+    if RollbackOperationQuarantineJournal(state_root).read(operation_id) is not None:
+        raise RuntimeError("rollback operation is terminally quarantined")
+
+
+def quarantine_rollback_operation(
+    state_root: Path,
+    authorization: RollbackPublicationAuthorization,
+    *,
+    canary_package_artifact: ArtifactRef,
+    publication_plan_artifact: ArtifactRef,
+    reason: str,
+    absence_verifier: Callable[[str, str, str], object],
+):
+    """Create an operator quarantine without touching authority artifacts."""
+
+    operation = authorization.operation_id.removeprefix("sha256:")
+    index_path = (
+        state_root.resolve()
+        / "artifacts"
+        / "rollback-publication-authorizations"
+        / operation
+    )
+    index_data = index_path.read_bytes()
+    return RollbackOperationQuarantineJournal(state_root).create_for_authorization(
+        authorization,
+        authorization_index_data=index_data,
+        canary_package_artifact=canary_package_artifact,
+        publication_plan_artifact=publication_plan_artifact,
+        reason=reason,
+        absence_verifier=absence_verifier,
+    )
 
 
 def _rollback_request(
@@ -968,6 +1007,7 @@ def main() -> int:
         _check_operation_id(args.operation_id)
         _check_operation_id(args.canary_operation_id)
         _assert_safe_roots(args.state_root, args.repository_root, args.candidate_root)
+        _assert_not_quarantined(args.state_root, args.operation_id)
     except (OSError, RuntimeError, ValueError) as exc:
         print(json.dumps({"status": "blocked", "error": redact_secret(str(exc))}))
         return 2

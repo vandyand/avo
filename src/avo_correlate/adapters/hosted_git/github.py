@@ -37,6 +37,7 @@ from avo_correlate.contracts.integration_soak import (
     SOAK_WORKFLOW_VARIABLE,
     FailedSoakAttestation,
 )
+from avo_correlate.contracts.prepublication import RollbackRemoteAbsenceObservation
 from avo_correlate.contracts.synthetic_validation import SyntheticValidationObservation
 from avo_correlate.domain.canonical import canonical_digest
 
@@ -488,7 +489,7 @@ class GitHubIntegrationProvider:
 
     def verify_recovery_absence(
         self, candidate_ref: str, candidate_commit: str, base_commit: str
-    ) -> None:
+    ) -> RollbackRemoteAbsenceObservation:
         """Prove a legacy candidate has not been published or opened as a PR.
 
         This is deliberately read-only.  A missing candidate ref is the only
@@ -537,7 +538,18 @@ class GitHubIntegrationProvider:
                 seen_numbers.add(number)
                 raise ValueError("recovery candidate has an existing pull request")
             if len(payload) < 100:
-                return
+                values: dict[str, object] = {
+                    "schema_version": 1,
+                    "repository_digest": self.repository_digest,
+                    "candidate_ref": exact_ref,
+                    "candidate_commit": candidate_commit,
+                    "base_commit": base_commit,
+                    "ref_absent": True,
+                    "pull_request_numbers": [],
+                }
+                return RollbackRemoteAbsenceObservation.model_validate(
+                    {**values, "observation_id": canonical_digest(values)}
+                )
         raise ValueError("recovery PR discovery exceeded bounded pagination")
 
     def verify_current_target(
