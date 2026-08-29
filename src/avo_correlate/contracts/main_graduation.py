@@ -706,6 +706,9 @@ class MainCompletionPackage(MainBound):
             self.protection_manifest,
             self.attestation_manifest,
             self.merge_group_checks,
+            self.transition_receipt,
+            self.provider_receipt,
+            self.reconciliation,
             self.intent,
             self.preparation_authorization,
             self.admission_observation,
@@ -734,6 +737,8 @@ class MainCompletionPackage(MainBound):
             raise ValueError("final main result must have exactly the bound base parent")
         if self.reconciliation.main_commit != self.provider_receipt.result_commit:
             raise ValueError("provider result commit differs from final main result")
+        if self.reconciliation.expected_base_commit != self.composition.base_commit:
+            raise ValueError("reconciliation expected base differs from composition")
         if self.provider_receipt.result_tree != self.composition.candidate_tree:
             raise ValueError("provider result tree differs from composition")
         if self.provider_receipt.result_parents != [self.composition.base_commit]:
@@ -827,6 +832,8 @@ class MainCompletionPackage(MainBound):
             raise ValueError("queue generation differs at admission")
         if self.queue_observation.expected_base_commit != self.composition.base_commit:
             raise ValueError("queue base differs from composition base")
+        if self.queue_observation.expected_base_tree != self.composition.base_tree:
+            raise ValueError("queue base tree differs from composition base")
         if (
             self.hold_observation.expected_group_parents
             != self.queue_observation.expected_group_parents
@@ -844,6 +851,15 @@ class MainCompletionPackage(MainBound):
             != self.admission_observation.issuer_identity
         ):
             raise ValueError("controller-pinned release issuer differs across stages")
+        if (
+            self.queue_observation.provider_identity != self.protection_manifest.provider_identity
+            or self.queue_observation.provider_api_version
+            != self.protection_manifest.provider_api_version
+            or self.provider_receipt.provider_identity != self.queue_observation.provider_identity
+            or self.provider_receipt.provider_api_version
+            != self.queue_observation.provider_api_version
+        ):
+            raise ValueError("provider identity/version differs across main stages")
         if self.admission_observation.base_commit != self.composition.base_commit:
             raise ValueError("admission base differs from composition base")
         if self.admission_observation.head_commit != self.composition.candidate_commit:

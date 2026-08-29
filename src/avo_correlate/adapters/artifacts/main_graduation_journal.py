@@ -148,6 +148,8 @@ class MainGraduationJournal:
                 self._verify_source_package(cast(MainSourcePackageBinding, checked))
             elif kind == "plan":
                 self._verify_plan_evidence(cast(MainGraduationPlan, checked))
+            elif kind == "preparation-authorization":
+                self._require_preparation_chain(cast(MainPreparationAuthorization, checked))
             elif kind == "queue-admission":
                 self._require_queue_admission(cast(MainQueueAdmissionObservation, checked))
             elif kind == "release-hold":
@@ -254,6 +256,8 @@ class MainGraduationJournal:
                 self._verify_source_package(cast(MainSourcePackageBinding, record))
             elif kind == "plan":
                 self._verify_plan_evidence(cast(MainGraduationPlan, record))
+            elif kind == "preparation-authorization":
+                self._require_preparation_chain(cast(MainPreparationAuthorization, record))
             elif kind == "queue-admission":
                 self._require_queue_admission(cast(MainQueueAdmissionObservation, record))
             elif kind == "release-hold":
@@ -401,6 +405,7 @@ class MainGraduationJournal:
         # model_construct completion incapable of bypassing nested checks.
         self._verify_source_package(package.source_package)
         self._verify_plan_evidence(package.plan)
+        self._require_preparation_chain(package.preparation_authorization)
         self._require_admission(package.hold_observation)
         self._require_hold(package.release_authorization)
         self._require_release_authorization(package.transition_receipt)
@@ -496,6 +501,44 @@ class MainGraduationJournal:
         if durable is None or canonical_bytes(durable[0]) != canonical_bytes(record):
             raise MainGraduationJournalError(f"{kind} is not the durable canonical prior stage")
 
+    def _require_preparation_chain(self, preparation: MainPreparationAuthorization) -> None:
+        """Close the plan → intent → preparation authority chain once, everywhere."""
+        plan_prior = self._read("plan", preparation.operation_id)
+        intent_prior = self._read("intent", preparation.operation_id)
+        if plan_prior is None or intent_prior is None:
+            raise MainGraduationJournalError("preparation requires durable plan and intent")
+        plan = cast(MainGraduationPlan, plan_prior[0])
+        intent = cast(MainGraduationIntent, intent_prior[0])
+        composition = plan.composition
+        if (
+            preparation.plan_digest != canonical_digest(plan)
+            or preparation.intent_digest != canonical_digest(intent)
+            or intent.plan_digest != canonical_digest(plan)
+            or preparation.operation_id != plan.operation_id
+            or preparation.operation_id != intent.operation_id
+            or preparation.repository_digest != plan.repository_digest
+            or preparation.repository_digest != intent.repository_digest
+            or preparation.target_ref != plan.target_ref
+            or preparation.target_ref != intent.target_ref
+            or preparation.package_digest != plan.package.package_digest
+            or preparation.package_digest != intent.package_digest
+            or preparation.composition_digest != composition.composition_digest
+            or preparation.composition_digest != intent.composition_digest
+            or preparation.base_commit != composition.base_commit
+            or preparation.base_commit != intent.base_commit
+            or preparation.base_tree != composition.base_tree
+            or preparation.base_tree != intent.base_tree
+            or preparation.candidate_commit != composition.candidate_commit
+            or preparation.candidate_commit != intent.candidate_commit
+            or preparation.candidate_tree != composition.candidate_tree
+            or preparation.candidate_tree != intent.candidate_tree
+            or preparation.lease_identity != intent.lease_identity
+            or preparation.lease_digest != intent.lease_digest
+            or preparation.policy_epoch != intent.policy_epoch
+            or preparation.policy_epoch != plan.policy_epoch
+        ):
+            raise MainGraduationJournalError("preparation plan/intent binding differs")
+
     def _require_queue_admission(self, admission: MainQueueAdmissionObservation) -> None:
         """Admission independently closes the queue/base/protection snapshot."""
         plan = self._read("plan", admission.operation_id)
@@ -508,6 +551,7 @@ class MainGraduationJournal:
         q = cast(MainQueueObservation, queue[0])
         protection_manifest = cast(MainProtectionManifest, protection[0])
         prep = cast(MainPreparationAuthorization, preparation[0])
+        self._require_preparation_chain(prep)
         composition = p.composition
         if (
             admission.preparation_authorization_digest != canonical_digest(prep)
@@ -534,6 +578,8 @@ class MainGraduationJournal:
             or q.release_issuer_app_id != protection_manifest.release_issuer_app_id
             or q.issuer_isolation_digest != protection_manifest.issuer_isolation_digest
             or q.isolated_release_issuer != protection_manifest.isolated_release_issuer
+            or q.provider_identity != protection_manifest.provider_identity
+            or q.provider_api_version != protection_manifest.provider_api_version
         ):
             raise MainGraduationJournalError("queue/protection/base closure differs")
         if not (
@@ -691,9 +737,13 @@ class MainGraduationJournal:
         if receipt.release_authorization_digest != canonical_digest(authorization):
             raise MainGraduationJournalError("transition authorization digest differs")
         if (
-            receipt.group_sha != authorization.group_sha
+            receipt.operation_id != authorization.operation_id
+            or receipt.repository_digest != authorization.repository_digest
+            or receipt.target_ref != authorization.target_ref
+            or receipt.group_sha != authorization.group_sha
             or receipt.hold_run_id != authorization.hold_run_id
             or receipt.hold_nonce != authorization.hold_nonce
+            or receipt.issuer_identity != authorization.release_issuer_identity
             or receipt.release_issuer_app_id != authorization.release_issuer_app_id
             or receipt.issuer_isolation_digest != authorization.issuer_isolation_digest
         ):
@@ -706,10 +756,27 @@ class MainGraduationJournal:
                 "provider receipt requires durable release authorization"
             )
         authorization = cast(MainReleaseAuthorization, prior[0])
+        queue_prior = self._read("queue", receipt.operation_id)
+        protection_prior = self._read("protection", receipt.operation_id)
+        plan_prior = self._read("plan", receipt.operation_id)
+        if queue_prior is None or protection_prior is None or plan_prior is None:
+            raise MainGraduationJournalError("provider receipt requires durable queue evidence")
+        queue = cast(MainQueueObservation, queue_prior[0])
+        protection = cast(MainProtectionManifest, protection_prior[0])
+        plan = cast(MainGraduationPlan, plan_prior[0])
         if (
             receipt.release_authorization_digest != canonical_digest(authorization)
             or receipt.repository_digest != authorization.repository_digest
             or receipt.target_ref != authorization.target_ref
+            or receipt.repository_digest != queue.repository_digest
+            or receipt.target_ref != queue.target_ref
+            or receipt.provider_identity != queue.provider_identity
+            or receipt.provider_identity != protection.provider_identity
+            or receipt.provider_api_version != queue.provider_api_version
+            or receipt.provider_api_version != protection.provider_api_version
+            or receipt.outcome != "observed"
+            or receipt.result_tree != plan.composition.candidate_tree
+            or receipt.result_parents != [plan.composition.base_commit]
         ):
             raise MainGraduationJournalError("provider receipt authorization binding differs")
 
@@ -717,20 +784,41 @@ class MainGraduationJournal:
         transition = self._read("release-transition", reconciliation.operation_id)
         receipt = self._read("provider-receipt", reconciliation.operation_id)
         queue = self._read("queue", reconciliation.operation_id)
-        if transition is None or receipt is None or queue is None:
+        protection = self._read("protection", reconciliation.operation_id)
+        plan = self._read("plan", reconciliation.operation_id)
+        if (
+            transition is None
+            or receipt is None
+            or queue is None
+            or protection is None
+            or plan is None
+        ):
             raise MainGraduationJournalError(
                 "reconciliation requires durable transition and provider result"
             )
         transition_record = cast(MainReleaseTransitionReceipt, transition[0])
         provider = cast(MainProviderReceipt, receipt[0])
         q = cast(MainQueueObservation, queue[0])
+        p = cast(MainProtectionManifest, protection[0])
+        graduation_plan = cast(MainGraduationPlan, plan[0])
+        self._require_release_authorization(transition_record)
+        self._require_provider_receipt(provider)
         if (
-            reconciliation.transition_receipt_digest != canonical_digest(transition_record)
+            reconciliation.operation_id != transition_record.operation_id
+            or reconciliation.repository_digest != q.repository_digest
+            or reconciliation.repository_digest != p.repository_digest
+            or reconciliation.target_ref != q.target_ref
+            or reconciliation.target_ref != p.target_ref
+            or reconciliation.transition_receipt_digest != canonical_digest(transition_record)
             or reconciliation.queue_generation_digest != q.queue_generation_digest
+            or reconciliation.state != "completed"
             or reconciliation.main_commit != provider.result_commit
             or reconciliation.main_tree != provider.result_tree
             or reconciliation.main_parents != provider.result_parents
-            or reconciliation.expected_base_commit != q.expected_base_commit
+            or reconciliation.expected_tree != graduation_plan.composition.candidate_tree
+            or reconciliation.main_tree != graduation_plan.composition.candidate_tree
+            or reconciliation.expected_base_commit != graduation_plan.composition.base_commit
+            or reconciliation.main_parents != [graduation_plan.composition.base_commit]
         ):
             raise MainGraduationJournalError("reconciliation prior-stage binding differs")
 

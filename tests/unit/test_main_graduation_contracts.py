@@ -12,16 +12,23 @@ from avo_correlate.adapters.artifacts.main_graduation_journal import (
 from avo_correlate.contracts.base import ArtifactRef
 from avo_correlate.contracts.main_graduation import (
     MainCheckObservation,
+    MainCompositionArtifact,
     MainDeltaManifest,
     MainGraduationAttempt,
     MainGraduationEligibilityRecord,
+    MainGraduationIntent,
+    MainGraduationPlan,
     MainInverseDeltaArtifact,
     MainMergeGroupChecks,
+    MainPreparationAuthorization,
+    MainProtectionManifest,
     MainProviderReceipt,
     MainQueueAdmissionObservation,
     MainQueueObservation,
+    MainReconciliation,
     MainReleaseAuthorization,
     MainReleaseIssuerBinding,
+    MainReleaseTransitionReceipt,
     MainSourcePackageBinding,
 )
 from avo_correlate.domain.canonical import canonical_digest
@@ -149,6 +156,244 @@ def test_inverse_delta_digest_is_canonical() -> None:
         ),
     )
     assert artifact.inverse_delta_digest != DIGEST
+
+
+@pytest.mark.parametrize(
+    "field, value",
+    [
+        ("package_digest", "sha256:" + "2" * 64),
+        ("base_tree", BASE),
+        ("candidate_commit", BASE),
+        ("lease_identity", "other-lease"),
+        ("policy_epoch", "sha256:" + "2" * 64),
+    ],
+)
+def test_preparation_chain_rejects_each_shared_binding_edge(
+    tmp_path: Path, field: str, value: str
+) -> None:
+    source = MainSourcePackageBinding.model_construct(package_digest=DIGEST)
+    composition = MainCompositionArtifact.model_construct(
+        composition_digest=DIGEST,
+        base_commit=BASE,
+        base_tree=TREE,
+        candidate_commit=HEAD,
+        candidate_tree=TREE,
+    )
+    plan = MainGraduationPlan.model_construct(
+        operation_id=DIGEST,
+        repository_digest=DIGEST,
+        target_ref="refs/heads/main",
+        package=source,
+        composition=composition,
+        policy_epoch=DIGEST,
+    )
+    intent = MainGraduationIntent.model_construct(
+        operation_id=DIGEST,
+        repository_digest=DIGEST,
+        target_ref="refs/heads/main",
+        plan_digest=canonical_digest(plan),
+        package_digest=DIGEST,
+        composition_digest=DIGEST,
+        base_commit=BASE,
+        base_tree=TREE,
+        candidate_commit=HEAD,
+        candidate_tree=TREE,
+        lease_identity="lease",
+        lease_digest=DIGEST,
+        policy_epoch=DIGEST,
+    )
+    preparation = MainPreparationAuthorization.model_construct(
+        operation_id=DIGEST,
+        repository_digest=DIGEST,
+        target_ref="refs/heads/main",
+        plan_digest=canonical_digest(plan),
+        intent_digest=canonical_digest(intent),
+        package_digest=DIGEST,
+        composition_digest=DIGEST,
+        base_commit=BASE,
+        base_tree=TREE,
+        candidate_commit=HEAD,
+        candidate_tree=TREE,
+        lease_identity="lease",
+        lease_digest=DIGEST,
+        policy_epoch=DIGEST,
+    ).model_copy(update={field: value})
+    journal = MainGraduationJournal(tmp_path)
+    original_read = journal._read  # pyright: ignore[reportPrivateUsage]
+
+    def read(kind: str, _operation_id: str):
+        if kind == "plan":
+            return plan, None
+        if kind == "intent":
+            return intent, None
+        return original_read(kind, _operation_id)
+
+    journal._read = read  # type: ignore[method-assign]
+    with pytest.raises(MainGraduationJournalError, match="preparation plan/intent"):
+        journal._require_preparation_chain(preparation)  # pyright: ignore[reportPrivateUsage]
+
+
+@pytest.mark.parametrize(
+    "field, value",
+    [("repository_digest", "sha256:" + "2" * 64), ("issuer_identity", "attacker")],
+)
+def test_transition_rejects_attacker_repository_or_issuer(
+    tmp_path: Path, field: str, value: str
+) -> None:
+    authorization = MainReleaseAuthorization.model_construct(
+        operation_id=DIGEST,
+        repository_digest=DIGEST,
+        target_ref="refs/heads/main",
+        group_sha=HEAD,
+        hold_run_id="run",
+        hold_nonce="nonce",
+        release_issuer_identity="release",
+        release_issuer_app_id=9001,
+        issuer_isolation_digest=DIGEST,
+    )
+    receipt = MainReleaseTransitionReceipt.model_construct(
+        operation_id=DIGEST,
+        repository_digest=DIGEST,
+        target_ref="refs/heads/main",
+        release_authorization_digest=canonical_digest(authorization),
+        group_sha=HEAD,
+        hold_run_id="run",
+        hold_nonce="nonce",
+        issuer_identity="release",
+        release_issuer_app_id=9001,
+        issuer_isolation_digest=DIGEST,
+    ).model_copy(update={field: value})
+    journal = MainGraduationJournal(tmp_path)
+    journal._read = lambda _kind, _operation: (authorization, None)  # type: ignore[method-assign]
+    with pytest.raises(MainGraduationJournalError, match="does not bind"):
+        journal._require_release_authorization(receipt)  # pyright: ignore[reportPrivateUsage]
+
+
+def test_provider_receipt_rejects_provider_identity_substitution(tmp_path: Path) -> None:
+    authorization = MainReleaseAuthorization.model_construct(
+        operation_id=DIGEST, repository_digest=DIGEST, target_ref="refs/heads/main"
+    )
+    queue = MainQueueObservation.model_construct(
+        operation_id=DIGEST,
+        repository_digest=DIGEST,
+        target_ref="refs/heads/main",
+        provider_identity="provider",
+        provider_api_version="v1",
+    )
+    protection = MainProtectionManifest.model_construct(
+        operation_id=DIGEST,
+        repository_digest=DIGEST,
+        target_ref="refs/heads/main",
+        provider_identity="provider",
+        provider_api_version="v1",
+    )
+    plan = MainGraduationPlan.model_construct(
+        operation_id=DIGEST,
+        composition=MainCompositionArtifact.model_construct(candidate_tree=TREE, base_commit=BASE),
+    )
+    receipt = MainProviderReceipt.model_construct(
+        operation_id=DIGEST,
+        repository_digest=DIGEST,
+        target_ref="refs/heads/main",
+        release_authorization_digest=canonical_digest(authorization),
+        provider_identity="attacker",
+        provider_api_version="v1",
+        outcome="observed",
+        result_tree=TREE,
+        result_parents=[BASE],
+    )
+    journal = MainGraduationJournal(tmp_path)
+    records = {
+        "release-authorization": authorization,
+        "queue": queue,
+        "protection": protection,
+        "plan": plan,
+    }
+    journal._read = lambda kind, _operation: (records[kind], None)  # type: ignore[method-assign]
+    with pytest.raises(MainGraduationJournalError, match="provider receipt authorization"):
+        journal._require_provider_receipt(receipt)  # pyright: ignore[reportPrivateUsage]
+
+
+def test_reconciliation_rejects_wrong_composition_tree_or_repository(tmp_path: Path) -> None:
+    authorization = MainReleaseAuthorization.model_construct(
+        operation_id=DIGEST,
+        repository_digest=DIGEST,
+        target_ref="refs/heads/main",
+        group_sha=HEAD,
+        hold_run_id="run",
+        hold_nonce="nonce",
+        release_issuer_identity="release",
+        release_issuer_app_id=9001,
+        issuer_isolation_digest=DIGEST,
+    )
+    transition = MainReleaseTransitionReceipt.model_construct(
+        operation_id=DIGEST,
+        repository_digest=DIGEST,
+        target_ref="refs/heads/main",
+        release_authorization_digest=canonical_digest(authorization),
+        group_sha=HEAD,
+        hold_run_id="run",
+        hold_nonce="nonce",
+        issuer_identity="release",
+        release_issuer_app_id=9001,
+        issuer_isolation_digest=DIGEST,
+    )
+    queue = MainQueueObservation.model_construct(
+        operation_id=DIGEST,
+        repository_digest=DIGEST,
+        target_ref="refs/heads/main",
+        queue_generation_digest=DIGEST,
+        provider_identity="provider",
+        provider_api_version="v1",
+    )
+    protection = MainProtectionManifest.model_construct(
+        operation_id=DIGEST,
+        repository_digest=DIGEST,
+        target_ref="refs/heads/main",
+        provider_identity="provider",
+        provider_api_version="v1",
+    )
+    plan = MainGraduationPlan.model_construct(
+        operation_id=DIGEST,
+        composition=MainCompositionArtifact.model_construct(candidate_tree=TREE, base_commit=BASE),
+    )
+    provider = MainProviderReceipt.model_construct(
+        operation_id=DIGEST,
+        repository_digest=DIGEST,
+        target_ref="refs/heads/main",
+        release_authorization_digest=canonical_digest(authorization),
+        provider_identity="provider",
+        provider_api_version="v1",
+        outcome="observed",
+        result_commit=HEAD,
+        result_tree=TREE,
+        result_parents=[BASE],
+    )
+    reconciliation = MainReconciliation.model_construct(
+        operation_id=DIGEST,
+        repository_digest="sha256:" + "2" * 64,
+        target_ref="refs/heads/main",
+        state="completed",
+        transition_receipt_digest=canonical_digest(transition),
+        queue_generation_digest=DIGEST,
+        main_commit=HEAD,
+        main_tree=BASE,
+        main_parents=[BASE],
+        expected_tree=TREE,
+        expected_base_commit=BASE,
+    )
+    journal = MainGraduationJournal(tmp_path)
+    records = {
+        "release-authorization": authorization,
+        "release-transition": transition,
+        "provider-receipt": provider,
+        "queue": queue,
+        "protection": protection,
+        "plan": plan,
+    }
+    journal._read = lambda kind, _operation: (records[kind], None)  # type: ignore[method-assign]
+    with pytest.raises(MainGraduationJournalError, match="reconciliation prior-stage"):
+        journal._require_reconciliation(reconciliation)  # pyright: ignore[reportPrivateUsage]
 
 
 @pytest.mark.parametrize("ordinary, nonempty", [(False, True), (True, False), (False, False)])
