@@ -419,11 +419,69 @@ def test_authorize_reuses_durable_soak_when_freshness_cutoff_changes(tmp_path: P
         constructed.model_dump(exclude={"attestation_id"}, mode="json")
     )
     refreshed = FailedSoakAttestation.model_validate(values)
-    assert fixture.authorize(failed_soak=refreshed) == authorization
+    absence_calls: list[tuple[str, str, str]] = []
+
+    def absence_must_not_be_checked(ref: str, commit: str, base: str) -> None:
+        absence_calls.append((ref, commit, base))
+        raise AssertionError("crash-after-push recovery must not check remote absence")
+
+    restarted = RollbackBundleAuthority(
+        fixture.config,
+        RollbackBundleAuthorityJournal(FilesystemArtifactStore(tmp_path / "authority")),
+        recovery_absence_verifier=absence_must_not_be_checked,
+    )
     assert (
-        fixture.authority.drill_authorization(authorization, refreshed).failed_soak_attestation_id
+        restarted.authorize(
+            operation=fixture.operation,
+            canary_package_artifact=fixture.canary_ref,
+            canary_package=fixture.package,
+            failed_soak=refreshed,
+            facts=fixture.facts,
+            prepared=fixture.prepared,
+        )
+        == authorization
+    )
+    assert absence_calls == []
+    assert (
+        restarted.drill_authorization(authorization, refreshed).failed_soak_attestation_id
         == authorization.failed_soak_attestation_id
     )
+
+
+def test_authorize_fails_closed_for_stable_soak_mismatch_after_push(
+    tmp_path: Path,
+) -> None:
+    fixture = Fixture(tmp_path)
+    authorization = fixture.authorize()
+    values = fixture.soak.model_dump(mode="json")
+    values["workflow_run_id"] = 4
+    constructed = FailedSoakAttestation.model_construct(**values)
+    values["attestation_id"] = canonical_digest(
+        constructed.model_dump(exclude={"attestation_id"}, mode="json")
+    )
+    mismatched = FailedSoakAttestation.model_validate(values)
+    absence_calls: list[tuple[str, str, str]] = []
+
+    def existing_candidate_ref(ref: str, commit: str, base: str) -> None:
+        absence_calls.append((ref, commit, base))
+        raise ValueError("candidate ref already exists")
+
+    restarted = RollbackBundleAuthority(
+        fixture.config,
+        RollbackBundleAuthorityJournal(FilesystemArtifactStore(tmp_path / "authority")),
+        recovery_absence_verifier=existing_candidate_ref,
+    )
+    with pytest.raises(ValueError, match="fresh failed soak differs from durable authority"):
+        restarted.authorize(
+            operation=fixture.operation,
+            canary_package_artifact=fixture.canary_ref,
+            canary_package=fixture.package,
+            failed_soak=mismatched,
+            facts=fixture.facts,
+            prepared=fixture.prepared,
+        )
+    assert absence_calls == []
+    assert fixture.journal.read_authorization(authorization.operation_id) == authorization
 
 
 def test_legacy_authorization_requires_exact_attestation_for_recovery_bridge(
@@ -649,10 +707,22 @@ def test_drill_projection_success_and_rejection(tmp_path: Path) -> None:
     changed = FailedSoakAttestation.model_construct(
         **changed_values, attestation_id=canonical_digest(changed_values)
     )
-    with pytest.raises(ValueError, match="not bound"):
+    with pytest.raises(ValueError, match="fresh failed soak differs"):
         fixture.authority.drill_authorization(authorization, changed)
     with pytest.raises(TypeError, match="FailedSoak"):
         fixture.authority.drill_authorization(authorization, object())  # type: ignore[arg-type]
+
+
+def test_drill_projection_rejects_tampered_stored_soak(tmp_path: Path) -> None:
+    fixture = Fixture(tmp_path)
+    authorization = fixture.authorize()
+    index_path = fixture.journal._root / authorization.operation_id.removeprefix("sha256:")  # pyright: ignore[reportPrivateUsage]
+    index = json.loads(index_path.read_bytes())
+    soak_ref = ArtifactRef.model_validate(index["failed_soak_artifact"])
+    fixture.store.path_for_digest(soak_ref.digest).write_bytes(b"tampered")
+
+    with pytest.raises(ValueError, match="not durably recorded"):
+        fixture.authority.drill_authorization(authorization, fixture.soak)
 
 
 def test_finalize_success_with_bytes_and_artifact_ref(tmp_path: Path) -> None:
