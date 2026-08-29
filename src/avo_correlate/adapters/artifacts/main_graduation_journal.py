@@ -759,11 +759,16 @@ class MainGraduationJournal:
 
     def _require_provider_receipt(self, receipt: MainProviderReceipt) -> None:
         prior = self._read("release-authorization", receipt.operation_id)
+        transition_prior = self._read("release-transition", receipt.operation_id)
         if prior is None:
             raise MainGraduationJournalError(
                 "provider receipt requires durable release authorization"
             )
         authorization = cast(MainReleaseAuthorization, prior[0])
+        if transition_prior is None:
+            raise MainGraduationJournalError("provider receipt requires durable release transition")
+        transition = cast(MainReleaseTransitionReceipt, transition_prior[0])
+        self._require_release_authorization(transition)
         queue_prior = self._read("queue", receipt.operation_id)
         protection_prior = self._read("protection", receipt.operation_id)
         plan_prior = self._read("plan", receipt.operation_id)
@@ -774,8 +779,12 @@ class MainGraduationJournal:
         plan = cast(MainGraduationPlan, plan_prior[0])
         if (
             receipt.release_authorization_digest != canonical_digest(authorization)
+            or transition.release_authorization_digest != canonical_digest(authorization)
+            or receipt.operation_id != transition.operation_id
             or receipt.repository_digest != authorization.repository_digest
             or receipt.target_ref != authorization.target_ref
+            or receipt.repository_digest != transition.repository_digest
+            or receipt.target_ref != transition.target_ref
             or receipt.repository_digest != queue.repository_digest
             or receipt.target_ref != queue.target_ref
             or receipt.provider_identity != queue.provider_identity

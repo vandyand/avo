@@ -303,13 +303,21 @@ def test_provider_receipt_rejects_provider_identity_substitution(tmp_path: Path)
         result_parents=[BASE],
     )
     journal = MainGraduationJournal(tmp_path)
+    transition = MainReleaseTransitionReceipt.model_construct(
+        operation_id=DIGEST,
+        repository_digest=DIGEST,
+        target_ref="refs/heads/main",
+        release_authorization_digest=canonical_digest(authorization),
+    )
     records = {
         "release-authorization": authorization,
+        "release-transition": transition,
         "queue": queue,
         "protection": protection,
         "plan": plan,
     }
     journal._read = lambda kind, _operation: (records[kind], None)  # type: ignore[method-assign]
+    journal._require_release_authorization = lambda _transition: None  # type: ignore[method-assign]
     with pytest.raises(MainGraduationJournalError, match="provider receipt authorization"):
         journal._require_provider_receipt(receipt)  # pyright: ignore[reportPrivateUsage]
 
@@ -386,14 +394,40 @@ def test_provider_recovery_receipts_do_not_claim_success_and_remain_verifiable(
         result_parents=[],
     )
     journal = MainGraduationJournal(tmp_path)
+    transition = MainReleaseTransitionReceipt.model_construct(
+        operation_id=DIGEST,
+        repository_digest=DIGEST,
+        target_ref="refs/heads/main",
+        release_authorization_digest=canonical_digest(authorization),
+    )
     records = {
         "release-authorization": authorization,
+        "release-transition": transition,
         "queue": queue,
         "protection": protection,
         "plan": plan,
     }
     journal._read = lambda kind, _operation: (records[kind], None)  # type: ignore[method-assign]
+    journal._require_release_authorization = lambda _transition: None  # type: ignore[method-assign]
     journal._require_provider_receipt(receipt)  # pyright: ignore[reportPrivateUsage]
+
+
+def test_provider_receipt_without_durable_transition_is_rejected(tmp_path: Path) -> None:
+    authorization = MainReleaseAuthorization.model_construct(
+        operation_id=DIGEST, repository_digest=DIGEST, target_ref="refs/heads/main"
+    )
+    receipt = MainProviderReceipt.model_construct(
+        operation_id=DIGEST,
+        repository_digest=DIGEST,
+        target_ref="refs/heads/main",
+        release_authorization_digest=canonical_digest(authorization),
+    )
+    journal = MainGraduationJournal(tmp_path)
+    journal._read = lambda kind, _operation: (
+        (authorization, None) if kind == "release-authorization" else None
+    )  # type: ignore[method-assign]
+    with pytest.raises(MainGraduationJournalError, match="durable release transition"):
+        journal._require_provider_receipt(receipt)  # pyright: ignore[reportPrivateUsage]
 
 
 def test_reconciliation_rejects_wrong_composition_tree_or_repository(tmp_path: Path) -> None:
