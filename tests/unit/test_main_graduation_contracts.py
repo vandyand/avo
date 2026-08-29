@@ -178,6 +178,7 @@ def test_preparation_chain_rejects_each_shared_binding_edge(
         base_tree=TREE,
         candidate_commit=HEAD,
         candidate_tree=TREE,
+        candidate_ref="refs/heads/avo/candidate/" + "1" * 64,
     )
     plan = MainGraduationPlan.model_construct(
         operation_id=DIGEST,
@@ -198,9 +199,11 @@ def test_preparation_chain_rejects_each_shared_binding_edge(
         base_tree=TREE,
         candidate_commit=HEAD,
         candidate_tree=TREE,
+        candidate_ref="refs/heads/avo/candidate/" + "1" * 64,
         lease_identity="lease",
         lease_digest=DIGEST,
         policy_epoch=DIGEST,
+        recorded_at=datetime.now(UTC),
     )
     preparation = MainPreparationAuthorization.model_construct(
         operation_id=DIGEST,
@@ -217,6 +220,7 @@ def test_preparation_chain_rejects_each_shared_binding_edge(
         lease_identity="lease",
         lease_digest=DIGEST,
         policy_epoch=DIGEST,
+        authorized_at=datetime.now(UTC),
     ).model_copy(update={field: value})
     journal = MainGraduationJournal(tmp_path)
     original_read = journal._read  # pyright: ignore[reportPrivateUsage]
@@ -266,6 +270,7 @@ def test_transition_rejects_attacker_repository_or_issuer(
         release_issuer_app_id=9001,
         issuer_isolation_digest=DIGEST,
         observed_at=now,
+        outcome="transitioned",
     ).model_copy(update={field: value})
     journal = MainGraduationJournal(tmp_path)
     journal._read = lambda _kind, _operation: (authorization, None)  # type: ignore[method-assign]
@@ -505,6 +510,7 @@ def test_reconciliation_rejects_wrong_composition_tree_or_repository(tmp_path: P
         release_issuer_app_id=9001,
         issuer_isolation_digest=DIGEST,
         observed_at=now,
+        outcome="transitioned",
     )
     queue = MainQueueObservation.model_construct(
         operation_id=DIGEST,

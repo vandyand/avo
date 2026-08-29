@@ -6,6 +6,7 @@ import errno
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 from typing import Any, Literal, cast
 
@@ -540,12 +541,15 @@ class MainGraduationJournal:
             or preparation.candidate_commit != intent.candidate_commit
             or preparation.candidate_tree != composition.candidate_tree
             or preparation.candidate_tree != intent.candidate_tree
+            or intent.candidate_ref != composition.candidate_ref
             or preparation.lease_identity != intent.lease_identity
             or preparation.lease_digest != intent.lease_digest
             or preparation.policy_epoch != intent.policy_epoch
             or preparation.policy_epoch != plan.policy_epoch
         ):
             raise MainGraduationJournalError("preparation plan/intent binding differs")
+        if re.fullmatch(r"refs/heads/avo/candidate/[0-9a-f]{64}", intent.candidate_ref) is None:
+            raise MainGraduationJournalError("intent candidate ref is outside controller namespace")
         if intent.recorded_at > preparation.authorized_at:
             raise MainGraduationJournalError("preparation predates intent")
 
@@ -562,6 +566,8 @@ class MainGraduationJournal:
         protection_manifest = cast(MainProtectionManifest, protection[0])
         prep = cast(MainPreparationAuthorization, preparation[0])
         self._require_preparation_chain(prep)
+        if prep.authorized_at > admission.observed_at:
+            raise MainGraduationJournalError("admission predates preparation authorization")
         composition = p.composition
         if (
             admission.preparation_authorization_digest != canonical_digest(prep)
@@ -838,6 +844,13 @@ class MainGraduationJournal:
         graduation_plan = cast(MainGraduationPlan, plan[0])
         self._require_release_authorization(transition_record)
         self._require_provider_receipt(provider)
+        if reconciliation.state == "completed" and transition_record.outcome not in {
+            "transitioned",
+            "already_transitioned",
+        }:
+            raise MainGraduationJournalError(
+                "completed reconciliation requires terminal transition"
+            )
         if (
             reconciliation.operation_id != transition_record.operation_id
             or reconciliation.repository_digest != q.repository_digest
