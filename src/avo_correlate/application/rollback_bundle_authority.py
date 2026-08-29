@@ -16,7 +16,10 @@ from avo_correlate.adapters.artifacts.rollback_bundle_authority import (
 )
 from avo_correlate.adapters.git.publisher import PreparedPublication
 from avo_correlate.contracts.base import ArtifactRef
-from avo_correlate.contracts.integration_campaign import IntegrationCampaignEvidencePackage
+from avo_correlate.contracts.integration_campaign import (
+    IntegrationCampaignEvidencePackage,
+    verify_campaign_package_artifact,
+)
 from avo_correlate.contracts.integration_drill import (
     IntegrationDrillRollbackAuthorization,
     IntegrationRollbackRequest,
@@ -112,16 +115,12 @@ class RollbackBundleAuthority:
         plan = prepared.plan
         config = self.config
         canary = canary_package
-        if (
-            canary_package_artifact.digest != canonical_digest(canary)
-            or canary_package_artifact.role != "integration-campaign-package"
-            or canary_package_artifact.media_type != "application/vnd.avo.integration-campaign+json"
-            or canary_package_artifact.size_bytes != len(canonical_bytes(canary))
-        ):
-            raise ValueError("canary package artifact is not the canonical semantic package")
         try:
-            if self.journal.read_artifact(canary_package_artifact) != canonical_bytes(canary):
-                raise ValueError("canary package artifact contents differ from package")
+            verify_campaign_package_artifact(
+                canary,
+                canary_package_artifact,
+                self.journal.read_artifact(canary_package_artifact),
+            )
             lease_reference = canary.lease_evidence_artifact
             lease_payload = canonical_bytes(canary.lease_evidence)
             if (
@@ -182,7 +181,7 @@ class RollbackBundleAuthority:
             "schema_version": 1,
             "operation_id": operation.operation_id,
             "canary_operation_id": canary.intent.operation_id,
-            "canary_package_digest": canonical_digest(canary),
+            "canary_package_digest": canary_package_artifact.digest,
             "repository_digest": config.repository_digest,
             "target_ref": config.target_ref,
             "main_before_commit": operation.main_before_commit,

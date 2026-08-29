@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import copy
+import hashlib
+import json
 import re
-from typing import Literal
+from typing import Literal, cast
 
 from pydantic import Field, model_validator
 
@@ -503,6 +506,73 @@ class IntegrationCampaignEvidencePackage(StrictModel):
             raise ValueError("receipt applied observation is not bound to the intent")
 
 
+def campaign_package_bytes(package: IntegrationCampaignEvidencePackage) -> bytes:
+    """Return the deterministic wire bytes for a campaign package."""
+
+    return canonical_bytes(package)
+
+
+def verify_campaign_package_artifact(
+    package: IntegrationCampaignEvidencePackage,
+    artifact: ArtifactRef,
+    data: bytes,
+) -> str:
+    """Verify a durable package artifact and return its durable digest.
+
+    Current package bytes must match the deterministic serializer exactly. A
+    narrowly scoped compatibility path accepts only older canonical JSON whose
+    sole semantic difference is iteration order of ``low_gates`` or
+    ``ordinary_gates``. In either case the artifact's own content digest is
+    the binding used by callers; it is never replaced with a model digest.
+    """
+
+    if (
+        artifact.role != "integration-campaign-package"
+        or artifact.media_type != "application/vnd.avo.integration-campaign+json"
+        or artifact.size_bytes != len(data)
+        or artifact.digest != f"sha256:{hashlib.sha256(data).hexdigest()}"
+    ):
+        raise ValueError("campaign package artifact metadata or content digest is invalid")
+    expected = campaign_package_bytes(package)
+    if data == expected:
+        return artifact.digest
+    try:
+        raw = json.loads(data.decode("utf-8"), object_pairs_hook=_strict_json_pairs)
+        expected_raw = json.loads(expected.decode("utf-8"))
+    except (UnicodeError, TypeError, ValueError, json.JSONDecodeError) as exc:
+        raise ValueError("campaign package artifact is not canonical JSON") from exc
+    # Compatibility is restricted to canonical JSON with two known set-valued
+    # arrays in one known location. All other representation differences fail.
+    if canonical_bytes(raw) != data:
+        raise ValueError("campaign package artifact is not canonical JSON")
+    normalized = copy.deepcopy(raw)
+    try:
+        policy = normalized["bundle"]["controller_config"]["policy"]
+        expected_policy = expected_raw["bundle"]["controller_config"]["policy"]
+        for field in ("low_gates", "ordinary_gates"):
+            values = policy[field]
+            if not isinstance(values, list) or not isinstance(expected_policy[field], list):
+                raise ValueError("campaign policy gate sets are malformed")
+            gate_values = cast(list[object], values)
+            if any(not isinstance(value, str) for value in gate_values):
+                raise ValueError("campaign policy gate sets are malformed")
+            policy[field] = sorted(cast(list[str], gate_values))
+        if normalized != expected_raw:
+            raise ValueError("campaign package differs beyond policy set ordering")
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ValueError("campaign package differs beyond policy set ordering") from exc
+    return artifact.digest
+
+
+def _strict_json_pairs(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    result: dict[str, object] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("duplicate JSON object key")
+        result[key] = value
+    return result
+
+
 __all__ = [
     "CampaignCompletionPlan",
     "CampaignDiscoveryEvidence",
@@ -512,4 +582,6 @@ __all__ = [
     "IntegrationCampaignEvidencePackage",
     "IntegrationIntentTemplate",
     "campaign_marker_digest",
+    "campaign_package_bytes",
+    "verify_campaign_package_artifact",
 ]

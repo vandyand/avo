@@ -10,9 +10,12 @@ from avo_correlate.adapters.artifacts.filesystem import (
     FilesystemArtifactStore,
 )
 from avo_correlate.contracts.base import ArtifactRef
-from avo_correlate.contracts.integration_campaign import IntegrationCampaignEvidencePackage
+from avo_correlate.contracts.integration_campaign import (
+    IntegrationCampaignEvidencePackage,
+    verify_campaign_package_artifact,
+)
 from avo_correlate.contracts.prepublication import RollbackPublicationAuthorization
-from avo_correlate.domain.canonical import canonical_bytes, canonical_digest
+from avo_correlate.domain.canonical import canonical_bytes
 
 
 class RollbackBundleAuthorityJournal:
@@ -99,12 +102,8 @@ class RollbackBundleAuthorityJournal:
                 raise ValueError("durable canary child metadata differs from authority")
             canary_data = self._store.read_bytes(canary_reference)
             canary_raw = json.loads(canary_data, object_pairs_hook=_strict_object_pairs)
-            if (
-                canonical_bytes(canary_raw) != canary_data
-                or canonical_digest(canary_raw) != authorization.canary_package_digest
-            ):
-                raise ValueError("durable canary child is not canonical")
             canary = IntegrationCampaignEvidencePackage.model_validate(canary_raw)
+            verify_campaign_package_artifact(canary, canary_reference, canary_data)
             if canary.intent.operation_id != authorization.canary_operation_id:
                 raise ValueError("durable canary child operation differs from authority")
             plan_reference = ArtifactRef.model_validate(value["publication_plan_artifact"])

@@ -89,7 +89,7 @@ from avo_correlate.contracts.promotion_bundle import (
 )
 from avo_correlate.contracts.promotion_policy import PromotionConfig
 from avo_correlate.contracts.synthetic_validation import SyntheticValidationCreateAuthorization
-from avo_correlate.domain.canonical import canonical_bytes, canonical_digest
+from avo_correlate.domain.canonical import canonical_digest
 
 REMOTE = "https://github.com/vandyand/avo.git"
 OWNER = "vandyand"
@@ -852,8 +852,6 @@ def _validate_completed_canary(
     if (
         package.core_package.canary_operation_id != canary_operation_id
         or canary.intent.operation_id != canary_operation_id
-        or canary_ref.digest != canonical_digest(canary)
-        or canary_ref.size_bytes != len(canonical_bytes(canary))
         or canary_ref.role != "integration-campaign-package"
         or canary_ref.media_type != "application/vnd.avo.integration-campaign+json"
     ):

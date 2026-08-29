@@ -285,7 +285,6 @@ class LiveIntegrationRollbackService:
         if (
             canary_ref.role != "integration-campaign-package"
             or canary_ref.media_type != "application/vnd.avo.integration-campaign+json"
-            or canary_ref.digest != canonical_digest(canary)
             or canary.report.outcome not in {"applied", "already_applied"}
             or canary.intent.repository_digest != request.repository_digest
             or canary.intent.target_ref != request.target_ref

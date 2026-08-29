@@ -12,6 +12,8 @@ from avo_correlate.contracts.integration_campaign import (
     CampaignPreparationEvidence,
     IntegrationCampaignEvidencePackage,
     IntegrationIntentTemplate,
+    campaign_package_bytes,
+    verify_campaign_package_artifact,
 )
 from avo_correlate.contracts.integration_drill import IntegrationRollbackRequest
 from avo_correlate.contracts.integration_live_rollback import LiveRollbackEvidencePackage
@@ -143,4 +145,6 @@ __all__ = [
     "VariationSessionResult",
     "VersionedComponentRef",
     "WorkspaceComparison",
+    "campaign_package_bytes",
+    "verify_campaign_package_artifact",
 ]
