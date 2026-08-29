@@ -85,6 +85,9 @@ class MainSourcePackageBinding(MainBound):
 
     schema_version: Literal[1] = 1
     operation_id: Sha256Digest
+    # Upstream campaign identity is deliberately distinct from this main
+    # graduation operation; source evidence cannot be replayed as a stage.
+    source_operation_id: Sha256Digest
     package_digest: Sha256Digest = Field(
         validation_alias=AliasChoices(
             "package_digest", "integration_package_digest", "source_package_digest"
@@ -101,6 +104,8 @@ class MainSourcePackageBinding(MainBound):
 
     @model_validator(mode="after")
     def validate_source(self) -> MainSourcePackageBinding:
+        if self.source_operation_id == self.operation_id:
+            raise ValueError("source campaign operation must differ from main graduation operation")
         digests = [child.digest for child in self.child_artifacts]
         if len(digests) != len(set(digests)):
             raise ValueError("source package children must be unique")
@@ -229,6 +234,11 @@ class MainQueueObservation(MainBound):
     bypass_allowed: Literal[False] = False
     direct_merge_allowed: Literal[False] = False
     expected_base_commit: GitObject
+    expected_base_tree: GitObject
+    protection_manifest_digest: Sha256Digest
+    protection_epoch: Sha256Digest
+    provider_identity: NonEmptyString
+    provider_api_version: NonEmptyString
     # The provider's documented synthetic-merge topology, captured from the
     # queue configuration.  A group observation cannot choose its own shape.
     expected_group_parents: list[GitObject] = Field(min_length=1)
@@ -247,6 +257,17 @@ class MainQueueObservation(MainBound):
             raise ValueError("validation App 15368 cannot be the release issuer")
         if self.expected_base_commit == "":
             raise ValueError("queue base is required")
+        expected_topology = canonical_digest(
+            {
+                "expected_group_parents": self.expected_group_parents,
+                "merge_method": self.merge_method,
+                "provider_identity": self.provider_identity,
+                "provider_api_version": self.provider_api_version,
+                "queue_manifest_digest": self.queue_manifest_digest,
+            }
+        )
+        if self.group_topology_digest != expected_topology:
+            raise ValueError("queue group topology digest mismatch")
         return self
 
 
@@ -909,6 +930,30 @@ class MainCompletionPackage(MainBound):
         return self
 
 
+class MainInverseDeltaArtifact(MainBound):
+    """Typed inverse of a completed main result; opaque rollback digests are forbidden."""
+
+    schema_version: Literal[1] = 1
+    operation_id: Sha256Digest
+    completion_package_digest: Sha256Digest
+    current_main_commit: GitObject
+    current_main_tree: GitObject
+    inverse_changed_paths: list[NonEmptyString] = Field(min_length=1)
+    inverse_tree: GitObject
+    policy_epoch: Sha256Digest
+    inverse_delta_digest: Sha256Digest
+    deploy_performed: Literal[False] = False
+
+    _valid_paths = field_validator("inverse_changed_paths")(_paths)
+
+    @model_validator(mode="after")
+    def validate_inverse_delta(self) -> MainInverseDeltaArtifact:
+        expected = canonical_digest(self.model_dump(exclude={"inverse_delta_digest"}, mode="json"))
+        if self.inverse_delta_digest != expected:
+            raise ValueError("inverse delta digest mismatch")
+        return self
+
+
 class MainRollbackAuthorization(MainBound):
     schema_version: Literal[1] = 1
     operation_id: Sha256Digest
@@ -916,6 +961,7 @@ class MainRollbackAuthorization(MainBound):
     current_main_commit: GitObject
     current_main_tree: GitObject
     inverse_delta_digest: Sha256Digest
+    inverse_delta_artifact_digest: Sha256Digest
     inverse_tree: GitObject
     lease_identity: NonEmptyString
     lease_digest: Sha256Digest
@@ -941,6 +987,7 @@ class MainRollbackIntent(MainBound):
     operation_id: Sha256Digest
     completion_package_digest: Sha256Digest
     inverse_delta_digest: Sha256Digest
+    inverse_delta_artifact_digest: Sha256Digest
     base_commit: GitObject
     base_tree: GitObject
     current_main_commit: GitObject
@@ -1072,6 +1119,7 @@ __all__ = [
     "MainGraduationEligibilityRecord",
     "MainGraduationIntent",
     "MainGraduationPlan",
+    "MainInverseDeltaArtifact",
     "MainMergeGroupChecks",
     "MainPreparationAuthorization",
     "MainProtectionManifest",

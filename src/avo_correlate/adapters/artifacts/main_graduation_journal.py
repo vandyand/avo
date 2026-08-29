@@ -25,6 +25,7 @@ from avo_correlate.contracts.main_graduation import (
     MainGraduationEligibilityRecord,
     MainGraduationIntent,
     MainGraduationPlan,
+    MainInverseDeltaArtifact,
     MainMergeGroupChecks,
     MainPreparationAuthorization,
     MainProtectionManifest,
@@ -68,6 +69,7 @@ _MODELS: dict[str, type[StrictModel]] = {
     "release-transition": MainReleaseTransitionReceipt,
     "provider-receipt": MainProviderReceipt,
     "reconciliation": MainReconciliation,
+    "inverse-delta": MainInverseDeltaArtifact,
     "rollback-authorization": MainRollbackAuthorization,
     "rollback-intent": MainRollbackIntent,
     "attempt": MainGraduationAttempt,
@@ -146,6 +148,8 @@ class MainGraduationJournal:
                 self._verify_source_package(cast(MainSourcePackageBinding, checked))
             elif kind == "plan":
                 self._verify_plan_evidence(cast(MainGraduationPlan, checked))
+            elif kind == "queue-admission":
+                self._require_queue_admission(cast(MainQueueAdmissionObservation, checked))
             elif kind == "release-hold":
                 self._require_admission(cast(MainReleaseHoldObservation, checked))
             elif kind == "release-authorization":
@@ -158,6 +162,8 @@ class MainGraduationJournal:
                 self._require_reconciliation(cast(MainReconciliation, checked))
             elif kind == "rollback-authorization":
                 self._require_rollback_intent(cast(MainRollbackAuthorization, checked))
+            elif kind == "rollback-intent":
+                self._require_inverse_delta(cast(MainRollbackIntent, checked))
             if kind == "completion":
                 self._materialize_children(cast(MainCompletionPackage, checked))
         except (TypeError, ValueError, json.JSONDecodeError) as exc:
@@ -173,11 +179,17 @@ class MainGraduationJournal:
         # Otherwise a rejected cross-operation reuse would leave an apparently
         # valid local admission/hold record behind.
         if kind == "queue-admission":
-            self._index_run_nonce(
+            prior_global = self._index_run_nonce(
                 "admission", cast(MainQueueAdmissionObservation, checked), reference
             )
+            if prior_global is not None:
+                reference = prior_global
         elif kind == "release-hold":
-            self._index_run_nonce("hold", cast(MainReleaseHoldObservation, checked), reference)
+            prior_global = self._index_run_nonce(
+                "hold", cast(MainReleaseHoldObservation, checked), reference
+            )
+            if prior_global is not None:
+                reference = prior_global
         index = self._indexes / kind / f"{operation_id.removeprefix('sha256:')}.json"
         index.parent.mkdir(parents=True, exist_ok=True)
         payload = canonical_bytes(reference)
@@ -242,6 +254,8 @@ class MainGraduationJournal:
                 self._verify_source_package(cast(MainSourcePackageBinding, record))
             elif kind == "plan":
                 self._verify_plan_evidence(cast(MainGraduationPlan, record))
+            elif kind == "queue-admission":
+                self._require_queue_admission(cast(MainQueueAdmissionObservation, record))
             elif kind == "release-hold":
                 self._require_admission(cast(MainReleaseHoldObservation, record))
             elif kind == "release-authorization":
@@ -254,6 +268,8 @@ class MainGraduationJournal:
                 self._require_reconciliation(cast(MainReconciliation, record))
             elif kind == "rollback-authorization":
                 self._require_rollback_intent(cast(MainRollbackAuthorization, record))
+            elif kind == "rollback-intent":
+                self._require_inverse_delta(cast(MainRollbackIntent, record))
             if kind == "completion":
                 self._verify_children(cast(MainCompletionPackage, record))
             if _operation_id(record) != key:
@@ -420,7 +436,8 @@ class MainGraduationJournal:
             if source.intent.repository_digest != package.repository_digest:
                 raise ValueError("source package repository differs from binding")
             if (
-                source.intent.operation_id != package.operation_id
+                source.intent.operation_id != package.source_operation_id
+                or package.source_operation_id == package.operation_id
                 or source.bundle.controller_config.controller_identity != package.source_issuer
             ):
                 raise ValueError("source package operation or issuer differs from binding")
@@ -479,11 +496,60 @@ class MainGraduationJournal:
         if durable is None or canonical_bytes(durable[0]) != canonical_bytes(record):
             raise MainGraduationJournalError(f"{kind} is not the durable canonical prior stage")
 
+    def _require_queue_admission(self, admission: MainQueueAdmissionObservation) -> None:
+        """Admission independently closes the queue/base/protection snapshot."""
+        plan = self._read("plan", admission.operation_id)
+        queue = self._read("queue", admission.operation_id)
+        protection = self._read("protection", admission.operation_id)
+        preparation = self._read("preparation-authorization", admission.operation_id)
+        if plan is None or queue is None or protection is None or preparation is None:
+            raise MainGraduationJournalError("admission requires durable queue preparation chain")
+        p = cast(MainGraduationPlan, plan[0])
+        q = cast(MainQueueObservation, queue[0])
+        protection_manifest = cast(MainProtectionManifest, protection[0])
+        prep = cast(MainPreparationAuthorization, preparation[0])
+        composition = p.composition
+        if (
+            admission.preparation_authorization_digest != canonical_digest(prep)
+            or admission.package_digest != p.package.package_digest
+            or admission.composition_digest != composition.composition_digest
+            or admission.repository_digest != p.repository_digest
+            or admission.target_ref != p.target_ref
+            or admission.base_commit != composition.base_commit
+            or admission.base_tree != composition.base_tree
+            or admission.head_commit != composition.candidate_commit
+            or admission.head_tree != composition.candidate_tree
+            or admission.queue_generation_digest != q.queue_generation_digest
+            or admission.protection_manifest_digest != protection_manifest.manifest_digest
+        ):
+            raise MainGraduationJournalError("admission plan/queue binding differs")
+        if (
+            q.repository_digest != p.repository_digest
+            or q.target_ref != p.target_ref
+            or q.expected_base_commit != composition.base_commit
+            or q.expected_base_tree != composition.base_tree
+            or q.merge_method != "squash"
+            or q.protection_manifest_digest != protection_manifest.manifest_digest
+            or q.protection_epoch != protection_manifest.protection_epoch
+            or q.release_issuer_app_id != protection_manifest.release_issuer_app_id
+            or q.issuer_isolation_digest != protection_manifest.issuer_isolation_digest
+            or q.isolated_release_issuer != protection_manifest.isolated_release_issuer
+        ):
+            raise MainGraduationJournalError("queue/protection/base closure differs")
+        if not (
+            admission.issuer_identity == q.isolated_release_issuer
+            and admission.release_issuer_app_id == q.release_issuer_app_id
+            and admission.issuer_isolation_digest == q.issuer_isolation_digest
+            and admission.check_context == protection_manifest.release_context
+        ):
+            raise MainGraduationJournalError("admission queue issuer differs")
+
     def _require_admission(self, hold: MainReleaseHoldObservation) -> None:
         prior = self._read("queue-admission", hold.operation_id)
         if prior is None:
             raise MainGraduationJournalError("release hold requires durable queue admission")
         admission = cast(MainQueueAdmissionObservation, prior[0])
+        self._require_queue_admission(admission)
         if hold.admission_observation_digest != canonical_digest(admission):
             raise MainGraduationJournalError("hold admission digest differs")
         preparation = self._read("preparation-authorization", hold.operation_id)
@@ -546,8 +612,8 @@ class MainGraduationJournal:
         c = cast(MainMergeGroupChecks, checks[0])
         if (
             admission.queue_generation_digest != q.queue_generation_digest
-            or admission.protection_manifest_digest != canonical_digest(p)
-            or hold.protection_manifest_digest != canonical_digest(p)
+            or admission.protection_manifest_digest != p.manifest_digest
+            or hold.protection_manifest_digest != p.manifest_digest
             or hold.attestation_manifest_digest != canonical_digest(a)
             or hold.other_required_checks != c
             or hold.group_topology_digest != q.group_topology_digest
@@ -576,6 +642,7 @@ class MainGraduationJournal:
         if prior is None:
             raise MainGraduationJournalError("release authorization requires durable pending hold")
         hold = cast(MainReleaseHoldObservation, prior[0])
+        self._require_admission(hold)
         if authorization.hold_observation_digest != canonical_digest(hold):
             raise MainGraduationJournalError("release authorization hold digest differs")
         if (
@@ -672,6 +739,7 @@ class MainGraduationJournal:
         if prior is None:
             raise MainGraduationJournalError("rollback authorization requires durable intent")
         intent = cast(MainRollbackIntent, prior[0])
+        self._require_inverse_delta(intent)
         if intent.completion_package_digest != authorization.completion_package_digest:
             raise MainGraduationJournalError("rollback package differs from intent")
         if (
@@ -679,6 +747,7 @@ class MainGraduationJournal:
             or intent.current_main_tree != authorization.current_main_tree
             or intent.base_commit != authorization.current_main_commit
             or intent.inverse_delta_digest != authorization.inverse_delta_digest
+            or intent.inverse_delta_artifact_digest != authorization.inverse_delta_artifact_digest
             or intent.inverse_tree != authorization.inverse_tree
             or intent.policy_epoch != authorization.policy_epoch
             or intent.repository_digest != authorization.repository_digest
@@ -692,6 +761,33 @@ class MainGraduationJournal:
             or intent.lease_digest != authorization.lease_digest
         ):
             raise MainGraduationJournalError("rollback lease differs from authorization")
+
+    def _require_inverse_delta(self, intent: MainRollbackIntent) -> None:
+        prior = self._read("inverse-delta", intent.operation_id)
+        if prior is None:
+            raise MainGraduationJournalError("rollback intent requires durable inverse delta")
+        inverse = cast(MainInverseDeltaArtifact, prior[0])
+        completion_prior = self._read("completion", intent.operation_id)
+        if completion_prior is None:
+            raise MainGraduationJournalError("rollback inverse requires durable completion")
+        completion = cast(MainCompletionPackage, completion_prior[0])
+        if (
+            intent.inverse_delta_artifact_digest != canonical_digest(inverse)
+            or intent.inverse_delta_digest != inverse.inverse_delta_digest
+            or intent.completion_package_digest != inverse.completion_package_digest
+            or inverse.completion_package_digest != canonical_digest(completion)
+            or intent.current_main_commit != inverse.current_main_commit
+            or intent.current_main_tree != inverse.current_main_tree
+            or inverse.current_main_commit != completion.reconciliation.main_commit
+            or inverse.current_main_tree != completion.reconciliation.main_tree
+            or intent.inverse_tree != inverse.inverse_tree
+            or intent.policy_epoch != inverse.policy_epoch
+            or intent.repository_digest != inverse.repository_digest
+            or intent.target_ref != inverse.target_ref
+            or inverse.repository_digest != completion.repository_digest
+            or inverse.target_ref != completion.target_ref
+        ):
+            raise MainGraduationJournalError("rollback inverse delta binding differs")
 
     def _require_attempt_eligibility(self, attempt: MainGraduationAttempt) -> None:
         prior = self._read("eligibility", attempt.operation_id)
@@ -720,7 +816,7 @@ class MainGraduationJournal:
         stage: Literal["admission", "hold"],
         record: MainQueueAdmissionObservation | MainReleaseHoldObservation,
         reference: ArtifactRef,
-    ) -> None:
+    ) -> ArtifactRef | None:
         if stage == "admission":
             if not isinstance(record, MainQueueAdmissionObservation):
                 raise MainGraduationJournalError("admission run/nonce record is malformed")
@@ -738,6 +834,7 @@ class MainGraduationJournal:
                 handle.flush()
                 os.fsync(handle.fileno())
             _sync_directory(path.parent)
+            return None
         except FileExistsError:
             try:
                 current = json.loads(
@@ -747,12 +844,30 @@ class MainGraduationJournal:
                     raise ValueError("run/nonce index is noncanonical")
             except (OSError, ValueError, TypeError, UnicodeError, json.JSONDecodeError) as exc:
                 raise MainGraduationJournalError("run/nonce index is malformed") from exc
-            if current.get("operation_id") != record.operation_id or current.get(
-                "reference"
-            ) != reference.model_dump(mode="json"):
+            original = ArtifactRef.model_validate(current.get("reference"))
+            immutable_original = (
+                original.digest,
+                original.role,
+                original.media_type,
+                original.size_bytes,
+            )
+            immutable_replay = (
+                reference.digest,
+                reference.role,
+                reference.media_type,
+                reference.size_bytes,
+            )
+            original_bytes = self._store.read_bytes(original)
+            replay_bytes = self._store.read_bytes(reference)
+            if (
+                current.get("operation_id") != record.operation_id
+                or immutable_original != immutable_replay
+                or original_bytes != replay_bytes
+            ):
                 raise MainGraduationRecordConflictError(
                     f"{stage} run/nonce is already bound"
                 ) from None
+            return original
         except OSError as exc:
             raise MainGraduationJournalError("run/nonce was not durably indexed") from exc
 
@@ -972,6 +1087,12 @@ class MainGraduationJournal:
         self, operation_id: str
     ) -> tuple[StrictModel, ArtifactRef] | None:
         return self._read("rollback-authorization", operation_id)
+
+    def record_inverse_delta(self, record: MainInverseDeltaArtifact) -> ArtifactRef:
+        return self._record("inverse-delta", record)
+
+    def read_inverse_delta(self, operation_id: str) -> tuple[StrictModel, ArtifactRef] | None:
+        return self._read("inverse-delta", operation_id)
 
     def record_rollback_intent(self, record: MainRollbackIntent) -> ArtifactRef:
         return self._record("rollback-intent", record)

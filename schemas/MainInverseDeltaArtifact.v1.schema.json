@@ -1,22 +1,7 @@
 {
   "additionalProperties": false,
+  "description": "Typed inverse of a completed main result; opaque rollback digests are forbidden.",
   "properties": {
-    "authorization_digest": {
-      "pattern": "^sha256:[0-9a-f]{64}$",
-      "title": "Authorization Digest",
-      "type": "string"
-    },
-    "authorized": {
-      "const": true,
-      "default": true,
-      "title": "Authorized",
-      "type": "boolean"
-    },
-    "authorized_at": {
-      "format": "date-time",
-      "title": "Authorized At",
-      "type": "string"
-    },
     "completion_package_digest": {
       "pattern": "^sha256:[0-9a-f]{64}$",
       "title": "Completion Package Digest",
@@ -38,10 +23,14 @@
       "title": "Deploy Performed",
       "type": "boolean"
     },
-    "inverse_delta_artifact_digest": {
-      "pattern": "^sha256:[0-9a-f]{64}$",
-      "title": "Inverse Delta Artifact Digest",
-      "type": "string"
+    "inverse_changed_paths": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Inverse Changed Paths",
+      "type": "array"
     },
     "inverse_delta_digest": {
       "pattern": "^sha256:[0-9a-f]{64}$",
@@ -51,16 +40,6 @@
     "inverse_tree": {
       "pattern": "^[0-9a-f]{40}(?:[0-9a-f]{24})?$",
       "title": "Inverse Tree",
-      "type": "string"
-    },
-    "lease_digest": {
-      "pattern": "^sha256:[0-9a-f]{64}$",
-      "title": "Lease Digest",
-      "type": "string"
-    },
-    "lease_identity": {
-      "minLength": 1,
-      "title": "Lease Identity",
       "type": "string"
     },
     "operation_id": {
@@ -97,15 +76,11 @@
     "completion_package_digest",
     "current_main_commit",
     "current_main_tree",
-    "inverse_delta_digest",
-    "inverse_delta_artifact_digest",
+    "inverse_changed_paths",
     "inverse_tree",
-    "lease_identity",
-    "lease_digest",
     "policy_epoch",
-    "authorization_digest",
-    "authorized_at"
+    "inverse_delta_digest"
   ],
-  "title": "MainRollbackAuthorization",
+  "title": "MainInverseDeltaArtifact",
   "type": "object"
 }

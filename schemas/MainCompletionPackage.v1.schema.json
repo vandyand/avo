@@ -1249,6 +1249,11 @@
           "title": "Expected Base Commit",
           "type": "string"
         },
+        "expected_base_tree": {
+          "pattern": "^[0-9a-f]{40}(?:[0-9a-f]{24})?$",
+          "title": "Expected Base Tree",
+          "type": "string"
+        },
         "expected_group_parents": {
           "items": {
             "pattern": "^[0-9a-f]{40}(?:[0-9a-f]{24})?$",
@@ -1292,6 +1297,26 @@
         "operation_id": {
           "pattern": "^sha256:[0-9a-f]{64}$",
           "title": "Operation Id",
+          "type": "string"
+        },
+        "protection_epoch": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Protection Epoch",
+          "type": "string"
+        },
+        "protection_manifest_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Protection Manifest Digest",
+          "type": "string"
+        },
+        "provider_api_version": {
+          "minLength": 1,
+          "title": "Provider Api Version",
+          "type": "string"
+        },
+        "provider_identity": {
+          "minLength": 1,
+          "title": "Provider Identity",
           "type": "string"
         },
         "queue_enabled": {
@@ -1339,6 +1364,11 @@
         "queue_generation_digest",
         "queue_manifest_digest",
         "expected_base_commit",
+        "expected_base_tree",
+        "protection_manifest_digest",
+        "protection_epoch",
+        "provider_identity",
+        "provider_api_version",
         "expected_group_parents",
         "group_topology_digest",
         "merge_method",
@@ -1998,6 +2028,11 @@
           "title": "Source Issuer",
           "type": "string"
         },
+        "source_operation_id": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Source Operation Id",
+          "type": "string"
+        },
         "source_result_commit": {
           "pattern": "^[0-9a-f]{40}(?:[0-9a-f]{24})?$",
           "title": "Source Result Commit",
@@ -2023,6 +2058,7 @@
       "required": [
         "repository_digest",
         "operation_id",
+        "source_operation_id",
         "package_digest",
         "package_artifact",
         "child_artifacts",

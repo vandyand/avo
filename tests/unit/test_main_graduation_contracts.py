@@ -7,17 +7,22 @@ from pydantic import ValidationError
 from avo_correlate.adapters.artifacts.main_graduation_journal import (
     MainGraduationJournal,
     MainGraduationJournalError,
+    MainGraduationRecordConflictError,
 )
+from avo_correlate.contracts.base import ArtifactRef
 from avo_correlate.contracts.main_graduation import (
     MainCheckObservation,
     MainDeltaManifest,
     MainGraduationAttempt,
     MainGraduationEligibilityRecord,
+    MainInverseDeltaArtifact,
     MainMergeGroupChecks,
     MainProviderReceipt,
     MainQueueAdmissionObservation,
+    MainQueueObservation,
     MainReleaseAuthorization,
     MainReleaseIssuerBinding,
+    MainSourcePackageBinding,
 )
 from avo_correlate.domain.canonical import canonical_digest
 
@@ -66,6 +71,84 @@ def test_eligibility_sequence_is_gap_free() -> None:
             ordinary=True,
             nonempty=True,
         )
+
+
+def test_source_package_uses_a_distinct_upstream_operation() -> None:
+    artifact = ArtifactRef(
+        digest=DIGEST,
+        size_bytes=1,
+        media_type="application/vnd.avo.integration-campaign+json",
+        role="integration-campaign-package",
+        created_at=datetime.now(UTC),
+    )
+    values = {
+        "operation_id": DIGEST,
+        "source_operation_id": "sha256:" + "2" * 64,
+        "repository_digest": DIGEST,
+        "package_digest": DIGEST,
+        "package_artifact": artifact,
+        "child_artifacts": [artifact.model_copy(update={"role": "source-child"})],
+        "source_result_commit": HEAD,
+        "source_result_tree": TREE,
+        "source_result_parent": BASE,
+        "source_issuer": "source-controller",
+    }
+    assert MainSourcePackageBinding(**values).source_operation_id != DIGEST
+    with pytest.raises(ValidationError, match="must differ"):
+        MainSourcePackageBinding(**{**values, "source_operation_id": DIGEST})
+
+
+def test_queue_topology_digest_is_canonical_and_binds_two_parent_form() -> None:
+    topology = {
+        "expected_group_parents": [BASE, HEAD],
+        "merge_method": "squash",
+        "provider_identity": "provider",
+        "provider_api_version": "v1",
+        "queue_manifest_digest": DIGEST,
+    }
+    values = {
+        "operation_id": DIGEST,
+        "repository_digest": DIGEST,
+        "queue_generation_digest": DIGEST,
+        "queue_manifest_digest": DIGEST,
+        "expected_base_commit": BASE,
+        "expected_base_tree": TREE,
+        "protection_manifest_digest": DIGEST,
+        "protection_epoch": DIGEST,
+        "provider_identity": "provider",
+        "provider_api_version": "v1",
+        "expected_group_parents": [BASE, HEAD],
+        "group_topology_digest": canonical_digest(topology),
+        "merge_method": "squash",
+        "isolated_release_issuer": "release",
+        "release_issuer_app_id": 9001,
+        "issuer_isolation_digest": DIGEST,
+        "observed_at": datetime.now(UTC),
+    }
+    assert MainQueueObservation(**values).expected_group_parents == [BASE, HEAD]
+    with pytest.raises(ValidationError, match="topology digest"):
+        MainQueueObservation(**{**values, "group_topology_digest": DIGEST})
+
+
+def test_inverse_delta_digest_is_canonical() -> None:
+    values = {
+        "operation_id": DIGEST,
+        "repository_digest": DIGEST,
+        "completion_package_digest": "sha256:" + "2" * 64,
+        "current_main_commit": HEAD,
+        "current_main_tree": TREE,
+        "inverse_changed_paths": ["src/feature.py"],
+        "inverse_tree": BASE,
+        "policy_epoch": DIGEST,
+    }
+    probe = MainInverseDeltaArtifact.model_construct(**values, inverse_delta_digest=DIGEST)
+    artifact = MainInverseDeltaArtifact(
+        **values,
+        inverse_delta_digest=canonical_digest(
+            probe.model_dump(exclude={"inverse_delta_digest"}, mode="json")
+        ),
+    )
+    assert artifact.inverse_delta_digest != DIGEST
 
 
 @pytest.mark.parametrize("ordinary, nonempty", [(False, True), (True, False), (False, False)])
@@ -165,6 +248,22 @@ def test_journal_rejects_attempt_without_canonical_durable_eligibility(tmp_path:
     )
     with pytest.raises(MainGraduationJournalError, match="durable eligibility"):
         MainGraduationJournal(tmp_path).record_attempt(attempt)
+
+
+def test_global_admission_run_nonce_replay_uses_original_reference(tmp_path: Path) -> None:
+    journal = MainGraduationJournal(tmp_path)
+    first_ref = journal._store.put_bytes(  # pyright: ignore[reportPrivateUsage]
+        b"admission", media_type="application/json", role="test", max_bytes=1024
+    )
+    replay_ref = first_ref.model_copy(update={"created_at": datetime.now(UTC) + timedelta(days=1)})
+    admission = MainQueueAdmissionObservation.model_construct(
+        operation_id=DIGEST, admission_run_id="run", admission_nonce="nonce"
+    )
+    assert journal._index_run_nonce("admission", admission, first_ref) is None  # pyright: ignore[reportPrivateUsage]
+    assert journal._index_run_nonce("admission", admission, replay_ref) == first_ref  # pyright: ignore[reportPrivateUsage]
+    conflicting = admission.model_copy(update={"operation_id": "sha256:" + "2" * 64})
+    with pytest.raises(MainGraduationRecordConflictError):
+        journal._index_run_nonce("admission", conflicting, replay_ref)  # pyright: ignore[reportPrivateUsage]
 
 
 def test_delta_uses_strict_policy_path_and_ordinary_risk() -> None:

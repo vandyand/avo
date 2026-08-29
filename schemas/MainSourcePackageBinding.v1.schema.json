@@ -98,6 +98,11 @@
       "title": "Source Issuer",
       "type": "string"
     },
+    "source_operation_id": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Source Operation Id",
+      "type": "string"
+    },
     "source_result_commit": {
       "pattern": "^[0-9a-f]{40}(?:[0-9a-f]{24})?$",
       "title": "Source Result Commit",
@@ -123,6 +128,7 @@
   "required": [
     "repository_digest",
     "operation_id",
+    "source_operation_id",
     "package_digest",
     "package_artifact",
     "child_artifacts",
