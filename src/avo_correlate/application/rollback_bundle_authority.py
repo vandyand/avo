@@ -224,6 +224,9 @@ class RollbackBundleAuthority:
                 and existing.failed_soak_attestation_digest == canonical_digest(failed_soak)
             )
             stored_soak_data = self.journal.read_failed_soak_data(existing)
+            stored_soak: FailedSoakAttestation | None = None
+            if stored_soak_data is not None:
+                stored_soak = FailedSoakAttestation.model_validate_json(stored_soak_data)
             bridge_exists = self.journal.recovery_bridge_exists(existing)
             if bridge_exists:
                 self.journal.require_recovery_bridge(existing)
@@ -235,9 +238,18 @@ class RollbackBundleAuthority:
                     raise ValueError("fresh failed soak differs from durable recovery bridge")
                 self.journal.require(existing)
                 return existing
-            if exact_soak and stored_soak_data is not None:
+            if stored_soak is not None and _same_soak_observation(stored_soak, failed_soak):
+                # A crash after the candidate push can leave the immutable
+                # authority and failed-soak child durable before the recovery
+                # bridge is written.  The current provider observation has a
+                # new freshness-derived identity, but the stable facts still
+                # prove that it is the same failed soak.  Require the full
+                # durable authority before replaying and never probe remote
+                # absence or mint a legacy bridge in this path.
                 self.journal.require(existing)
                 return existing
+            if stored_soak is not None:
+                raise ValueError("fresh failed soak differs from durable authority")
             legacy_soak = (
                 failed_soak
                 if stored_soak_data is None
@@ -439,10 +451,17 @@ class RollbackBundleAuthority:
             raise TypeError("authorization must be a trusted RollbackPublicationAuthorization")
         self.journal.require(authorization)
         self._validate_soak(failed_soak)
-        exact_soak = (
-            authorization.failed_soak_attestation_id == failed_soak.attestation_id
-            and authorization.failed_soak_attestation_digest == canonical_digest(failed_soak)
-        )
+        stored_soak_data = self.journal.read_failed_soak_data(authorization)
+        if stored_soak_data is not None:
+            stored_soak = FailedSoakAttestation.model_validate_json(stored_soak_data)
+            if not _same_soak_observation(stored_soak, failed_soak):
+                raise ValueError("fresh failed soak differs from durable authority")
+        else:
+            # A missing historical child is the legacy recovery shape.  The
+            # journal has already verified the immutable bridge above; retain
+            # that requirement only for this shape, never for a stored child
+            # whose provider freshness-derived identity has moved.
+            self.journal.require_recovery_bridge(authorization)
         if (
             authorization.repository_digest != failed_soak.repository_digest
             or authorization.failed_integration_head_commit != failed_soak.integration_commit
@@ -452,8 +471,6 @@ class RollbackBundleAuthority:
             or authorization.main_before_commit != failed_soak.main_commit
         ):
             raise ValueError("stored preauthorization is not bound to failed soak authority")
-        if not exact_soak:
-            self.journal.require_recovery_bridge(authorization)
         values: dict[str, Any] = {
             "schema_version": 1,
             "operation_id": authorization.operation_id,
