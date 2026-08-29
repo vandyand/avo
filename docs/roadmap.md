@@ -1,8 +1,8 @@
 # AVO Roadmap
 
-Status date: 2026-08-28.
+Status date: 2026-08-29.
 
-Review date: 2026-08-28.
+Review date: 2026-08-29.
 
 Authority: This file is AVO's sole authority for outcomes, priority, sequencing, milestone status, and decision gates.
 
@@ -47,9 +47,13 @@ production authority outside the proposing agent's control.
   checks from App 15368, protected integration promotion, one-parent topology reconciliation,
   duplicate-runner fail-closed behavior, and completed-state replay. The [durable live result](avo-0045-sanitized-live-result.md)
   records the immutable commit identities and digests.
-- The live gate exposed a head-versus-synthetic check attachment gap. A temporary exact-validation
-  ref/workflow-dispatch bridge recovered the gate and was cleaned up; it is not a production
-  attester. AVO-004.6 is ready to drill this boundary and harden the attestation path.
+- AVO-004.6 completed the eight-case offline failure package and a real protected live failure/
+  rollback on 2026-08-29. The pinned GitHub Actions App 15368 check identity executing the
+  base-controlled exact-SHA workflow, failed integration
+  soak, separately authorized PR-native rollback, exact one-parent restore topology, immutable
+  cleanup evidence, and completed-state replay all passed with `main` unchanged and no deployment.
+  The [live drill result](avo-0046-live-failure-drill-result.md) records the exact identities,
+  quarantined stale attempts, and follow-up reliability findings.
 
 ## Milestone register
 
@@ -81,18 +85,20 @@ approving every ordinary patch.
 | AVO-004.3 | complete | ADR defining risk classes, constitutional paths, reviewer independence, exception policy, and rollback limits. | ADR 0007, exported strict schemas, 85 focused policy tests, independent adversarial review, and the full trusted suite pass. |
 | AVO-004.4 | complete | Dry-run promotion controller producing a content-addressed promotion bundle without merging. | [ADR 0008](adr/0008-dry-run-promotion-controller.md) and the [v1 result](avo-004-promotion-dry-run-v1-result.md) pass deterministic replay, trusted-base evaluation, provenance, adversarial review, coverage, and compare-and-swap checks. |
 | AVO-004.5 | complete | Controller-driven ordinary-change promotion to a protected integration branch under the documented temporary exact-validation bridge. | The sanitized live campaign passes required trusted checks, independent review quorum, private regression evaluation, exact synthetic reconstruction, integration soak, protected merge, and durable recovery evidence. [Result](avo-0045-sanitized-live-result.md) |
-| AVO-004.6 | ready | Rollback and failure drills with immutable evidence, plus production-grade exact-SHA attestation. | The concrete failure-drill sequence below fails closed and reconstructs, and the temporary validation bridge is replaced or formally bounded by a base-controlled attester or dedicated GitHub App. [Result](avo-0045-sanitized-live-result.md) |
-| AVO-004.7 | planned | Graduation of ordinary changes from integration to automatic protected-main promotion. | A preregistered clean-run threshold is met with zero boundary violations and successful rollback drills. |
+| AVO-004.6 | complete | Rollback and failure drills with immutable evidence, plus production-grade exact-SHA attestation for the declared trusted-repository boundary. | The offline eight-case package and live protected canary/rollback fail closed, reconstruct, clean up, and replay idempotently through the pinned GitHub Actions App 15368 check identity executing the base-controlled exact-SHA workflow, with `main` unchanged and no deployment. [Result](avo-0046-live-failure-drill-result.md) |
+| AVO-004.7 | ready | Graduation of ordinary changes from integration to automatic protected-main promotion. | A preregistered clean-run threshold is met with zero boundary violations and successful rollback drills. |
 
 The roadmap gate was completed first because the operator explicitly authorized it. The green test
 and coverage baseline, controlling repository, public remote, baseline tag, recovery rehearsal, and
 server-side `main` protection now pass. AVO-004.4's no-merge controller passed independent
 adversarial review and protected Ubuntu/Windows CI before merging. AVO-004.5 then completed one
 sanitized live promotion to the protected integration branch without changing `main`. AVO-004.6
-is now the next gate: it turns the live campaign's recovery and exact-SHA observations into
-repeatable failure evidence and production attestation hardening.
+then completed deterministic failure injection and a real failed-soak/authorized-rollback cycle
+with immutable exact-SHA evidence. AVO-004.7 is now the next gate: preregister the clean-run
+threshold and prove that ordinary integration results can graduate to protected `main` without
+making the operator the routine merge bottleneck.
 
-### AVO-004.6 next-gate failure-drill sequence
+### AVO-004.6 failure-drill sequence
 
 Run each drill from a clean, trusted base and retain immutable evidence for the decision and
 reconciliation outcome:
@@ -114,9 +120,11 @@ reconciliation outcome:
 8. Replace the temporary exact-validation ref/workflow-dispatch bridge with a base-controlled
    exact-SHA attestation or dedicated GitHub App, then repeat the check-identity drills.
 
-The gate exits only when all injected failures fail closed, successful recovery is idempotent, the
-result and rollback records reconstruct, and the exact-SHA checks are produced by a repeatable
-production-boundary attester.
+The gate exited on 2026-08-29 after every injected failure failed closed, successful recovery was
+idempotent, the result and rollback records reconstructed, and repeatable exact-SHA checks were
+produced by the pinned GitHub Actions App 15368 check identity executing the
+base-controlled workflow. See the
+[live result](avo-0046-live-failure-drill-result.md).
 
 ### Promotion policy target
 
