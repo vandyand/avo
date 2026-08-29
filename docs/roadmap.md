@@ -10,8 +10,8 @@ Authority: This file is AVO's sole authority for outcomes, priority, sequencing,
 
 This roadmap governs what AVO should do next and what “complete” means. Implementation packets,
 integration plans, ADRs, release records, and experiment results provide durable evidence but do not
-override this file's current priority or status. GitHub Issues may later track execution and a GitHub
-Project may visualize it; both remain derived views.
+override this file's current priority or status. Any execution view remains derived from this file
+and cannot change its authority.
 
 Every material roadmap update must preserve stable milestone IDs, link its evidence, update the
 status date, and pass the project-local `avo-roadmap` validator. Review date records a deliberate
@@ -54,6 +54,16 @@ production authority outside the proposing agent's control.
   cleanup evidence, and completed-state replay all passed with `main` unchanged and no deployment.
   The [live drill result](avo-0046-live-failure-drill-result.md) records the exact identities,
   quarantined stale attempts, and follow-up reliability findings.
+- AVO-004.7 has begun on 2026-08-29. Its architecture, implementation plan, and runbook define
+  protected-main graduation from a canonical integration evidence package, deterministic
+  sole-parent delta composition, dedicated main contracts/provider/rollback authority, a
+  mandatory isolated `avo-main-release` hold issuer, and a preregistered 12-success threshold.
+  Live `main` mutation is currently blocked on both required capabilities: the preferred
+  merge-queue protocol needs an organization-owned repository with max-one-entry queue and
+  exact admission/hold capability, while the current public repository is user-owned, and no
+  isolated release-hold issuer/operator authority exists. No transfer, protection/queue
+  mutation, admission or release transition, or main write is authorized until both hosting
+  authority and admission/hold authority are explicitly resolved.
 
 ## Milestone register
 
@@ -86,7 +96,7 @@ approving every ordinary patch.
 | AVO-004.4 | complete | Dry-run promotion controller producing a content-addressed promotion bundle without merging. | [ADR 0008](adr/0008-dry-run-promotion-controller.md) and the [v1 result](avo-004-promotion-dry-run-v1-result.md) pass deterministic replay, trusted-base evaluation, provenance, adversarial review, coverage, and compare-and-swap checks. |
 | AVO-004.5 | complete | Controller-driven ordinary-change promotion to a protected integration branch under the documented temporary exact-validation bridge. | The sanitized live campaign passes required trusted checks, independent review quorum, private regression evaluation, exact synthetic reconstruction, integration soak, protected merge, and durable recovery evidence. [Result](avo-0045-sanitized-live-result.md) |
 | AVO-004.6 | complete | Rollback and failure drills with immutable evidence, plus production-grade exact-SHA attestation for the declared trusted-repository boundary. | The offline eight-case package and live protected canary/rollback fail closed, reconstruct, clean up, and replay idempotently through the pinned GitHub Actions App 15368 check identity executing the base-controlled exact-SHA workflow, with `main` unchanged and no deployment. [Result](avo-0046-live-failure-drill-result.md) |
-| AVO-004.7 | ready | Graduation of ordinary changes from integration to automatic protected-main promotion. | A preregistered clean-run threshold is met with zero boundary violations and successful rollback drills. |
+| AVO-004.7 | in_progress | Graduate ordinary changes from integration to automatic protected-main promotion through a dedicated, queue-aware main boundary with one-use PR-head admission and isolated group release hold. | The offline architecture and rollback matrix pass; then, after both organization-hosting/merge-queue capability (max one entry per group) and isolated admission/hold authority unblock the live protocol, a fresh hosted main rollback drill passes before ledger activation, followed by 12 consecutive eligible attempts with 0 failures and 0 boundary violations. [ADR](adr/0011-protected-main-graduation.md), [plan](avo-0047-main-graduation-plan.md), and [runbook](avo-0047-main-graduation-runbook.md). |
 
 The roadmap gate was completed first because the operator explicitly authorized it. The green test
 and coverage baseline, controlling repository, public remote, baseline tag, recovery rehearsal, and
@@ -94,9 +104,15 @@ server-side `main` protection now pass. AVO-004.4's no-merge controller passed i
 adversarial review and protected Ubuntu/Windows CI before merging. AVO-004.5 then completed one
 sanitized live promotion to the protected integration branch without changing `main`. AVO-004.6
 then completed deterministic failure injection and a real failed-soak/authorized-rollback cycle
-with immutable exact-SHA evidence. AVO-004.7 is now the next gate: preregister the clean-run
-threshold and prove that ordinary integration results can graduate to protected `main` without
-making the operator the routine merge bottleneck.
+with immutable exact-SHA evidence. AVO-004.7 has now begun: its clean-run threshold and
+main-specific rollback evidence are preregistered in the linked ADR, plan, and runbook. The
+live gate is blocked by two hosting/authority prerequisites: the preferred required merge queue
+with max one entry per group and exact PR-head admission/group-hold capability is available for
+an organization-owned public repository, but the current public repository is user-owned; and
+a dedicated isolated release issuer has not been authorized. No repository transfer,
+protection/queue mutation, admission or hold-success transition, or live `main` write is
+authorized until both boundaries are explicitly resolved (or an exact-CAS writer design is
+separately reviewed).
 
 ### AVO-004.6 failure-drill sequence
 
