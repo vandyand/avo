@@ -314,6 +314,88 @@ def test_provider_receipt_rejects_provider_identity_substitution(tmp_path: Path)
         journal._require_provider_receipt(receipt)  # pyright: ignore[reportPrivateUsage]
 
 
+@pytest.mark.parametrize("source_record", [None, "different", "same"])
+def test_plan_requires_durable_strict_source_package(
+    tmp_path: Path, source_record: str | None
+) -> None:
+    journal = MainGraduationJournal(tmp_path)
+    raw = b"{}"
+    reference = journal._store.put_bytes(  # pyright: ignore[reportPrivateUsage]
+        raw,
+        media_type="application/vnd.avo.integration-campaign+json",
+        role="integration-campaign-package",
+        max_bytes=1024,
+    )
+    package = MainSourcePackageBinding.model_construct(
+        operation_id=DIGEST,
+        source_operation_id="sha256:" + "2" * 64,
+        package_artifact=reference,
+        package_digest=reference.digest,
+        child_artifacts=[],
+    )
+    plan = MainGraduationPlan.model_construct(operation_id=DIGEST, package=package)
+    if source_record is None:
+        journal._read = lambda _kind, _operation: None  # type: ignore[method-assign]
+        expected = "durable source-package"
+    elif source_record == "different":
+        other = package.model_copy(update={"source_operation_id": "sha256:" + "3" * 64})
+        journal._read = lambda _kind, _operation: (other, None)  # type: ignore[method-assign]
+        expected = "differs from durable"
+    else:
+        journal._read = lambda _kind, _operation: (package, None)  # type: ignore[method-assign]
+        expected = "source package or child"
+    with pytest.raises(MainGraduationJournalError, match=expected):
+        journal._verify_plan_evidence(plan)  # pyright: ignore[reportPrivateUsage]
+
+
+@pytest.mark.parametrize("outcome", ["ambiguous", "rejected"])
+def test_provider_recovery_receipts_do_not_claim_success_and_remain_verifiable(
+    tmp_path: Path, outcome: str
+) -> None:
+    authorization = MainReleaseAuthorization.model_construct(
+        operation_id=DIGEST, repository_digest=DIGEST, target_ref="refs/heads/main"
+    )
+    queue = MainQueueObservation.model_construct(
+        operation_id=DIGEST,
+        repository_digest=DIGEST,
+        target_ref="refs/heads/main",
+        provider_identity="provider",
+        provider_api_version="v1",
+    )
+    protection = MainProtectionManifest.model_construct(
+        operation_id=DIGEST,
+        repository_digest=DIGEST,
+        target_ref="refs/heads/main",
+        provider_identity="provider",
+        provider_api_version="v1",
+    )
+    plan = MainGraduationPlan.model_construct(
+        operation_id=DIGEST,
+        composition=MainCompositionArtifact.model_construct(candidate_tree=TREE, base_commit=BASE),
+    )
+    receipt = MainProviderReceipt.model_construct(
+        operation_id=DIGEST,
+        repository_digest=DIGEST,
+        target_ref="refs/heads/main",
+        release_authorization_digest=canonical_digest(authorization),
+        provider_identity="provider",
+        provider_api_version="v1",
+        outcome=outcome,
+        result_commit=None,
+        result_tree=None,
+        result_parents=[],
+    )
+    journal = MainGraduationJournal(tmp_path)
+    records = {
+        "release-authorization": authorization,
+        "queue": queue,
+        "protection": protection,
+        "plan": plan,
+    }
+    journal._read = lambda kind, _operation: (records[kind], None)  # type: ignore[method-assign]
+    journal._require_provider_receipt(receipt)  # pyright: ignore[reportPrivateUsage]
+
+
 def test_reconciliation_rejects_wrong_composition_tree_or_repository(tmp_path: Path) -> None:
     authorization = MainReleaseAuthorization.model_construct(
         operation_id=DIGEST,

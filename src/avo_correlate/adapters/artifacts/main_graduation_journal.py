@@ -478,6 +478,14 @@ class MainGraduationJournal:
 
     def _verify_plan_evidence(self, plan: MainGraduationPlan) -> None:
         """Plans may only cite the raw package and its typed immutable children."""
+        durable_source = self._read("source-package", plan.operation_id)
+        if durable_source is None:
+            raise MainGraduationJournalError("plan requires durable source-package record")
+        if canonical_bytes(durable_source[0]) != canonical_bytes(plan.package):
+            raise MainGraduationJournalError("plan source-package differs from durable record")
+        # Do not rely on the durable-record lookup alone: this repeats the
+        # raw upstream package and child semantic closure at the plan boundary.
+        self._verify_source_package(plan.package)
         expected = {plan.package.package_artifact.digest: plan.package.package_artifact}
         expected.update({item.digest: item for item in plan.package.child_artifacts})
         actual = {item.digest: item for item in plan.evidence_artifacts}
@@ -774,11 +782,13 @@ class MainGraduationJournal:
             or receipt.provider_identity != protection.provider_identity
             or receipt.provider_api_version != queue.provider_api_version
             or receipt.provider_api_version != protection.provider_api_version
-            or receipt.outcome != "observed"
-            or receipt.result_tree != plan.composition.candidate_tree
-            or receipt.result_parents != [plan.composition.base_commit]
         ):
             raise MainGraduationJournalError("provider receipt authorization binding differs")
+        if receipt.outcome == "observed" and (
+            receipt.result_tree != plan.composition.candidate_tree
+            or receipt.result_parents != [plan.composition.base_commit]
+        ):
+            raise MainGraduationJournalError("provider receipt result differs from composition")
 
     def _require_reconciliation(self, reconciliation: MainReconciliation) -> None:
         transition = self._read("release-transition", reconciliation.operation_id)
@@ -811,7 +821,10 @@ class MainGraduationJournal:
             or reconciliation.target_ref != p.target_ref
             or reconciliation.transition_receipt_digest != canonical_digest(transition_record)
             or reconciliation.queue_generation_digest != q.queue_generation_digest
-            or reconciliation.state != "completed"
+        ):
+            raise MainGraduationJournalError("reconciliation prior-stage binding differs")
+        if reconciliation.state == "completed" and (
+            provider.outcome != "observed"
             or reconciliation.main_commit != provider.result_commit
             or reconciliation.main_tree != provider.result_tree
             or reconciliation.main_parents != provider.result_parents
@@ -820,7 +833,7 @@ class MainGraduationJournal:
             or reconciliation.expected_base_commit != graduation_plan.composition.base_commit
             or reconciliation.main_parents != [graduation_plan.composition.base_commit]
         ):
-            raise MainGraduationJournalError("reconciliation prior-stage binding differs")
+            raise MainGraduationJournalError("completed reconciliation differs from composition")
 
     def _require_rollback_intent(self, authorization: MainRollbackAuthorization) -> None:
         prior = self._read("rollback-intent", authorization.operation_id)
