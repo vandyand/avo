@@ -31,7 +31,7 @@ from avo_correlate.contracts.main_graduation import (
     MainSourcePackageBinding,
 )
 from avo_correlate.contracts.promotion_policy import PromotionPolicy, path_manifest_digest
-from avo_correlate.domain.canonical import canonical_digest
+from avo_correlate.domain.canonical import canonical_bytes, canonical_digest
 
 _GIT_OBJECT = re.compile(r"^[0-9a-f]{40}(?:[0-9a-f]{24})?$")
 _SHA256 = re.compile(r"^sha256:[0-9a-f]{64}$")
@@ -123,6 +123,12 @@ class MainCompositionAdapter:
             raise ValueError("command timeout must be positive")
         self._timeout = command_timeout_seconds
         _digest(repository_digest, "composition repository")
+        bind = getattr(journal, "bind_composition_verifier", None)
+        if bind is not None:
+            try:
+                bind(self)
+            except (RuntimeError, TypeError, ValueError) as exc:
+                raise MainCompositionError("composition verifier binding failed") from exc
 
     def fresh_main_base(self) -> MainBaseSnapshot:
         """Read the exact current main commit/tree without reading any source ref."""
@@ -284,6 +290,153 @@ class MainCompositionAdapter:
             delta_ref,
             composition_ref,
         )
+
+    def verify(
+        self,
+        source: MainSourcePackageBinding,
+        delta: MainDeltaManifest,
+        composition: MainCompositionArtifact,
+    ) -> None:
+        """Recompute C2 from trusted durable inputs at the plan authority point.
+
+        This is deliberately separate from durable journal replay.  It fences
+        the live main base while a new plan is being created, but reading an
+        already-indexed plan later only checks its immutable records.
+        """
+
+        self._require_digest(source.operation_id, "main operation")
+        self._require_digest(source.repository_digest, "source repository")
+        self._require_digest(source.package_digest, "source package")
+        if source.repository_digest != self.repository_digest:
+            raise MainCompositionError("source repository differs from composition repository")
+        durable = self.journal.read_source_package(source.operation_id)
+        if durable is None:
+            raise MainCompositionError("source package is not durably verified")
+        durable_source = cast(MainSourcePackageBinding, durable[0])
+        if canonical_bytes(durable_source) != canonical_bytes(source):
+            raise MainCompositionError("source package binding differs from durable record")
+        package = self._read_package(source, durable_source)
+        self._require_integration_target(package)
+
+        base = self.fresh_main_base()
+        if (
+            composition.repository_digest != source.repository_digest
+            or composition.target_ref != "refs/heads/main"
+            or composition.base_commit != base.commit
+            or composition.base_tree != base.tree
+        ):
+            raise MainCompositionError("composition base differs from fresh main")
+
+        parent = _object(source.source_result_parent, "source result parent")
+        result = _object(source.source_result_commit, "source result commit")
+        result_tree = _object(source.source_result_tree, "source result tree")
+        self._require_sole_parent(parent, result)
+        self._verify_commit_tree(result, result_tree, "source result")
+        self._verify_commit_tree(parent, None, "source result parent")
+        self._verify_commit_tree(base.commit, base.tree, "main base")
+        changed_paths, patch = self._source_delta(parent, result)
+        self._verify_source_paths(changed_paths, package)
+        path_digest = path_manifest_digest(changed_paths)
+        expected_path_digest = package.bundle.request.path_manifest_attestation.path_manifest_digest
+        if expected_path_digest != path_digest:
+            raise MainCompositionError("source path-manifest digest drift")
+        ordinary_risk = PromotionPolicy.derive_risk(changed_paths)
+        if ordinary_risk.value != "ordinary":
+            raise MainCompositionError("source delta contains disallowed risk paths")
+        ordinary_risk_digest = canonical_digest(
+            {
+                "ordinary_risk": ordinary_risk.value,
+                "changed_paths": changed_paths,
+                "path_manifest_digest": path_digest,
+            }
+        )
+        expected_risk_digest = canonical_digest(
+            {
+                "ordinary_risk": package.bundle.decision.risk_class.value,
+                "changed_paths": package.bundle.request.changed_paths,
+                "path_manifest_digest": expected_path_digest,
+            }
+        )
+        if (
+            package.bundle.decision.risk_class.value != "ordinary"
+            or expected_risk_digest != ordinary_risk_digest
+        ):
+            raise MainCompositionError("ordinary-risk recomputation drift")
+
+        delta_payload = {
+            "schema_version": 1,
+            "repository_digest": source.repository_digest,
+            "target_ref": "refs/heads/main",
+            "operation_id": source.operation_id,
+            "package_digest": source.package_digest,
+            "source_result_commit": result,
+            "source_result_parent": parent,
+            "source_result_tree": result_tree,
+            "changed_paths": changed_paths,
+            "path_manifest_digest": path_digest,
+            "ordinary_risk_digest": ordinary_risk_digest,
+            "ordinary_risk": "ordinary",
+            "deploy_performed": False,
+        }
+        expected_delta = MainDeltaManifest.model_validate(
+            {**delta_payload, "delta_digest": canonical_digest(delta_payload)}
+        )
+        if canonical_bytes(expected_delta) != canonical_bytes(delta):
+            raise MainCompositionError("durable delta differs from exact Git recomputation")
+
+        candidate_tree = self._apply_delta(base.commit, patch)
+        candidate_commit = self._commit(base.commit, candidate_tree)
+        self._verify_candidate(candidate_commit, candidate_tree, base.commit)
+        composed_paths, _ = self._source_delta(base.commit, candidate_commit)
+        if composed_paths != changed_paths:
+            raise MainCompositionError("composed candidate changed paths differ from source delta")
+        if PromotionPolicy.derive_risk(composed_paths).value != "ordinary":
+            raise MainCompositionError("composed candidate contains disallowed risk paths")
+
+        candidate_ref = f"{_CANDIDATE_PREFIX}{source.operation_id.removeprefix('sha256:')}"
+        retention_ref = f"refs/avo/main-composition/{source.operation_id.removeprefix('sha256:')}"
+        if composition.candidate_ref != candidate_ref or composition.retention_ref != retention_ref:
+            raise MainCompositionError("composition refs differ from controller namespace")
+        retained = self._run_bytes(
+            ["git", "rev-parse", "--verify", "--end-of-options", f"{retention_ref}^{{commit}}"],
+            check=False,
+        )
+        if not retained or retained.decode("ascii", "strict").strip() != candidate_commit:
+            raise MainCompositionError("composition retention ref does not retain candidate")
+        candidate = self._run_bytes(
+            ["git", "rev-parse", "--verify", "--end-of-options", f"{candidate_ref}^{{commit}}"],
+            check=False,
+        )
+        if candidate and candidate.decode("ascii", "strict").strip() != candidate_commit:
+            raise MainCompositionError("candidate ref points at a conflicting commit")
+
+        composition_payload = {
+            "schema_version": 1,
+            "repository_digest": source.repository_digest,
+            "target_ref": "refs/heads/main",
+            "operation_id": source.operation_id,
+            "package_digest": source.package_digest,
+            "delta_digest": expected_delta.delta_digest,
+            "base_commit": base.commit,
+            "base_tree": base.tree,
+            "candidate_commit": candidate_commit,
+            "candidate_tree": candidate_tree,
+            "candidate_parent_commit": base.commit,
+            "candidate_ref": candidate_ref,
+            "retention_ref": retention_ref,
+            "deploy_performed": False,
+        }
+        expected_composition = MainCompositionArtifact.model_validate(
+            {
+                **composition_payload,
+                "composition_digest": canonical_digest(composition_payload),
+            }
+        )
+        if canonical_bytes(expected_composition) != canonical_bytes(composition):
+            raise MainCompositionError("durable composition differs from exact Git recomputation")
+
+        final_base = self.fresh_main_base()
+        self._validate_base(base, final_base, source.repository_digest)
 
     @staticmethod
     def _require_digest(value: str, label: str) -> None:

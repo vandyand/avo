@@ -14,6 +14,7 @@ from avo_correlate.adapters.artifacts.live_rollback_journal import (
     LiveRollbackJournalError,
 )
 from avo_correlate.adapters.artifacts.main_graduation_journal import (
+    MainCompositionVerifier,
     MainGraduationJournal,
     MainGraduationJournalError,
     MainGraduationRecordConflictError,
@@ -34,6 +35,7 @@ __all__ = [
     "LiveRollbackCompletionJournalError",
     "LiveRollbackJournal",
     "LiveRollbackJournalError",
+    "MainCompositionVerifier",
     "MainGraduationJournal",
     "MainGraduationJournalError",
     "MainGraduationRecordConflictError",

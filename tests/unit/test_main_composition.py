@@ -293,6 +293,58 @@ def test_successful_source_for_wrong_target_is_rejected(tmp_path: Path) -> None:
         _Adapter(root, _Journal(binding), package).compose(binding)
 
 
+@pytest.mark.parametrize(
+    "field",
+    [
+        "intent.target_ref",
+        "bundle.snapshot.target_ref",
+        "bundle.comparison.target_ref",
+        "observation.base_ref",
+        "reconciliation.target_ref",
+    ],
+)
+def test_every_integration_target_edge_is_checked(field: str) -> None:
+    _binding, package = _source("a" * 40, "b" * 40, "c" * 40, changed=["feature.txt"])
+    owner: Any = package
+    parts = field.split(".")
+    for part in parts[:-1]:
+        owner = getattr(owner, part)
+    setattr(owner, parts[-1], "refs/heads/main")
+    with pytest.raises(MainCompositionError, match="target"):
+        MainCompositionAdapter._require_integration_target(  # pyright: ignore[reportPrivateUsage]
+            package
+        )
+
+
+def test_trusted_verifier_recomputes_exact_outputs(tmp_path: Path) -> None:
+    root, parent, result, result_tree, parent_tree = _repo(tmp_path)
+    binding, package = _source(parent, result, result_tree, changed=["feature.txt"])
+    journal = _Journal(binding)
+    adapter = _Adapter(root, journal, package)
+    composed = adapter.compose(binding, base=MainBaseSnapshot(DIGEST, parent, parent_tree))
+    adapter.verify(binding, composed.delta, composed.composition)
+
+
+@pytest.mark.parametrize("field", ["changed_paths", "candidate_tree", "base_tree", "retention_ref"])
+def test_trusted_verifier_rejects_forged_outputs_before_authority(
+    field: str, tmp_path: Path
+) -> None:
+    root, parent, result, result_tree, parent_tree = _repo(tmp_path)
+    binding, package = _source(parent, result, result_tree, changed=["feature.txt"])
+    journal = _Journal(binding)
+    adapter = _Adapter(root, journal, package)
+    composed = adapter.compose(binding, base=MainBaseSnapshot(DIGEST, parent, parent_tree))
+    if field == "changed_paths":
+        forged = composed.delta.model_copy(update={"changed_paths": ["other.txt"]})
+        delta, composition = forged, composed.composition
+    else:
+        delta = composed.delta
+        value = "d" * 40 if field != "retention_ref" else "refs/avo/main-composition/" + "d" * 64
+        composition = composed.composition.model_copy(update={field: value})
+    with pytest.raises(MainCompositionError):
+        adapter.verify(binding, delta, composition)
+
+
 def test_diff_does_not_execute_local_textconv(tmp_path: Path) -> None:
     root, parent, result, tree, parent_tree = _repo(tmp_path, attributes=True)
     marker = tmp_path / "textconv-ran"

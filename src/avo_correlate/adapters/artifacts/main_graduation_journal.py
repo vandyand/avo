@@ -8,7 +8,7 @@ import json
 import os
 import re
 from pathlib import Path
-from typing import Any, Literal, cast
+from typing import Any, Literal, Protocol, cast
 
 from avo_correlate.adapters.artifacts.filesystem import FilesystemArtifactStore
 from avo_correlate.contracts.base import ArtifactRef, StrictModel
@@ -52,6 +52,17 @@ class MainGraduationJournalError(RuntimeError):
 
 class MainGraduationRecordConflictError(MainGraduationJournalError):
     """A create-once key was already bound to different canonical bytes."""
+
+
+class MainCompositionVerifier(Protocol):
+    """Controller-owned creation-time proof for the C2 composition boundary."""
+
+    def verify(
+        self,
+        source: MainSourcePackageBinding,
+        delta: MainDeltaManifest,
+        composition: MainCompositionArtifact,
+    ) -> None: ...
 
 
 class _RunNonceEnvelope(StrictModel):
@@ -128,6 +139,7 @@ class MainGraduationJournal:
         *,
         artifact_store: FilesystemArtifactStore | None = None,
         release_issuer_binding: MainReleaseIssuerBinding | None = None,
+        composition_verifier: MainCompositionVerifier | None = None,
         max_record_bytes: int = 32 * 1024 * 1024,
     ) -> None:
         if max_record_bytes <= 0:
@@ -136,11 +148,21 @@ class MainGraduationJournal:
         self._indexes = self._root / "main-graduation-index"
         self._store = artifact_store or FilesystemArtifactStore(self._root / "artifacts")
         self._release_issuer_binding = release_issuer_binding
+        self._composition_verifier = composition_verifier
         self._max = max_record_bytes
 
     @property
     def root(self) -> Path:
         return self._root
+
+    def bind_composition_verifier(self, verifier: MainCompositionVerifier) -> None:
+        """Bind the one controller-owned live composition proof to this journal."""
+
+        if self._composition_verifier is not None:
+            raise MainGraduationJournalError("main composition verifier is already bound")
+        if not callable(getattr(verifier, "verify", None)):
+            raise MainGraduationJournalError("main composition verifier is invalid")
+        self._composition_verifier = verifier
 
     def delete_artifact(self, digest: str) -> bool:
         """Recovery/test seam; indexed reads still fail closed after deletion."""
@@ -166,7 +188,10 @@ class MainGraduationJournal:
             if kind == "source-package":
                 self._verify_source_package(cast(MainSourcePackageBinding, checked))
             elif kind == "plan":
+                index = self._indexes / kind / f"{operation_id.removeprefix('sha256:')}.json"
                 self._verify_plan_evidence(cast(MainGraduationPlan, checked))
+                if not index.is_file():
+                    self._verify_plan_composition(cast(MainGraduationPlan, checked))
             elif kind == "intent":
                 self._verify_intent_lease(cast(MainGraduationIntent, checked))
             elif kind == "preparation-authorization":
@@ -250,7 +275,14 @@ class MainGraduationJournal:
             if canonical_bytes(parsed) != data:
                 raise ValueError("main graduation index is not canonical JSON")
             return ArtifactRef.model_validate(parsed)
-        except (OSError, ValueError, TypeError, UnicodeError, json.JSONDecodeError) as exc:
+        except (
+            OSError,
+            ValueError,
+            TypeError,
+            AttributeError,
+            UnicodeError,
+            json.JSONDecodeError,
+        ) as exc:
             raise MainGraduationJournalError("main graduation index is malformed") from exc
 
     def _read(self, kind: str, key: str) -> tuple[StrictModel, ArtifactRef] | None:
@@ -453,6 +485,7 @@ class MainGraduationJournal:
                 or source.reconciliation.target_head_commit != package.source_result_commit
             ):
                 raise ValueError("source package result differs from binding")
+            self._require_integration_target(source)
             if (
                 source.reconciliation.target_head_tree != package.source_result_tree
                 or source.reconciliation.target_first_parent != package.source_result_parent
@@ -500,6 +533,38 @@ class MainGraduationJournal:
                     raise ValueError("source package child is not canonical JSON")
         except (OSError, ValueError, TypeError, UnicodeError, json.JSONDecodeError) as exc:
             raise MainGraduationJournalError("source package or child is unverifiable") from exc
+
+    @staticmethod
+    def _require_integration_target(package: IntegrationCampaignEvidencePackage) -> None:
+        """Require one exact protected integration target across every closure edge."""
+
+        integration_ref = "refs/heads/integration"
+        if any(
+            target_ref != integration_ref
+            for target_ref in (
+                package.intent.target_ref,
+                package.bundle.snapshot.target_ref,
+                package.bundle.comparison.target_ref,
+                package.observation.base_ref,
+                package.reconciliation.target_ref,
+            )
+        ):
+            raise ValueError("source package integration target closure differs")
+
+    def _verify_plan_composition(self, plan: MainGraduationPlan) -> None:
+        """Fence the controller-bound live composition proof for a new plan."""
+
+        verifier = self._composition_verifier
+        if verifier is None:
+            raise MainGraduationJournalError(
+                "plan requires a controller-bound composition verifier"
+            )
+        try:
+            verifier.verify(plan.package, plan.delta, plan.composition)
+        except (RuntimeError, TypeError, ValueError) as exc:
+            raise MainGraduationJournalError(
+                "controller-bound composition verifier rejected plan"
+            ) from exc
 
     def _verify_plan_evidence(self, plan: MainGraduationPlan) -> None:
         """Plans may only cite the raw package and its typed immutable children."""
@@ -1442,6 +1507,7 @@ def _sync_directory(path: Path) -> None:
 
 
 __all__ = [
+    "MainCompositionVerifier",
     "MainGraduationJournal",
     "MainGraduationJournalError",
     "MainGraduationRecordConflictError",
