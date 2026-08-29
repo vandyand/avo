@@ -621,6 +621,8 @@ class MainGraduationJournal:
             or prep.plan_digest != canonical_digest(durable_plan)
         ):
             raise MainGraduationJournalError("admission/hold preparation binding differs")
+        if not (prep.authorized_at <= admission.observed_at <= hold.observed_at):
+            raise MainGraduationJournalError("admission/hold preparation chronology differs")
         if any(
             value != expected
             for value, expected in (
@@ -672,6 +674,12 @@ class MainGraduationJournal:
             or hold.other_required_checks != c
             or hold.group_topology_digest != q.group_topology_digest
             or hold.expected_group_parents != q.expected_group_parents
+            or a.operation_id != durable_plan.operation_id
+            or a.repository_digest != durable_plan.repository_digest
+            or a.target_ref != durable_plan.target_ref
+            or a.package_digest != durable_plan.package.package_digest
+            or a.composition_digest != durable_plan.composition.composition_digest
+            or a.policy_epoch != durable_plan.policy_epoch
         ):
             raise MainGraduationJournalError("hold durable evidence binding differs")
         if not (
@@ -712,6 +720,8 @@ class MainGraduationJournal:
             raise MainGraduationJournalError("release issuer identity differs from hold")
         if authorization.issuer_isolation_digest != hold.issuer_isolation_digest:
             raise MainGraduationJournalError("issuer isolation differs from hold")
+        if hold.observed_at > authorization.authorized_at:
+            raise MainGraduationJournalError("release authorization predates hold observation")
         admission = self._read("queue-admission", authorization.operation_id)
         preparation = self._read("preparation-authorization", authorization.operation_id)
         intent = self._read("intent", authorization.operation_id)
@@ -744,6 +754,8 @@ class MainGraduationJournal:
         authorization = cast(MainReleaseAuthorization, prior[0])
         if receipt.release_authorization_digest != canonical_digest(authorization):
             raise MainGraduationJournalError("transition authorization digest differs")
+        if not (authorization.authorized_at <= receipt.observed_at <= authorization.expires_at):
+            raise MainGraduationJournalError("transition is outside authorization validity window")
         if (
             receipt.operation_id != authorization.operation_id
             or receipt.repository_digest != authorization.repository_digest

@@ -240,6 +240,7 @@ def test_preparation_chain_rejects_each_shared_binding_edge(
 def test_transition_rejects_attacker_repository_or_issuer(
     tmp_path: Path, field: str, value: str
 ) -> None:
+    now = datetime.now(UTC)
     authorization = MainReleaseAuthorization.model_construct(
         operation_id=DIGEST,
         repository_digest=DIGEST,
@@ -250,6 +251,8 @@ def test_transition_rejects_attacker_repository_or_issuer(
         release_issuer_identity="release",
         release_issuer_app_id=9001,
         issuer_isolation_digest=DIGEST,
+        authorized_at=now,
+        expires_at=now + timedelta(minutes=5),
     )
     receipt = MainReleaseTransitionReceipt.model_construct(
         operation_id=DIGEST,
@@ -262,11 +265,52 @@ def test_transition_rejects_attacker_repository_or_issuer(
         issuer_identity="release",
         release_issuer_app_id=9001,
         issuer_isolation_digest=DIGEST,
+        observed_at=now,
     ).model_copy(update={field: value})
     journal = MainGraduationJournal(tmp_path)
     journal._read = lambda _kind, _operation: (authorization, None)  # type: ignore[method-assign]
     with pytest.raises(MainGraduationJournalError, match="does not bind"):
         journal._require_release_authorization(receipt)  # pyright: ignore[reportPrivateUsage]
+
+
+@pytest.mark.parametrize("offset, accepted", [(-1, False), (0, True), (300, True), (301, False)])
+def test_transition_requires_inclusive_authorization_time_window(
+    tmp_path: Path, offset: int, accepted: bool
+) -> None:
+    issued = datetime.now(UTC)
+    authorization = MainReleaseAuthorization.model_construct(
+        operation_id=DIGEST,
+        repository_digest=DIGEST,
+        target_ref="refs/heads/main",
+        group_sha=HEAD,
+        hold_run_id="run",
+        hold_nonce="nonce",
+        release_issuer_identity="release",
+        release_issuer_app_id=9001,
+        issuer_isolation_digest=DIGEST,
+        authorized_at=issued,
+        expires_at=issued + timedelta(seconds=300),
+    )
+    receipt = MainReleaseTransitionReceipt.model_construct(
+        operation_id=DIGEST,
+        repository_digest=DIGEST,
+        target_ref="refs/heads/main",
+        release_authorization_digest=canonical_digest(authorization),
+        group_sha=HEAD,
+        hold_run_id="run",
+        hold_nonce="nonce",
+        issuer_identity="release",
+        release_issuer_app_id=9001,
+        issuer_isolation_digest=DIGEST,
+        observed_at=issued + timedelta(seconds=offset),
+    )
+    journal = MainGraduationJournal(tmp_path)
+    journal._read = lambda _kind, _operation: (authorization, None)  # type: ignore[method-assign]
+    if accepted:
+        journal._require_release_authorization(receipt)  # pyright: ignore[reportPrivateUsage]
+    else:
+        with pytest.raises(MainGraduationJournalError, match="validity window"):
+            journal._require_release_authorization(receipt)  # pyright: ignore[reportPrivateUsage]
 
 
 def test_provider_receipt_rejects_provider_identity_substitution(tmp_path: Path) -> None:
@@ -431,6 +475,7 @@ def test_provider_receipt_without_durable_transition_is_rejected(tmp_path: Path)
 
 
 def test_reconciliation_rejects_wrong_composition_tree_or_repository(tmp_path: Path) -> None:
+    now = datetime.now(UTC)
     authorization = MainReleaseAuthorization.model_construct(
         operation_id=DIGEST,
         repository_digest=DIGEST,
@@ -441,6 +486,8 @@ def test_reconciliation_rejects_wrong_composition_tree_or_repository(tmp_path: P
         release_issuer_identity="release",
         release_issuer_app_id=9001,
         issuer_isolation_digest=DIGEST,
+        authorized_at=now,
+        expires_at=now + timedelta(minutes=5),
     )
     transition = MainReleaseTransitionReceipt.model_construct(
         operation_id=DIGEST,
@@ -453,6 +500,7 @@ def test_reconciliation_rejects_wrong_composition_tree_or_repository(tmp_path: P
         issuer_identity="release",
         release_issuer_app_id=9001,
         issuer_isolation_digest=DIGEST,
+        observed_at=now,
     )
     queue = MainQueueObservation.model_construct(
         operation_id=DIGEST,
