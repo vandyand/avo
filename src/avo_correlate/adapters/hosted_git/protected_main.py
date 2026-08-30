@@ -949,14 +949,34 @@ class ProtectedMainProvider:
             "body_digest": body_digest,
             "observed_at": observed_at,
         }
-        receipt_probe = MainMergeGroupWebhookReceipt.model_construct(**receipt_payload)
-        receipt = MainMergeGroupWebhookReceipt.model_validate(
-            {
-                **receipt_payload,
-                "receipt_digest": canonical_digest(
-                    receipt_probe.model_dump(exclude={"receipt_digest"}, mode="json")
-                ),
-            }
+        receipt_probe = cast(
+            MainMergeGroupWebhookReceipt,
+            cast(Any, MainMergeGroupWebhookReceipt).model_construct(
+                repository_digest=self.repository_digest,
+                target_ref="refs/heads/main",
+                operation_id=queue.operation_id,
+                group_sha=group_sha,
+                group_tree=observed_tree,
+                group_parents=list(queue.expected_group_parents),
+                pull_request_number=number,
+                queue_generation_digest=queue.queue_generation_digest,
+                delivery_id=delivery,
+                body_digest=body_digest,
+                observed_at=observed_at,
+            ),
+        )
+        receipt = cast(
+            MainMergeGroupWebhookReceipt,
+            cast(Any, MainMergeGroupWebhookReceipt).model_validate(
+                {
+                    **receipt_payload,
+                    "receipt_digest": canonical_digest(
+                        cast(Any, receipt_probe).model_dump(
+                            exclude={"receipt_digest"}, mode="json"
+                        )
+                    ),
+                }
+            ),
         )
         return MainMergeGroupObservation(
             self.repository_digest,
