@@ -82,6 +82,85 @@ def main_stage_nonce(stage_identity_digest: str) -> Sha256Digest:
     return canonical_digest({"stage_identity_digest": stage_identity_digest})
 
 
+def main_release_external_key(
+    *,
+    operation_id: str,
+    repository_digest: str,
+    target_ref: str,
+    authorization_digest: str,
+    hold_observation_digest: str,
+    group_sha: str,
+    hold_run_id: str,
+    hold_nonce: str,
+    queue_generation_digest: str,
+    release_check_context: str,
+    release_issuer_app_id: int,
+) -> Sha256Digest:
+    """Derive the canonical external key for the protected-main release.
+
+    A generic external key is not sufficient for the release transition: the
+    provider object must be tied to the exact authorization, held merge-group
+    SHA, hold execution, queue generation, and isolated release check.  Keep
+    this projection centralized so callers cannot silently omit one of those
+    bindings.
+    """
+
+    return canonical_digest(
+        {
+            "operation_id": operation_id,
+            "repository_digest": repository_digest,
+            "target_ref": target_ref,
+            "authorization_digest": authorization_digest,
+            "hold_observation_digest": hold_observation_digest,
+            "group_sha": group_sha,
+            "hold_run_id": hold_run_id,
+            "hold_nonce": hold_nonce,
+            "queue_generation_digest": queue_generation_digest,
+            "release_check_context": release_check_context,
+            "release_issuer_app_id": release_issuer_app_id,
+        }
+    )
+
+
+def main_release_external_identity_digest(
+    *,
+    operation_id: str,
+    repository_digest: str,
+    target_ref: str,
+    authorization_digest: str,
+    hold_observation_digest: str,
+    group_sha: str,
+    hold_run_id: str,
+    hold_nonce: str,
+    queue_generation_digest: str,
+    release_check_context: str,
+    release_issuer_app_id: int,
+) -> Sha256Digest:
+    """Derive the generic stage identity from the canonical release key."""
+
+    external_key = main_release_external_key(
+        operation_id=operation_id,
+        repository_digest=repository_digest,
+        target_ref=target_ref,
+        authorization_digest=authorization_digest,
+        hold_observation_digest=hold_observation_digest,
+        group_sha=group_sha,
+        hold_run_id=hold_run_id,
+        hold_nonce=hold_nonce,
+        queue_generation_digest=queue_generation_digest,
+        release_check_context=release_check_context,
+        release_issuer_app_id=release_issuer_app_id,
+    )
+    return main_stage_identity_digest(
+        operation_id,
+        "release_transition",
+        external_key,
+        queue_generation_digest=queue_generation_digest,
+        repository_digest=repository_digest,
+        target_ref=target_ref,
+    )
+
+
 class MainExternalIdentity(MainBound):
     """Content-addressed identity of one external object or action."""
 
@@ -446,6 +525,7 @@ class MainClaimedReleaseTransitionReceipt(MainBound):
     transition_count: Literal[1] = 1
     response_digest: Sha256Digest
     observed_at: datetime
+    mutation_receipt_digest: Sha256Digest
     receipt_digest: Sha256Digest
     deploy_performed: Literal[False] = False
 
@@ -479,6 +559,8 @@ __all__ = [
     "MainMutationStage",
     "MainReleaseClaim",
     "MainUnresolvedMutationFence",
+    "main_release_external_identity_digest",
+    "main_release_external_key",
     "main_stage_identity_digest",
     "main_stage_nonce",
     "main_target_scope_digest",

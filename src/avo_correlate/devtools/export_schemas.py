@@ -112,6 +112,7 @@ from avo_correlate.contracts.main_graduation import (
     MainMutationReceipt,
     MainPreparationAuthorization,
     MainProtectionManifest,
+    MainProviderPostStateObservation,
     MainProviderReceipt,
     MainQueueAdmissionObservation,
     MainQueueObservation,
@@ -306,6 +307,7 @@ MODELS: tuple[type[StrictModel], ...] = (
     MainMutationIntent,
     MainMutationReceipt,
     MainPreparationAuthorization,
+    MainProviderPostStateObservation,
     MainProviderReceipt,
     MainReleaseIssuerBinding,
     MainProtectionManifest,
@@ -329,7 +331,11 @@ def export(output_dir: Path) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
     for model in MODELS:
         model_api: Any = model
-        destination = output_dir / f"{model_api.__name__}.v1.schema.json"
+        # Keep breaking contract versions side-by-side.  Every model currently
+        # defaults to v1 except explicitly bumped contracts such as C4.
+        schema_field = model_api.model_fields.get("schema_version")
+        version = schema_field.default if schema_field is not None else 1
+        destination = output_dir / f"{model_api.__name__}.v{version}.schema.json"
         destination.write_text(
             json.dumps(model_api.model_json_schema(), indent=2, sort_keys=True) + "\n",
             encoding="utf-8",

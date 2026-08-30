@@ -864,6 +864,40 @@ class MainReleaseTransitionReceipt(MainBound):
         return self
 
 
+class MainProviderPostStateObservation(MainBound):
+    """Provider-attested post-state for the protected target.
+
+    Git object names in a coordinator receipt are claims until a provider
+    observation binds them to an authoritative read-after-write response.
+    This record is the typed, content-addressed post-state evidence required
+    by the C4 completion contract.
+    """
+
+    schema_version: Literal[1] = 1
+    operation_id: Sha256Digest
+    release_authorization_digest: Sha256Digest
+    provider_identity: NonEmptyString
+    provider_api_version: NonEmptyString
+    result_commit: GitObject
+    result_tree: GitObject
+    result_parents: list[GitObject]
+    observed_at: datetime
+    authoritative: Literal[True] = True
+    observation_digest: Sha256Digest
+
+    _aware_observed_at = field_validator("observed_at")(_aware)
+
+    @model_validator(mode="after")
+    def validate_post_state(self) -> MainProviderPostStateObservation:
+        if len(self.result_parents) != 1:
+            raise ValueError("provider post-state requires exactly one parent")
+        if self.observation_digest != canonical_digest(
+            self.model_dump(exclude={"observation_digest"}, mode="json")
+        ):
+            raise ValueError("provider post-state observation digest mismatch")
+        return self
+
+
 class MainProviderReceipt(MainBound):
     schema_version: Literal[1] = 1
     operation_id: Sha256Digest
@@ -876,6 +910,10 @@ class MainProviderReceipt(MainBound):
     result_parents: list[GitObject] = Field(default_factory=list)
     response_digest: Sha256Digest
     observed_at: datetime
+    # C1-C3 provider receipts may omit this newer observation.  A C4
+    # completion, however, must carry it and bind its final result to the
+    # provider-authoritative post-state artifact.
+    post_state_observation: MainProviderPostStateObservation | None = None
     deploy_performed: Literal[False] = False
 
     _aware_observed_at = field_validator("observed_at")(_aware)
@@ -890,6 +928,21 @@ class MainProviderReceipt(MainBound):
             value is not None for value in (self.result_commit, self.result_tree)
         ):
             raise ValueError("non-success receipt cannot claim result objects")
+        if self.post_state_observation is not None:
+            observation = self.post_state_observation
+            if (
+                observation.operation_id != self.operation_id
+                or observation.repository_digest != self.repository_digest
+                or observation.target_ref != self.target_ref
+                or observation.provider_identity != self.provider_identity
+                or observation.provider_api_version != self.provider_api_version
+                or observation.release_authorization_digest
+                != self.release_authorization_digest
+                or observation.result_commit != self.result_commit
+                or observation.result_tree != self.result_tree
+                or observation.result_parents != self.result_parents
+            ):
+                raise ValueError("provider post-state observation is not receipt-bound")
         return self
 
 
@@ -928,7 +981,8 @@ class MainCompletionPackage(MainBound):
     default so a caller cannot omit the branch decision.
     """
 
-    schema_version: Literal[1] = 1
+    # C4 adds durable release authority and is a breaking wire-version bump.
+    schema_version: Literal[2] = 2
     operation_id: Sha256Digest
     plan: MainGraduationPlan
     source_package: MainSourcePackageBinding
@@ -952,6 +1006,7 @@ class MainCompletionPackage(MainBound):
     release_transition_mutation_receipt: MainMutationReceipt
     release_transition_fence_resolution: MainMutationFenceResolution | None
     provider_receipt: MainProviderReceipt
+    provider_post_state_observation: MainProviderPostStateObservation
     reconciliation: MainReconciliation
     artifacts: list[ArtifactRef] = Field(min_length=1)
     deploy_performed: Literal[False] = False
@@ -986,57 +1041,31 @@ class MainCompletionPackage(MainBound):
             for record in records
         ):
             raise ValueError("completion child operation IDs differ")
-        # The legacy transition receipt above is deliberately not sufficient
-        # to close a C4 operation.  Require the complete durable authority
-        # chain and bind every new child to the same claim and lease.
-        c4_fields_present = all(
-            hasattr(self, name)
-            for name in (
-                "lease_evidence_record",
-                "release_claim",
-                "claimed_transition_receipt",
-                "release_transition_intent",
-                "release_transition_mutation_receipt",
-                "release_transition_fence_resolution",
-            )
-        )
-        lease = cast(MainLeaseEvidenceRecord, None)
-        claim = cast(MainReleaseClaim, None)
-        claimed = cast(MainClaimedReleaseTransitionReceipt, None)
-        release_intent = cast(MainMutationIntent, None)
-        mutation = cast(MainMutationReceipt, None)
-        if c4_fields_present:
-            authority = (
-                self.lease_evidence_record,
-                self.release_claim,
-                self.claimed_transition_receipt,
-                self.release_transition_intent,
-                self.release_transition_mutation_receipt,
-            )
-            if any(record.operation_id != self.operation_id for record in authority):
-                raise ValueError("C4 completion authority operation IDs differ")
-            if any(
-                record.repository_digest != self.repository_digest
-                or record.target_ref != self.target_ref
-                for record in authority
-            ):
-                raise ValueError("C4 completion authority target binding differs")
-            lease = cast(
-                MainLeaseEvidenceRecord, getattr(self, "lease_evidence_record", None)
-            )
-            claim = cast(MainReleaseClaim, getattr(self, "release_claim", None))
-            claimed = cast(
-                MainClaimedReleaseTransitionReceipt,
-                getattr(self, "claimed_transition_receipt", None),
-            )
-            release_intent = cast(
-                MainMutationIntent, getattr(self, "release_transition_intent", None)
-            )
-            mutation = cast(
-                MainMutationReceipt,
-                getattr(self, "release_transition_mutation_receipt", None),
-            )
-        if c4_fields_present and (
+        # The historical transition receipt is observation only.  C4 always
+        # requires the complete durable authority chain; there is no legacy
+        # fallback branch.
+        lease = getattr(self, "lease_evidence_record", None)
+        claim = getattr(self, "release_claim", None)
+        claimed = getattr(self, "claimed_transition_receipt", None)
+        release_intent = getattr(self, "release_transition_intent", None)
+        mutation = getattr(self, "release_transition_mutation_receipt", None)
+        if any(value is None for value in (lease, claim, claimed, release_intent, mutation)):
+            raise ValueError("C4 completion authority chain is incomplete")
+        lease = cast(MainLeaseEvidenceRecord, lease)
+        claim = cast(MainReleaseClaim, claim)
+        claimed = cast(MainClaimedReleaseTransitionReceipt, claimed)
+        release_intent = cast(MainMutationIntent, release_intent)
+        mutation = cast(MainMutationReceipt, mutation)
+        authority = (lease, claim, claimed, release_intent, mutation)
+        if any(record.operation_id != self.operation_id for record in authority):
+            raise ValueError("C4 completion authority operation IDs differ")
+        if any(
+            record.repository_digest != self.repository_digest
+            or record.target_ref != self.target_ref
+            for record in authority
+        ):
+            raise ValueError("C4 completion authority target binding differs")
+        if (
             claim.authorization_digest != self.release_authorization.authorization_digest
             or claim.hold_observation_digest != canonical_digest(self.hold_observation)
             or claim.lease_digest != lease.lease_digest
@@ -1049,7 +1078,7 @@ class MainCompletionPackage(MainBound):
             or self.release_authorization.lease_identity != lease.owner
         ):
             raise ValueError("C4 release claim is not bound to the durable lease and hold")
-        if c4_fields_present and (
+        if (
             claimed.release_authorization_digest != self.release_authorization.authorization_digest
             or claimed.claim_digest != claim.claim_digest
             or claimed.group_sha != claim.group_sha
@@ -1058,10 +1087,11 @@ class MainCompletionPackage(MainBound):
             or claimed.issuer_identity != claim.release_issuer_identity
             or claimed.release_issuer_app_id != claim.release_issuer_app_id
             or claimed.issuer_isolation_digest != claim.issuer_isolation_digest
-            or claimed.outcome not in {"transitioned", "already_transitioned"}
+            or claimed.outcome
+            not in {"transitioned", "already_transitioned", "reconciliation_required"}
         ):
             raise ValueError("C4 claimed transition is not bound to the release claim")
-        if c4_fields_present and (
+        if (
             self.transition_receipt.operation_id != claimed.operation_id
             or self.transition_receipt.repository_digest != claimed.repository_digest
             or self.transition_receipt.target_ref != claimed.target_ref
@@ -1078,7 +1108,7 @@ class MainCompletionPackage(MainBound):
             or self.transition_receipt.outcome != claimed.outcome
         ):
             raise ValueError("legacy transition observation is not claim-bound")
-        if c4_fields_present and (
+        if (
             release_intent.stage != "release_transition"
             or release_intent.intent_digest
             != canonical_digest(
@@ -1090,9 +1120,37 @@ class MainCompletionPackage(MainBound):
             or release_intent.lease_identity != lease.owner
             or release_intent.lease_digest != lease.lease_digest
             or release_intent.lease_epoch_digest != lease.lease_epoch_digest
+            or release_intent.external_identity.identity_digest
+            != main_release_external_identity_digest(
+                operation_id=self.operation_id,
+                repository_digest=self.repository_digest,
+                target_ref=self.target_ref,
+                authorization_digest=self.release_authorization.authorization_digest,
+                hold_observation_digest=canonical_digest(self.hold_observation),
+                group_sha=self.hold_observation.group_sha,
+                hold_run_id=self.hold_observation.hold_run_id,
+                hold_nonce=self.hold_observation.hold_nonce,
+                queue_generation_digest=self.hold_observation.queue_generation_digest,
+                release_check_context="avo-main-release",
+                release_issuer_app_id=self.release_authorization.release_issuer_app_id,
+            )
+            or release_intent.external_identity.external_key
+            != main_release_external_key(
+                operation_id=self.operation_id,
+                repository_digest=self.repository_digest,
+                target_ref=self.target_ref,
+                authorization_digest=self.release_authorization.authorization_digest,
+                hold_observation_digest=canonical_digest(self.hold_observation),
+                group_sha=self.hold_observation.group_sha,
+                hold_run_id=self.hold_observation.hold_run_id,
+                hold_nonce=self.hold_observation.hold_nonce,
+                queue_generation_digest=self.hold_observation.queue_generation_digest,
+                release_check_context="avo-main-release",
+                release_issuer_app_id=self.release_authorization.release_issuer_app_id,
+            )
         ):
             raise ValueError("C4 release mutation intent is not claim and lease bound")
-        if c4_fields_present and (
+        if (
             mutation.stage != "release_transition"
             or mutation.receipt_digest
             != canonical_digest(mutation.model_dump(exclude={"receipt_digest"}, mode="json"))
@@ -1103,16 +1161,29 @@ class MainCompletionPackage(MainBound):
             or mutation.release_claim_digest != claim.claim_digest
             or mutation.lease_digest != lease.lease_digest
             or mutation.lease_epoch_digest != lease.lease_epoch_digest
+            or claimed.mutation_receipt_digest != mutation.receipt_digest
+            or claimed.response_digest != mutation.response_digest
+            or claimed.observed_at != mutation.observed_at
+            or (
+                mutation.outcome == "applied" and claimed.outcome != "transitioned"
+            )
+            or (
+                mutation.outcome == "already_applied" and claimed.outcome != "already_transitioned"
+            )
+            or (
+                mutation.outcome in {"ambiguous", "reconciliation_required"}
+                and claimed.outcome != "reconciliation_required"
+            )
         ):
             raise ValueError("C4 release mutation receipt is not claim and intent bound")
         resolution = cast(
             MainMutationFenceResolution | None,
             getattr(self, "release_transition_fence_resolution", None),
         )
-        if c4_fields_present and mutation.outcome in {"applied", "already_applied"}:
+        if mutation.outcome in {"applied", "already_applied"}:
             if resolution is not None:
                 raise ValueError("terminal C4 mutation cannot carry a fence resolution")
-        elif c4_fields_present and mutation.outcome in {"ambiguous", "reconciliation_required"}:
+        elif mutation.outcome in {"ambiguous", "reconciliation_required"}:
             if resolution is None or resolution.outcome != "observed":
                 raise ValueError("ambiguous C4 mutation requires an observed fence resolution")
             if (
@@ -1124,12 +1195,28 @@ class MainCompletionPackage(MainBound):
                 != release_intent.external_identity.identity_digest
             ):
                 raise ValueError("C4 fence resolution is not bound to the release mutation")
-        elif c4_fields_present:
+        else:
             raise ValueError("C4 completion requires a dispatched release mutation")
         if self.transition_receipt.outcome not in {"transitioned", "already_transitioned"}:
             raise ValueError("completion requires terminal release transition")
         if self.provider_receipt.outcome != "observed":
             raise ValueError("completion requires an observed provider result")
+        post_state = getattr(self, "provider_post_state_observation", None)
+        if post_state is None:
+            raise ValueError("completion requires provider-authoritative post-state observation")
+        if (
+            post_state.operation_id != self.operation_id
+            or post_state.repository_digest != self.repository_digest
+            or post_state.target_ref != self.target_ref
+            or post_state.provider_identity != self.provider_receipt.provider_identity
+            or post_state.provider_api_version != self.provider_receipt.provider_api_version
+            or post_state.release_authorization_digest
+            != self.provider_receipt.release_authorization_digest
+            or post_state.result_commit != self.provider_receipt.result_commit
+            or post_state.result_tree != self.provider_receipt.result_tree
+            or post_state.result_parents != self.provider_receipt.result_parents
+        ):
+            raise ValueError("provider post-state observation is not receipt-bound")
         if self.reconciliation.state != "completed":
             raise ValueError("completion requires completed reconciliation")
         if self.reconciliation.main_tree != self.composition.candidate_tree:
@@ -1352,20 +1439,20 @@ class MainCompletionPackage(MainBound):
             "main-graduation-release-authorization",
             "main-graduation-release-transition",
             "main-graduation-provider-receipt",
+            "main-graduation-provider-post-state-observation",
             "main-graduation-reconciliation",
         }
-        if c4_fields_present:
-            required_roles.update(
-                {
-                    "main-graduation-lease-evidence-record",
-                    "main-graduation-release-claim",
-                    "main-graduation-claimed-release-transition",
-                    "main-graduation-mutation-intent",
-                    "main-graduation-mutation-receipt",
-                }
-            )
-            if self.release_transition_fence_resolution is not None:
-                required_roles.add("main-graduation-mutation-fence-resolution")
+        required_roles.update(
+            {
+                "main-graduation-lease-evidence-record",
+                "main-graduation-release-claim",
+                "main-graduation-claimed-release-transition",
+                "main-graduation-mutation-intent",
+                "main-graduation-mutation-receipt",
+            }
+        )
+        if self.release_transition_fence_resolution is not None:
+            required_roles.add("main-graduation-mutation-fence-resolution")
         if set(roles) != required_roles:
             raise ValueError("completion artifact closure is incomplete")
         return self
@@ -1566,6 +1653,7 @@ __all__ = [
     "MainMergeGroupChecks",
     "MainPreparationAuthorization",
     "MainProtectionManifest",
+    "MainProviderPostStateObservation",
     "MainProviderReceipt",
     "MainQueueAdmissionObservation",
     "MainQueueObservation",
@@ -1596,6 +1684,8 @@ from avo_correlate.contracts.main_graduation_phase_a import (  # noqa: E402
     MainMutationStage,
     MainReleaseClaim,
     MainUnresolvedMutationFence,
+    main_release_external_identity_digest,
+    main_release_external_key,
     main_stage_identity_digest,
     main_stage_nonce,
     main_target_scope_digest,
@@ -1616,6 +1706,8 @@ __all__ += [
     "MainMutationStage",
     "MainReleaseClaim",
     "MainUnresolvedMutationFence",
+    "main_release_external_identity_digest",
+    "main_release_external_key",
     "main_stage_identity_digest",
     "main_stage_nonce",
     "main_target_scope_digest",

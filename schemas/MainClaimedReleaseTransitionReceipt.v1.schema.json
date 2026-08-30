@@ -38,6 +38,11 @@
       "title": "Issuer Isolation Digest",
       "type": "string"
     },
+    "mutation_receipt_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Mutation Receipt Digest",
+      "type": "string"
+    },
     "observed_at": {
       "format": "date-time",
       "title": "Observed At",
@@ -115,6 +120,7 @@
     "outcome",
     "response_digest",
     "observed_at",
+    "mutation_receipt_digest",
     "receipt_digest"
   ],
   "title": "MainClaimedReleaseTransitionReceipt",
