@@ -54,10 +54,13 @@ production authority outside the proposing agent's control.
   cleanup evidence, and completed-state replay all passed with `main` unchanged and no deployment.
   The [live drill result](avo-0046-live-failure-drill-result.md) records the exact identities,
   quarantined stale attempts, and follow-up reliability findings.
-- AVO-004.7 has begun on 2026-08-29. Its architecture, implementation plan, and runbook define
-  protected-main graduation from a canonical integration evidence package, deterministic
-  sole-parent delta composition, dedicated main contracts/provider/rollback authority, a
-  mandatory isolated `avo-main-release` hold issuer, and a preregistered 12-success threshold.
+- AVO-004.7 has begun on 2026-08-29. C1 contracts/journaling, C2 deterministic composition,
+  and the C3 read-only protected-main provider/attester are complete through protected
+  PR #47, PR #48, and PR #49. The C3 boundary authenticates native
+  merge-group webhooks, resolves effective repository/organization rulesets, reads complete
+  exact-SHA checks, and durably binds queue generation, PR identity, delivery identity, and
+  isolated-App transition evidence. C4 coordinator and recovery is now the active implementation
+  gate; the preregistered 12-success threshold remains future work.
   Live `main` mutation is currently blocked on both required capabilities: the preferred
   merge-queue protocol needs an organization-owned repository with max-one-entry queue and
   exact admission/hold capability, while the current public repository is user-owned, and no
@@ -98,15 +101,29 @@ approving every ordinary patch.
 | AVO-004.6 | complete | Rollback and failure drills with immutable evidence, plus production-grade exact-SHA attestation for the declared trusted-repository boundary. | The offline eight-case package and live protected canary/rollback fail closed, reconstruct, clean up, and replay idempotently through the pinned GitHub Actions App 15368 check identity executing the base-controlled exact-SHA workflow, with `main` unchanged and no deployment. [Result](avo-0046-live-failure-drill-result.md) |
 | AVO-004.7 | in_progress | Graduate ordinary changes from integration to automatic protected-main promotion through a dedicated, queue-aware main boundary with one-use PR-head admission and isolated group release hold. | The offline architecture and rollback matrix pass; then, after both organization-hosting/merge-queue capability (max one entry per group) and isolated admission/hold authority unblock the live protocol, a fresh hosted main rollback drill passes before ledger activation, followed by 12 consecutive eligible attempts with 0 failures and 0 boundary violations. [ADR](adr/0011-protected-main-graduation.md), [plan](avo-0047-main-graduation-plan.md), and [runbook](avo-0047-main-graduation-runbook.md). |
 
+#### AVO-004.7 implementation sequence
+
+| Stage | Status | Evidence / next boundary |
+| --- | --- | --- |
+| C1 — main contracts and journal | complete | Protected PR #47; strict contracts, schemas, controller-rooted issuer binding, lease evidence, and duplicate-context rejection pass. See the [implementation plan](avo-0047-main-graduation-plan.md). |
+| C2 — deterministic composition | complete | Protected PR #48; exact sole-parent delta composition and durable controller-rooted composition proof pass. See the [implementation plan](avo-0047-main-graduation-plan.md). |
+| C3 — protected-main provider and attester | complete | Protected PR #49; signed merge-group provenance, effective ruleset/bypass verification, complete check pagination, exact PR/queue/topology binding, durable delivery replay protection, and isolated-App transition observation pass independent Terra review and hosted Ubuntu/Windows checks. See the [runbook](avo-0047-main-graduation-runbook.md). |
+| C4 — coordinator and recovery | in_progress | Next gate: implement the preparation-auth → publication/PR → admission → enqueue → group hold → one-use release-auth chronology, lease fencing, and read-only crash reconciliation without granting the coordinator release or merge authority. |
+| C5 — main rollback authority | planned | Begins only after C4 passes its authority and recovery gate. |
+| C6 — campaign runner and eligibility ledger | planned | Begins only after C4 and C5 pass. |
+| C7 — deterministic offline gate | planned | Begins only after C1–C6 pass. |
+| C8 — hosted organization/queue/release gate | blocked | Requires explicit organization-hosting/max-one merge-queue capability and isolated admission/hold issuer authority; no live `main` mutation is authorized. |
+
 The roadmap gate was completed first because the operator explicitly authorized it. The green test
 and coverage baseline, controlling repository, public remote, baseline tag, recovery rehearsal, and
 server-side `main` protection now pass. AVO-004.4's no-merge controller passed independent
 adversarial review and protected Ubuntu/Windows CI before merging. AVO-004.5 then completed one
 sanitized live promotion to the protected integration branch without changing `main`. AVO-004.6
 then completed deterministic failure injection and a real failed-soak/authorized-rollback cycle
-with immutable exact-SHA evidence. AVO-004.7 has now begun: its clean-run threshold and
-main-specific rollback evidence are preregistered in the linked ADR, plan, and runbook. The
-live gate is blocked by two hosting/authority prerequisites: the preferred required merge queue
+with immutable exact-SHA evidence. AVO-004.7 C1–C3 are now complete through protected PRs
+#47–#49; C4 coordinator and recovery is the active implementation gate. The clean-run threshold
+and main-specific rollback evidence remain preregistered in the linked ADR, plan, and runbook. The
+later live gate is blocked by two hosting/authority prerequisites: the preferred required merge queue
 with max one entry per group and exact PR-head admission/group-hold capability is available for
 an organization-owned public repository, but the current public repository is user-owned; and
 a dedicated isolated release issuer has not been authorized. No repository transfer,
