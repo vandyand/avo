@@ -89,12 +89,22 @@ contracts therefore require injected, controller-owned verifier capabilities to
 authenticate and validate those DTOs. Callers may submit observations for verification,
 but a caller-supplied DTO, lease snapshot, or claimed issuer identity cannot itself
 authorize a mutation or close a fence.
+This applies to every mutation receipt, whether terminal or ambiguous. A receipt remains
+an unauthenticated DTO until the mandatory controller-owned verifier authenticates it when
+the record is written, during recovery, and when it is used for a gate decision. No receipt
+may clear the target-scoped unresolved-mutation reservation or authorize a parent-stage
+transition without that verifier result; an unauthenticated or unverifiable receipt stays
+unresolved and fail-closed.
 
 Release authorization includes an atomic, durable, create-once claim bound to its exact
 authorization digest, hold run/nonce, merge group, lease epoch, and isolated issuer.
 Claiming is separate from dispatch, but once dispatch may have begun no recovery path may
 issue a second release transition after a lost or delayed receipt. Authorization expiry
-cannot exceed the lease expiry or configured maximum TTL. Admission and group-hold run
+cannot exceed the lease expiry or configured maximum TTL. The release-transition intent
+must be durably recorded before the authorization or one-use claim can expire. A future
+live executor must use a trusted controller clock to revalidate authorization validity,
+lease validity, and issuer scope immediately before provider dispatch; stale preflight
+state or caller-supplied time is insufficient. Admission and group-hold run
 IDs/nonces are deterministic from the operation and exact external identities, including
 the queue generation, so evidence cannot transfer across regenerated PRs or groups.
 These Phase A rules make ambiguous external writes fail closed without guessing or
