@@ -109,6 +109,7 @@ def test_source_package_uses_a_distinct_upstream_operation() -> None:
 def test_queue_topology_digest_is_canonical_and_binds_two_parent_form() -> None:
     topology = {
         "expected_group_parents": [BASE, HEAD],
+        "pull_request_number": 1,
         "merge_method": "squash",
         "provider_identity": "provider",
         "provider_api_version": "v1",
@@ -132,6 +133,7 @@ def test_queue_topology_digest_is_canonical_and_binds_two_parent_form() -> None:
         "release_issuer_app_id": 9001,
         "issuer_isolation_digest": DIGEST,
         "observed_at": datetime.now(UTC),
+        "pull_request_number": 1,
     }
     assert MainQueueObservation.model_validate(values).expected_group_parents == [BASE, HEAD]
     with pytest.raises(ValidationError, match="topology digest"):

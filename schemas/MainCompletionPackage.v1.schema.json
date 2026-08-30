@@ -1679,6 +1679,12 @@
           "title": "Provider Identity",
           "type": "string"
         },
+        "pull_request_number": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Pull Request Number",
+          "type": "integer"
+        },
         "queue_enabled": {
           "const": true,
           "default": true,

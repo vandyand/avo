@@ -757,6 +757,7 @@ class ProtectedMainProvider:
         topology = _json_digest(
             {
                 "expected_group_parents": parents,
+                "pull_request_number": pr_number,
                 "merge_method": method,
                 "provider_identity": self.provider_identity,
                 "provider_api_version": self.provider_api_version,
@@ -784,6 +785,7 @@ class ProtectedMainProvider:
             release_issuer_app_id=self.release_issuer_app_id,
             issuer_isolation_digest=self.issuer_isolation_digest,
             observed_at=datetime.now(UTC),
+            pull_request_number=pr_number,
         )
 
     def observe_merge_group(
@@ -912,7 +914,11 @@ class ProtectedMainProvider:
                 "merge group queue snapshot is stale at webhook delivery"
             )
         queue = current_queue
-        if pull_request_number is None or pull_request_number <= 0:
+        if (
+            queue.pull_request_number <= 0
+            or pull_request_number is None
+            or pull_request_number != queue.pull_request_number
+        ):
             raise ProtectedMainProviderError("merge group PR membership evidence is required")
         number = pull_request_number
         entry_head = queue.expected_group_parents[-1]

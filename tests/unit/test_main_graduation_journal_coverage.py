@@ -395,6 +395,7 @@ def completion() -> MainCompletionPackage:
         release_issuer_app_id=9001,
         issuer_isolation_digest=D,
         observed_at=NOW,
+        pull_request_number=1,
     )
     protection = MainProtectionManifest.model_construct(
         operation_id=D,
@@ -874,6 +875,7 @@ def test_remaining_contract_validators_and_aliases() -> None:
         "release_issuer_app_id": 9001,
         "issuer_isolation_digest": D,
         "observed_at": NOW,
+        "pull_request_number": 1,
     }
     topology = canonical_digest(
         {
@@ -881,6 +883,7 @@ def test_remaining_contract_validators_and_aliases() -> None:
                 k: queue_values[k]
                 for k in (
                     "expected_group_parents",
+                    "pull_request_number",
                     "merge_method",
                     "provider_identity",
                     "provider_api_version",

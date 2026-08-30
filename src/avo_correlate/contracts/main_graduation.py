@@ -379,6 +379,7 @@ class MainQueueObservation(MainBound):
     release_issuer_app_id: StrictInt = Field(gt=0)
     issuer_isolation_digest: Sha256Digest
     observed_at: datetime
+    pull_request_number: StrictInt = Field(default=0, ge=0)
 
     _aware_observed_at = field_validator("observed_at")(_aware)
 
@@ -388,9 +389,12 @@ class MainQueueObservation(MainBound):
             raise ValueError("validation App 15368 cannot be the release issuer")
         if self.expected_base_commit == "":
             raise ValueError("queue base is required")
+        if (len(self.expected_group_parents) > 1) != (self.pull_request_number > 0):
+            raise ValueError("queue PR membership does not match singleton topology")
         expected_topology = canonical_digest(
             {
                 "expected_group_parents": self.expected_group_parents,
+                "pull_request_number": self.pull_request_number,
                 "merge_method": self.merge_method,
                 "provider_identity": self.provider_identity,
                 "provider_api_version": self.provider_api_version,

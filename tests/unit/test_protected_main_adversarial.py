@@ -411,6 +411,22 @@ def test_merge_group_requires_authenticated_event_and_rechecks_commit_topology()
         main.observe_merge_group(G, webhook_body=body, webhook_headers=headers, queue=queue)
 
 
+def test_merge_group_rejects_same_head_different_pr_number_before_pr_read() -> None:
+    fake = FakeTransport()
+    main = provider(fake)
+    queue = main.observe_queue()
+    body, headers = signed_webhook(delivery="delivery-wrong-pr")
+    with pytest.raises(ProtectedMainProviderError, match="PR membership"):
+        main.observe_merge_group(
+            G,
+            webhook_body=body,
+            webhook_headers=headers,
+            queue=queue,
+            pull_request_number=8,
+        )
+    assert not any(url.endswith("/pulls/8") for _, url, _ in fake.calls)
+
+
 @pytest.mark.parametrize("header, value", [
     ("X-GitHub-Event", "push"),
     ("X-Hub-Signature-256", "sha256=" + "0" * 64),

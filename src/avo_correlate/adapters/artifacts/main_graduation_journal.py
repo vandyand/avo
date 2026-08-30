@@ -359,6 +359,10 @@ class MainGraduationJournal:
             elif kind == "release-hold":
                 self._require_merge_group_receipt(cast(MainReleaseHoldObservation, record))
                 self._require_admission(cast(MainReleaseHoldObservation, record))
+            elif kind == "merge-group-webhook-receipt":
+                self._verify_webhook_delivery(
+                    cast(MainMergeGroupWebhookReceipt, record), reference
+                )
             elif kind == "release-authorization":
                 self._require_hold(cast(MainReleaseAuthorization, record))
             elif kind == "release-transition":
@@ -1348,8 +1352,20 @@ class MainGraduationJournal:
                 current = _WebhookDeliveryEnvelope.model_validate(parsed)
                 if canonical_bytes(current) != raw:
                     raise ValueError("webhook delivery index is noncanonical")
+                if (
+                    current.reference.role != "main-graduation-merge-group-webhook-receipt"
+                    or current.reference.media_type
+                    != "application/vnd.avo.main-graduation-merge-group-webhook-receipt+json"
+                    or current.reference.size_bytes > self._max
+                ):
+                    raise ValueError("webhook delivery reference metadata mismatch")
                 old_data = self._store.read_bytes(current.reference)
-                old = MainMergeGroupWebhookReceipt.model_validate_json(old_data)
+                old_parsed = json.loads(
+                    old_data.decode("utf-8"), object_pairs_hook=_strict_pairs
+                )
+                if canonical_bytes(old_parsed) != old_data:
+                    raise ValueError("webhook delivery receipt is noncanonical")
+                old = MainMergeGroupWebhookReceipt.model_validate(old_parsed)
             except (OSError, ValueError, TypeError, UnicodeError, json.JSONDecodeError) as exc:
                 raise MainGraduationJournalError("webhook delivery index is malformed") from exc
             if (
@@ -1364,7 +1380,9 @@ class MainGraduationJournal:
         except OSError as exc:
             raise MainGraduationJournalError("webhook delivery was not durably indexed") from exc
 
-    def _verify_webhook_delivery(self, record: MainMergeGroupWebhookReceipt) -> None:
+    def _verify_webhook_delivery(
+        self, record: MainMergeGroupWebhookReceipt, reference: ArtifactRef | None = None
+    ) -> None:
         path = self._webhook_delivery_path(record.delivery_id)
         if not path.is_file():
             raise MainGraduationJournalError("merge-group webhook delivery is not durably indexed")
@@ -1377,6 +1395,15 @@ class MainGraduationJournal:
                 raise ValueError("webhook delivery index is noncanonical")
             if envelope.operation_id != record.operation_id:
                 raise MainGraduationRecordConflictError("webhook delivery operation differs")
+            if (
+                envelope.delivery_id != record.delivery_id
+                or envelope.reference.role != "main-graduation-merge-group-webhook-receipt"
+                or envelope.reference.media_type
+                != "application/vnd.avo.main-graduation-merge-group-webhook-receipt+json"
+                or envelope.reference.size_bytes > self._max
+                or (reference is not None and envelope.reference != reference)
+            ):
+                raise MainGraduationRecordConflictError("webhook delivery reference differs")
             if self._store.read_bytes(envelope.reference) != canonical_bytes(record):
                 raise MainGraduationRecordConflictError("webhook delivery receipt differs")
         except MainGraduationRecordConflictError:
