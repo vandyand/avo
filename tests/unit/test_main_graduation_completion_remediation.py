@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -12,16 +12,20 @@ from avo_correlate.adapters.artifacts.main_graduation_journal import (
 from avo_correlate.contracts import (
     MainClaimedReleaseTransitionReceipt,
     MainCompletionPackage,
+    MainMutationFenceResolution,
     MainProviderPostStateObservation,
     MainProviderReceipt,
     MainReconciliation,
     main_release_external_identity_digest,
 )
-from avo_correlate.domain.canonical import canonical_digest
+from avo_correlate.contracts.base import ArtifactRef
+from avo_correlate.domain.canonical import canonical_bytes, canonical_digest
+from tests.unit.test_main_graduation_journal_coverage import completion as completion_package
 
 R = "sha256:" + "1" * 64
 OP = "sha256:" + "2" * 64
 D = "sha256:" + "3" * 64
+ALT = "sha256:" + "4" * 64
 COMMIT = "a" * 40
 TREE = "b" * 40
 NOW = datetime(2026, 1, 1, tzinfo=UTC)
@@ -173,3 +177,171 @@ def test_c4_post_state_requires_injected_authority_verifier(tmp_path: Path) -> N
         MainGraduationJournal(tmp_path)._verify_provider_post_state_authority(  # pyright: ignore[reportPrivateUsage]
             observation, provider, reconciliation
         )
+
+
+def _ambiguous_completion_with_resolution() -> MainCompletionPackage:
+    package = completion_package()
+    mutation = package.release_transition_mutation_receipt.model_copy(
+        update={"outcome": "ambiguous"}
+    )
+    object.__setattr__(
+        mutation,
+        "receipt_digest",
+        canonical_digest(mutation.model_dump(exclude={"receipt_digest"}, mode="json")),
+    )
+    claimed = package.claimed_transition_receipt.model_copy(
+        update={
+            "outcome": "transitioned",
+            "mutation_receipt_digest": mutation.receipt_digest,
+        }
+    )
+    object.__setattr__(
+        claimed,
+        "receipt_digest",
+        canonical_digest(claimed.model_dump(exclude={"receipt_digest"}, mode="json")),
+    )
+    resolution = MainMutationFenceResolution.model_construct(
+        repository_digest=package.repository_digest,
+        target_ref=package.target_ref,
+        fence_digest=package.release_transition_fence_resolution.fence_digest
+        if package.release_transition_fence_resolution is not None
+        else package.operation_id,
+        operation_id=package.operation_id,
+        intent_digest=package.release_transition_intent.intent_digest,
+        external_identity_digest=package.release_transition_intent.external_identity.identity_digest,
+        lease_identity=package.lease_evidence_record.owner,
+        lease_digest=package.lease_evidence_record.lease_digest,
+        target_scope_digest=package.release_claim.target_scope_digest,
+        resolved_receipt_digest=mutation.receipt_digest,
+        authoritative_observation_digest=package.provider_post_state_observation.observation_digest,
+        provider_identity=package.provider_post_state_observation.provider_identity,
+        provider_api_version=package.provider_post_state_observation.provider_api_version,
+        outcome="observed",
+        observed_outcome="applied",
+        resolution_digest=package.operation_id,
+        resolved_at=NOW,
+    )
+    object.__setattr__(
+        resolution,
+        "resolution_digest",
+        canonical_digest(resolution.model_dump(exclude={"resolution_digest"}, mode="json")),
+    )
+    object.__setattr__(
+        claimed,
+        "mutation_resolution_digest",
+        resolution.resolution_digest,
+    )
+    object.__setattr__(
+        claimed,
+        "response_digest",
+        resolution.authoritative_observation_digest,
+    )
+    object.__setattr__(claimed, "observed_at", resolution.resolved_at)
+    object.__setattr__(
+        claimed,
+        "receipt_digest",
+        canonical_digest(claimed.model_dump(exclude={"receipt_digest"}, mode="json")),
+    )
+    transition = package.transition_receipt.model_copy(
+        update={
+            "outcome": "transitioned",
+            "response_digest": claimed.response_digest,
+            "observed_at": claimed.observed_at,
+        }
+    )
+    reconciliation = package.reconciliation.model_copy(
+        update={"transition_receipt_digest": canonical_digest(transition)}
+    )
+    resolution_payload = canonical_bytes(resolution)
+    resolution_ref = ArtifactRef(
+        digest=canonical_digest(resolution),
+        size_bytes=len(resolution_payload),
+        media_type="application/vnd.avo.main-graduation-mutation-fence-resolution+json",
+        role="main-graduation-mutation-fence-resolution",
+        created_at=NOW,
+    )
+    return package.model_copy(
+        update={
+            "transition_receipt": transition,
+            "claimed_transition_receipt": claimed,
+            "release_transition_mutation_receipt": mutation,
+            "release_transition_fence_resolution": resolution,
+            "reconciliation": reconciliation,
+            "artifacts": [*package.artifacts, resolution_ref],
+        }
+    )
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    (
+        ("repository_digest", ALT),
+        ("target_ref", "refs/heads/other"),
+        ("target_scope_digest", ALT),
+        ("resolved_at", NOW - timedelta(seconds=1)),
+        ("provider_identity", "other-provider"),
+        ("provider_api_version", "v2"),
+        ("authoritative_observation_digest", ALT),
+    ),
+)
+def test_ambiguous_completion_requires_exact_resolution_bindings(field: str, value: Any) -> None:
+    package = _ambiguous_completion_with_resolution()
+    assert MainCompletionPackage.validate_completion(package) is package  # pyright: ignore[reportCallIssue]
+    resolution = package.release_transition_fence_resolution
+    assert resolution is not None
+    tampered_resolution = resolution.model_copy(update={field: value})
+    tampered = package.model_copy(
+        update={"release_transition_fence_resolution": tampered_resolution}
+    )
+    with pytest.raises(ValueError, match="C4 fence resolution is not bound to release authority"):
+        MainCompletionPackage.validate_completion(tampered)  # pyright: ignore[reportCallIssue]
+
+
+def test_observed_resolution_requires_explicit_terminal_outcome() -> None:
+    package = _ambiguous_completion_with_resolution()
+    resolution = package.release_transition_fence_resolution
+    assert resolution is not None
+    tampered = package.model_copy(
+        update={
+            "release_transition_fence_resolution": resolution.model_copy(
+                update={"observed_outcome": None}
+            )
+        }
+    )
+    with pytest.raises(ValueError, match="observed fence resolution lacks a terminal outcome"):
+        MainCompletionPackage.validate_completion(tampered)  # pyright: ignore[reportCallIssue]
+
+
+def test_not_applied_resolution_cannot_complete() -> None:
+    package = _ambiguous_completion_with_resolution()
+    resolution = package.release_transition_fence_resolution
+    assert resolution is not None
+    resolution = resolution.model_copy(update={"outcome": "not_applied", "observed_outcome": None})
+    claimed = package.claimed_transition_receipt.model_copy(
+        update={"outcome": "reconciliation_required"}
+    )
+    transition = package.transition_receipt.model_copy(
+        update={"outcome": "reconciliation_required"}
+    )
+    tampered = package.model_copy(
+        update={
+            "claimed_transition_receipt": claimed,
+            "transition_receipt": transition,
+            "release_transition_fence_resolution": resolution,
+            "reconciliation": package.reconciliation.model_copy(
+                update={"transition_receipt_digest": canonical_digest(transition)}
+            ),
+        }
+    )
+    with pytest.raises(ValueError, match="completion cannot finalize a not-applied"):
+        MainCompletionPackage.validate_completion(tampered)  # pyright: ignore[reportCallIssue]
+
+
+@pytest.mark.parametrize("field", ("response_digest", "observed_at"))
+def test_legacy_transition_observation_cannot_split_from_claimed(field: str) -> None:
+    package = completion_package()
+    value: Any = D if field == "response_digest" else NOW + timedelta(seconds=1)
+    transition = package.transition_receipt.model_copy(update={field: value})
+    tampered = package.model_copy(update={"transition_receipt": transition})
+    with pytest.raises(ValueError, match="legacy transition observation is not claim-bound"):
+        MainCompletionPackage.validate_completion(tampered)  # pyright: ignore[reportCallIssue]

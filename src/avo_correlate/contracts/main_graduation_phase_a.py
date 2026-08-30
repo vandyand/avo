@@ -447,6 +447,7 @@ class MainMutationFenceResolution(MainBound):
     provider_identity: NonEmptyString
     provider_api_version: NonEmptyString
     outcome: Literal["observed", "not_applied"]
+    observed_outcome: Literal["applied", "already_applied"] | None = None
     resolution_digest: Sha256Digest
     resolved_at: datetime
 
@@ -458,6 +459,10 @@ class MainMutationFenceResolution(MainBound):
             self.repository_digest, self.target_ref
         ):
             raise ValueError("mutation resolution target scope mismatch")
+        if self.outcome == "observed" and self.observed_outcome is None:
+            raise ValueError("observed mutation resolution requires observed outcome")
+        if self.outcome == "not_applied" and self.observed_outcome is not None:
+            raise ValueError("not-applied mutation resolution cannot claim observed outcome")
         if self.resolution_digest != canonical_digest(
             self.model_dump(exclude={"resolution_digest"}, mode="json")
         ):
@@ -526,6 +531,7 @@ class MainClaimedReleaseTransitionReceipt(MainBound):
     response_digest: Sha256Digest
     observed_at: datetime
     mutation_receipt_digest: Sha256Digest
+    mutation_resolution_digest: Sha256Digest | None = None
     receipt_digest: Sha256Digest
     deploy_performed: Literal[False] = False
 

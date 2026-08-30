@@ -242,6 +242,7 @@ def test_claimed_transition_receipt_requires_non_validation_issuer_and_claim() -
         "outcome": "transitioned",
         "response_digest": D2,
         "observed_at": NOW,
+        "mutation_receipt_digest": D2,
     }
     probe = MainClaimedReleaseTransitionReceipt.model_construct(
         **receipt_values,  # pyright: ignore[reportArgumentType]
@@ -299,6 +300,7 @@ def test_target_fence_and_resolution_bind_scope_and_intent() -> None:
         "provider_identity": "provider",
         "provider_api_version": "v1",
         "outcome": "observed",
+        "observed_outcome": "applied",
         "resolved_at": NOW,
     }
     probe = MainMutationFenceResolution.model_construct(  # pyright: ignore[reportArgumentType]

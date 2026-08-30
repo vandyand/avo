@@ -1088,6 +1088,8 @@ class MainCompletionPackage(MainBound):
             or self.transition_receipt.issuer_isolation_digest
             != claimed.issuer_isolation_digest
             or self.transition_receipt.outcome != claimed.outcome
+            or self.transition_receipt.response_digest != claimed.response_digest
+            or self.transition_receipt.observed_at != claimed.observed_at
         ):
             raise ValueError("legacy transition observation is not claim-bound")
         if (
@@ -1144,18 +1146,6 @@ class MainCompletionPackage(MainBound):
             or mutation.lease_digest != lease.lease_digest
             or mutation.lease_epoch_digest != lease.lease_epoch_digest
             or claimed.mutation_receipt_digest != mutation.receipt_digest
-            or claimed.response_digest != mutation.response_digest
-            or claimed.observed_at != mutation.observed_at
-            or (
-                mutation.outcome == "applied" and claimed.outcome != "transitioned"
-            )
-            or (
-                mutation.outcome == "already_applied" and claimed.outcome != "already_transitioned"
-            )
-            or (
-                mutation.outcome in {"ambiguous", "reconciliation_required"}
-                and claimed.outcome != "reconciliation_required"
-            )
         ):
             raise ValueError("C4 release mutation receipt is not claim and intent bound")
         resolution = cast(
@@ -1163,11 +1153,20 @@ class MainCompletionPackage(MainBound):
             getattr(self, "release_transition_fence_resolution", None),
         )
         if mutation.outcome in {"applied", "already_applied"}:
-            if resolution is not None:
-                raise ValueError("terminal C4 mutation cannot carry a fence resolution")
+            expected_claimed_outcome = (
+                "transitioned" if mutation.outcome == "applied" else "already_transitioned"
+            )
+            if (
+                resolution is not None
+                or claimed.mutation_resolution_digest is not None
+                or claimed.outcome != expected_claimed_outcome
+                or claimed.response_digest != mutation.response_digest
+                or claimed.observed_at != mutation.observed_at
+            ):
+                raise ValueError("C4 direct mutation and claimed transition differ")
         elif mutation.outcome in {"ambiguous", "reconciliation_required"}:
-            if resolution is None or resolution.outcome != "observed":
-                raise ValueError("ambiguous C4 mutation requires an observed fence resolution")
+            if resolution is None:
+                raise ValueError("ambiguous C4 mutation requires a fence resolution")
             if (
                 resolution.operation_id != self.operation_id
                 or resolution.intent_digest != release_intent.intent_digest
@@ -1175,8 +1174,44 @@ class MainCompletionPackage(MainBound):
                 or resolution.lease_digest != lease.lease_digest
                 or resolution.external_identity_digest
                 != release_intent.external_identity.identity_digest
+                or resolution.repository_digest != self.repository_digest
+                or resolution.target_ref != self.target_ref
+                or resolution.target_scope_digest
+                != main_target_scope_digest(self.repository_digest, self.target_ref)
+                or resolution.resolved_at < mutation.observed_at
+                or resolution.provider_identity
+                != self.provider_post_state_observation.provider_identity
+                or resolution.provider_identity != self.provider_receipt.provider_identity
+                or resolution.provider_api_version
+                != self.provider_post_state_observation.provider_api_version
+                or resolution.provider_api_version != self.provider_receipt.provider_api_version
+                or resolution.authoritative_observation_digest
+                != self.provider_post_state_observation.observation_digest
             ):
-                raise ValueError("C4 fence resolution is not bound to the release mutation")
+                raise ValueError("C4 fence resolution is not bound to release authority")
+            if resolution.outcome == "observed":
+                if resolution.observed_outcome not in {"applied", "already_applied"}:
+                    raise ValueError("C4 observed fence resolution lacks a terminal outcome")
+                expected_claimed_outcome = (
+                    "transitioned"
+                    if resolution.observed_outcome == "applied"
+                    else "already_transitioned"
+                )
+                if (
+                    claimed.mutation_resolution_digest != resolution.resolution_digest
+                    or claimed.outcome != expected_claimed_outcome
+                    or claimed.response_digest != resolution.authoritative_observation_digest
+                    or claimed.observed_at != resolution.resolved_at
+                ):
+                    raise ValueError("C4 resolved mutation and claimed transition differ")
+            elif (
+                resolution.observed_outcome is not None
+                or claimed.mutation_resolution_digest != resolution.resolution_digest
+                or claimed.outcome != "reconciliation_required"
+            ):
+                raise ValueError("C4 unresolved mutation and claimed transition differ")
+            else:
+                raise ValueError("completion cannot finalize a not-applied mutation resolution")
         else:
             raise ValueError("C4 completion requires a dispatched release mutation")
         if self.transition_receipt.outcome not in {"transitioned", "already_transitioned"}:

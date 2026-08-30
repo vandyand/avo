@@ -255,6 +255,19 @@
           "title": "Mutation Receipt Digest",
           "type": "string"
         },
+        "mutation_resolution_digest": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Mutation Resolution Digest"
+        },
         "observed_at": {
           "format": "date-time",
           "title": "Observed At",
@@ -1354,6 +1367,22 @@
           "minLength": 1,
           "title": "Lease Identity",
           "type": "string"
+        },
+        "observed_outcome": {
+          "anyOf": [
+            {
+              "enum": [
+                "applied",
+                "already_applied"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Observed Outcome"
         },
         "operation_id": {
           "pattern": "^sha256:[0-9a-f]{64}$",
