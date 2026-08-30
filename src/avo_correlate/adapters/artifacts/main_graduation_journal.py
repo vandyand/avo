@@ -60,6 +60,8 @@ from avo_correlate.contracts.main_graduation_phase_a import (
     MainMutationReceipt,
     MainReleaseClaim,
     MainUnresolvedMutationFence,
+    main_release_external_identity_digest,
+    main_release_external_key,
     main_target_scope_digest,
 )
 from avo_correlate.domain.canonical import canonical_bytes, canonical_digest
@@ -935,6 +937,29 @@ class MainGraduationJournal:
                 os.fsync(handle.fileno())
             _sync_directory(path)
             _sync_directory(path.parent)
+        except FileExistsError:
+            # A competing writer may publish the target fence between the
+            # existence check and exclusive record creation.  Re-read the
+            # durable winner and classify only an exact replay as harmless.
+            try:
+                current = self._read_target_fence_envelope(path, record)
+            except MainGraduationRecordConflictError:
+                raise
+            except (
+                OSError,
+                ValueError,
+                TypeError,
+                UnicodeError,
+                json.JSONDecodeError,
+            ) as exc:
+                raise MainGraduationJournalError(
+                    "target mutation fence race is unverifiable"
+                ) from exc
+            if current.fence_digest == record.fence_digest:
+                return
+            raise MainGraduationRecordConflictError(
+                "target mutation fence raced"
+            ) from None
         except OSError as exc:
             raise MainGraduationJournalError(
                 "target mutation fence was not durably indexed"
@@ -1413,6 +1438,8 @@ class MainGraduationJournal:
         if not path.is_file():
             raise MainGraduationJournalError("release claim is not globally indexed")
         current = self._read_phase_envelope(path, "release-claim", record.claim_key)
+        if current.operation_id != record.operation_id:
+            raise MainGraduationRecordConflictError("release claim operation identity differs")
         if self._store.read_bytes(current.reference) != canonical_bytes(record):
             raise MainGraduationRecordConflictError("release claim identity differs")
 
@@ -1425,8 +1452,10 @@ class MainGraduationJournal:
         closed = self._target_fence_closed_path(fence)
         if closed.is_dir():
             self._assert_closed_fence(fence, closed)
-            if active.exists():
-                shutil.rmtree(active)
+            # Closed history is authoritative and immutable.  In particular,
+            # replay must never inspect or remove the current target slot: it
+            # may belong to a newer operation, and an old fence cannot be
+            # legitimately reopened once this branch is reached.
             return
         current = self._read_target_fence_envelope(active, fence)
         if current.fence_digest != fence.fence_digest:
@@ -1528,10 +1557,60 @@ class MainGraduationJournal:
                     raise MainGraduationJournalError(
                         "release intent requires durable authorization and claim"
                     )
-                if intent.release_authorization_digest != canonical_digest(auth_prior[0]):
-                    raise MainGraduationJournalError("release intent authorization differs")
-                if intent.release_claim_digest != canonical_digest(claim[0]):
+                auth = cast(MainReleaseAuthorization, auth_prior[0])
+                durable_claim = cast(MainReleaseClaim, claim[0])
+                if (
+                    intent.release_authorization_digest != auth.authorization_digest
+                    or auth.operation_id != intent.operation_id
+                    or auth.repository_digest != intent.repository_digest
+                    or auth.target_ref != intent.target_ref
+                    or durable_claim.operation_id != intent.operation_id
+                    or durable_claim.repository_digest != intent.repository_digest
+                    or durable_claim.target_ref != intent.target_ref
+                ):
+                    raise MainGraduationJournalError("release intent authority binding differs")
+                if intent.release_claim_digest != durable_claim.claim_digest:
                     raise MainGraduationJournalError("release intent claim differs")
+                expected_external_key = main_release_external_key(
+                    operation_id=intent.operation_id,
+                    repository_digest=intent.repository_digest,
+                    target_ref=intent.target_ref,
+                    authorization_digest=auth.authorization_digest,
+                    hold_observation_digest=durable_claim.hold_observation_digest,
+                    group_sha=durable_claim.group_sha,
+                    hold_run_id=durable_claim.hold_run_id,
+                    hold_nonce=durable_claim.hold_nonce,
+                    queue_generation_digest=durable_claim.queue_generation_digest,
+                    release_check_context="avo-main-release",
+                    release_issuer_app_id=durable_claim.release_issuer_app_id,
+                )
+                expected_external_identity = main_release_external_identity_digest(
+                    operation_id=intent.operation_id,
+                    repository_digest=intent.repository_digest,
+                    target_ref=intent.target_ref,
+                    authorization_digest=auth.authorization_digest,
+                    hold_observation_digest=durable_claim.hold_observation_digest,
+                    group_sha=durable_claim.group_sha,
+                    hold_run_id=durable_claim.hold_run_id,
+                    hold_nonce=durable_claim.hold_nonce,
+                    queue_generation_digest=durable_claim.queue_generation_digest,
+                    release_check_context="avo-main-release",
+                    release_issuer_app_id=durable_claim.release_issuer_app_id,
+                )
+                external = intent.external_identity
+                if (
+                    external.operation_id != intent.operation_id
+                    or external.repository_digest != intent.repository_digest
+                    or external.target_ref != intent.target_ref
+                    or external.stage != "release_transition"
+                    or external.queue_generation_digest
+                    != durable_claim.queue_generation_digest
+                    or external.external_key != expected_external_key
+                    or external.identity_digest != expected_external_identity
+                ):
+                    raise MainGraduationJournalError(
+                        "release intent external identity binding differs"
+                    )
             return
         if kind == "mutation-receipt":
             receipt = cast(MainMutationReceipt, record)
@@ -1575,6 +1654,15 @@ class MainGraduationJournal:
             lease = cast(MainLeaseEvidenceRecord, lease_prior[0])
             if any(
                 (
+                    auth.operation_id != claim.operation_id,
+                    auth.repository_digest != claim.repository_digest,
+                    auth.target_ref != claim.target_ref,
+                    hold.operation_id != claim.operation_id,
+                    hold.repository_digest != claim.repository_digest,
+                    hold.target_ref != claim.target_ref,
+                    lease.operation_id != claim.operation_id,
+                    lease.repository_digest != claim.repository_digest,
+                    lease.target_ref != claim.target_ref,
                     claim.authorization_digest != auth.authorization_digest,
                     claim.hold_observation_digest != canonical_digest(hold),
                     claim.group_sha != auth.group_sha,
@@ -1633,6 +1721,8 @@ class MainGraduationJournal:
             if (
                 resolution.operation_id != fence.operation_id
                 or resolution.intent_digest != fence.intent_digest
+                or resolution.repository_digest != fence.repository_digest
+                or resolution.target_ref != fence.target_ref
             ):
                 raise MainGraduationJournalError("mutation resolution binding differs")
             if any(
@@ -1688,15 +1778,26 @@ class MainGraduationJournal:
                 else None
             )
             if (
-                receipt.release_authorization_digest != auth.authorization_digest
+                claim.operation_id != receipt.operation_id
+                or claim.repository_digest != receipt.repository_digest
+                or claim.target_ref != receipt.target_ref
+                or auth.operation_id != receipt.operation_id
+                or auth.repository_digest != receipt.repository_digest
+                or auth.target_ref != receipt.target_ref
+                or receipt.release_authorization_digest != auth.authorization_digest
                 or receipt.claim_digest != claim.claim_digest
                 or receipt.group_sha != claim.group_sha
                 or receipt.hold_run_id != claim.hold_run_id
                 or receipt.hold_nonce != claim.hold_nonce
                 or receipt.issuer_identity != claim.release_issuer_identity
+                or receipt.release_issuer_app_id != claim.release_issuer_app_id
+                or claim.release_issuer_app_id != auth.release_issuer_app_id
                 or receipt.issuer_isolation_digest != claim.issuer_isolation_digest
                 or mutation_prior is None
                 or cast(MainMutationReceipt, mutation_prior[0]).operation_id != receipt.operation_id
+                or cast(MainMutationReceipt, mutation_prior[0]).repository_digest
+                != receipt.repository_digest
+                or cast(MainMutationReceipt, mutation_prior[0]).target_ref != receipt.target_ref
                 or cast(MainMutationReceipt, mutation_prior[0]).stage != "release_transition"
                 or cast(MainMutationReceipt, mutation_prior[0]).release_authorization_digest
                 != receipt.release_authorization_digest
@@ -1704,6 +1805,68 @@ class MainGraduationJournal:
                 != receipt.claim_digest
             ):
                 raise MainGraduationJournalError("claimed transition binding differs")
+            mutation = cast(MainMutationReceipt, mutation_prior[0])
+            resolution_digest = getattr(receipt, "mutation_resolution_digest", None)
+            if mutation.outcome in {"applied", "already_applied"}:
+                expected_outcome = (
+                    "transitioned" if mutation.outcome == "applied" else "already_transitioned"
+                )
+                if (
+                    resolution_digest is not None
+                    or receipt.outcome != expected_outcome
+                    or receipt.response_digest != mutation.response_digest
+                    or receipt.observed_at != mutation.observed_at
+                ):
+                    raise MainGraduationJournalError(
+                        "claimed transition does not match direct mutation receipt"
+                    )
+            elif mutation.outcome in {"ambiguous", "reconciliation_required"}:
+                if not isinstance(resolution_digest, str):
+                    raise MainGraduationJournalError(
+                        "ambiguous mutation requires a durable fence resolution"
+                    )
+                resolution_prior = self._read("mutation-fence-resolution", resolution_digest)
+                if resolution_prior is None:
+                    raise MainGraduationJournalError(
+                        "claimed transition fence resolution is missing"
+                    )
+                resolution = cast(MainMutationFenceResolution, resolution_prior[0])
+                if (
+                    resolution.resolution_digest != resolution_digest
+                    or resolution.resolved_receipt_digest != mutation.receipt_digest
+                    or resolution.operation_id != mutation.operation_id
+                    or resolution.repository_digest != mutation.repository_digest
+                    or resolution.target_ref != mutation.target_ref
+                    or resolution.intent_digest != mutation.intent_digest
+                    or resolution.external_identity_digest
+                    != mutation.external_identity.identity_digest
+                    or resolution.lease_identity != mutation.lease_identity
+                    or resolution.lease_digest != mutation.lease_digest
+                    or resolution.resolved_at < mutation.observed_at
+                ):
+                    raise MainGraduationJournalError(
+                        "claimed transition fence resolution binding differs"
+                    )
+                if resolution.outcome == "observed":
+                    expected_outcome = (
+                        "transitioned"
+                        if resolution.observed_outcome == "applied"
+                        else "already_transitioned"
+                    )
+                else:
+                    expected_outcome = "reconciliation_required"
+                if (
+                    receipt.outcome != expected_outcome
+                    or receipt.response_digest != resolution.authoritative_observation_digest
+                    or receipt.observed_at != resolution.resolved_at
+                ):
+                    raise MainGraduationJournalError(
+                        "claimed transition does not match fence resolution"
+                    )
+            else:
+                raise MainGraduationJournalError(
+                    "claimed transition requires a dispatched mutation receipt"
+                )
 
     def _controller_config_digest(self, operation_id: str) -> str:
         prior = self._read("plan", operation_id)

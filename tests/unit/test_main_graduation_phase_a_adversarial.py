@@ -13,6 +13,7 @@ import json
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, cast
 
 import pytest
@@ -34,6 +35,7 @@ from avo_correlate.contracts import (
     MainMutationReceipt,
     MainMutationStage,
     MainQueueAdmissionObservation,
+    MainReleaseClaim,
     MainUnresolvedMutationFence,
     StrictModel,
     main_stage_identity_digest,
@@ -215,6 +217,7 @@ def _resolution(
             provider_identity="trusted-observer",
             provider_api_version="v1",
             outcome=outcome,
+            observed_outcome=("applied" if outcome == "observed" else None),
             resolved_at=NOW + timedelta(minutes=1),
         ),
     )
@@ -368,6 +371,263 @@ def test_closed_fence_replay_does_not_reopen_the_target_fence(tmp_path: Path) ->
     with pytest.raises(MainGraduationRecordConflictError):
         journal.record_unresolved_mutation_fence(fence)
     assert not active.exists()
+
+
+def test_old_resolution_replay_preserves_newer_target_reservation(tmp_path: Path) -> None:
+    journal = _journal(tmp_path)
+    _disable_phase_prerequisites(journal)
+    old_intent = _intent()
+    journal.record_mutation_intent(old_intent)
+    old_receipt = _receipt(old_intent)
+    journal.record_mutation_receipt(old_receipt)
+    old_fence = _fence(old_receipt)
+    journal.record_unresolved_mutation_fence(old_fence)
+    old_resolution = _resolution(old_fence)
+    journal.record_mutation_fence_resolution(old_resolution)
+
+    # A later operation can reserve the same target after the old fence has
+    # been closed.  Replaying old resolution history must not delete it.
+    newer = _journal(tmp_path)
+    _disable_phase_prerequisites(newer)
+    new_intent = _intent(OP2, key="refs/heads/avo/candidate/op2")
+    newer.record_mutation_intent(new_intent)
+    active = newer._target_fence_path(new_intent)  # pyright: ignore[reportPrivateUsage]
+    assert active.is_dir()
+
+    newer._close_target_fence_if_resolved(old_resolution)  # pyright: ignore[reportPrivateUsage]
+
+    assert active.is_dir()
+    reservation = newer._read_target_reservation(active)  # pyright: ignore[reportPrivateUsage]
+    assert reservation.operation_id == new_intent.operation_id
+    assert reservation.intent_digest == new_intent.intent_digest
+
+
+def test_release_claim_global_envelope_operation_binding_is_verified(tmp_path: Path) -> None:
+    journal = _journal(tmp_path)
+    claim = MainReleaseClaim.model_construct(
+        repository_digest=R,
+        target_ref="refs/heads/main",
+        operation_id=OP,
+        claim_key=D,
+        claim_digest=D2,
+    )
+    reference = journal._store.put_bytes(  # pyright: ignore[reportPrivateUsage]
+        canonical_bytes(claim),
+        media_type="application/vnd.avo.main-graduation-release-claim+json",
+        role="main-graduation-release-claim",
+        max_bytes=journal._max,  # pyright: ignore[reportPrivateUsage]
+    )
+    journal._cas_release_claim(claim, reference)  # pyright: ignore[reportPrivateUsage]
+    index = (
+        tmp_path
+        / "main-graduation-index"
+        / "release-claim-key"
+        / f"{D.removeprefix('sha256:')}.json"
+    )
+    payload = json.loads(index.read_text(encoding="utf-8"))
+    payload["operation_id"] = OP2
+    index.write_bytes(canonical_bytes(payload))
+
+    with pytest.raises(MainGraduationRecordConflictError, match="operation identity"):
+        journal._assert_release_claim(claim)  # pyright: ignore[reportPrivateUsage]
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    (
+        ("operation_id", OP2),
+        ("repository_digest", D3),
+        ("target_ref", "refs/heads/other"),
+        ("external_identity", "wrong"),
+    ),
+)
+def test_release_intent_rejects_claim_scope_mismatch(
+    tmp_path: Path, field: str, value: str
+) -> None:
+    journal = _journal(tmp_path)
+    intent = MainMutationIntent.model_construct(
+        repository_digest=R,
+        target_ref="refs/heads/main",
+        operation_id=OP,
+        stage="release_transition",
+        parent_stage="merge_group_hold",
+        parent_intent_digest=D,
+        parent_receipt=None,
+        parent_resolution_digest=None,
+        lease_identity="avo-controller",
+        lease_digest=D2,
+        lease_epoch_digest=D2,
+        policy_epoch_digest=D2,
+        controller_config_digest=D2,
+        preparation_authorization_digest=D,
+        release_authorization_digest=D2,
+        release_claim_digest=D3,
+        external_identity=_external(OP, "refs/heads/avo/release", "release_transition"),
+        request_digest=D3,
+        recorded_at=NOW,
+        intent_digest=D,
+    )
+    prep = SimpleNamespace(
+        authorization_digest=D,
+        repository_digest=R,
+        target_ref="refs/heads/main",
+        lease_identity="avo-controller",
+        lease_digest=D2,
+        policy_epoch=D2,
+    )
+    lease = SimpleNamespace(
+        owner="avo-controller",
+        lease_digest=D2,
+        policy_epoch=D2,
+        lease_epoch_digest=D2,
+        repository_digest=R,
+        target_ref="refs/heads/main",
+        expires_at=NOW + timedelta(hours=1),
+    )
+    auth = SimpleNamespace(
+        authorization_digest=D2,
+        operation_id=OP,
+        repository_digest=R,
+        target_ref="refs/heads/main",
+        release_issuer_app_id=9002,
+    )
+    claim_values: dict[str, object] = {
+        "claim_digest": D3,
+        "operation_id": OP,
+        "repository_digest": R,
+        "target_ref": "refs/heads/main",
+        "hold_observation_digest": D,
+        "group_sha": HEAD,
+        "hold_run_id": "hold-run",
+        "hold_nonce": "hold-nonce",
+        "queue_generation_digest": D2,
+        "release_issuer_app_id": 9002,
+    }
+    if field == "external_identity":
+        intent = intent.model_copy(
+            update={
+                "external_identity": _external(
+                    OP, "refs/heads/avo/release-wrong", "release_transition"
+                )
+            }
+        )
+    else:
+        claim_values[field] = value
+    claim = SimpleNamespace(**claim_values)
+
+    def read(kind: str, _key: str) -> tuple[object, None] | None:
+        return {
+            "preparation-authorization": (prep, None),
+            "lease-evidence-record": (lease, None),
+            "release-authorization": (auth, None),
+            "release-claim": (claim, None),
+        }.get(kind)
+
+    journal._read = read  # type: ignore[method-assign]
+    journal._controller_config_digest = lambda _operation_id: D2  # type: ignore[method-assign]
+    expected = (
+        "release intent external identity"
+        if field == "external_identity"
+        else "release intent authority binding"
+    )
+    with pytest.raises(MainGraduationJournalError, match=expected):
+        MainGraduationJournal._validate_phase_chain(  # pyright: ignore[reportPrivateUsage]
+            journal, "mutation-intent", intent
+        )
+
+
+@pytest.mark.parametrize(
+    ("subject", "field", "value"),
+    (
+        ("claim", "operation_id", OP2),
+        ("claim", "repository_digest", D3),
+        ("claim", "target_ref", "refs/heads/other"),
+        ("mutation", "operation_id", OP2),
+        ("mutation", "repository_digest", D3),
+        ("mutation", "target_ref", "refs/heads/other"),
+        ("mutation", "response_digest", D2),
+        ("mutation", "observed_at", NOW + timedelta(seconds=1)),
+        ("transition", "outcome", "already_transitioned"),
+        ("transition", "mutation_resolution_digest", D2),
+        ("transition", "release_issuer_app_id", 9003),
+    ),
+)
+def test_claimed_transition_rejects_scope_mismatched_predecessor(
+    tmp_path: Path, subject: str, field: str, value: object
+) -> None:
+    journal = _journal(tmp_path)
+    claim_values: dict[str, object] = {
+        "claim_digest": D,
+        "operation_id": OP,
+        "repository_digest": R,
+        "target_ref": "refs/heads/main",
+        "group_sha": HEAD,
+        "hold_run_id": "hold-run",
+        "hold_nonce": "hold-nonce",
+        "release_issuer_identity": "isolated-release",
+        "release_issuer_app_id": 9002,
+        "issuer_isolation_digest": D2,
+    }
+    mutation_values: dict[str, object] = {
+        "operation_id": OP,
+        "repository_digest": R,
+        "target_ref": "refs/heads/main",
+        "stage": "release_transition",
+        "release_authorization_digest": D2,
+        "release_claim_digest": D,
+        "response_digest": D3,
+        "observed_at": NOW,
+        "outcome": "applied",
+    }
+    transition_values_override: dict[str, object] = {}
+    if subject == "transition":
+        transition_values_override = {field: value}
+    else:
+        (claim_values if subject == "claim" else mutation_values)[field] = value
+    claim = SimpleNamespace(**claim_values)
+    mutation = SimpleNamespace(**mutation_values)
+    auth = SimpleNamespace(
+        authorization_digest=D2,
+        operation_id=OP,
+        repository_digest=R,
+        target_ref="refs/heads/main",
+        release_issuer_app_id=9002,
+    )
+    transition_values: dict[str, object] = {
+        "operation_id": OP,
+        "repository_digest": R,
+        "target_ref": "refs/heads/main",
+        "release_authorization_digest": D2,
+        "claim_digest": D,
+        "group_sha": HEAD,
+        "hold_run_id": "hold-run",
+        "hold_nonce": "hold-nonce",
+        "issuer_identity": "isolated-release",
+        "release_issuer_app_id": 9002,
+        "issuer_isolation_digest": D2,
+        "mutation_receipt_digest": D3,
+        "response_digest": D3,
+        "observed_at": NOW,
+        "outcome": "transitioned",
+    }
+    if subject == "transition":
+        transition_values.update(transition_values_override)
+    transition = SimpleNamespace(**transition_values)
+
+    def read(kind: str, _key: str) -> tuple[object, None] | None:
+        return {
+            "release-claim": (claim, None),
+            "release-authorization": (auth, None),
+            "mutation-receipt": (mutation, None),
+        }.get(kind)
+
+    journal._read = read  # type: ignore[method-assign]
+    with pytest.raises(
+        MainGraduationJournalError, match=r"claimed transition (?:binding|does not match)"
+    ):
+        MainGraduationJournal._validate_phase_chain(  # pyright: ignore[reportPrivateUsage]
+            journal, "claimed-release-transition", transition  # pyright: ignore[reportArgumentType]
+        )
 
 
 def test_phase_a_restart_repairs_local_pointer_but_requires_global_indexes(tmp_path: Path) -> None:
@@ -641,7 +901,7 @@ def test_generic_windows_reservation_race_reuses_exact_winner(
     active = journal._target_fence_path(intent)  # pyright: ignore[reportPrivateUsage]
     original_replace = journal_module.os.replace
 
-    def race(source: object, destination: object) -> None:
+    def race(source: str | Path, destination: str | Path) -> None:
         if Path(destination) == active and not active.exists():
             original_replace(source, destination)
             # Windows may report a directory replacement race as a generic
