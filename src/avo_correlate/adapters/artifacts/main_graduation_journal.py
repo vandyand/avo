@@ -7,6 +7,7 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import tempfile
 from contextlib import suppress
 from pathlib import Path
@@ -77,6 +78,24 @@ class _MainBaseReader(Protocol):
     def fresh_main_base(self) -> object: ...
 
 
+class MainPhaseAAuthorityVerifier(Protocol):
+    """Controller-owned verifier for authority-bearing Phase-A evidence.
+
+    A DTO supplied by a coordinator is never authority by itself.  Production
+    composition injects a verifier that authenticates the lease backend and
+    the provider receipt used to resolve an ambiguity.  The optional injection
+    keeps the historical, non-Phase-A journal surface usable by C1-C3 code.
+    """
+
+    def verify_lease_evidence(self, record: MainLeaseEvidenceRecord) -> None: ...
+
+    def verify_fence_resolution(
+        self,
+        resolution: MainMutationFenceResolution,
+        source_receipt: MainMutationReceipt,
+    ) -> None: ...
+
+
 class _ReferenceEnvelope(Protocol):
     reference: ArtifactRef
 
@@ -128,6 +147,16 @@ class _TargetFenceEnvelope(StrictModel):
     target_scope_digest: str
     operation_id: str
     fence_digest: str
+    reference: ArtifactRef
+
+
+class _TargetMutationReservationEnvelope(StrictModel):
+    """Durable target slot reserved by an intent before provider dispatch."""
+
+    schema_version: Literal[1] = 1
+    target_scope_digest: str
+    operation_id: str
+    intent_digest: str
     reference: ArtifactRef
 
 
@@ -234,6 +263,7 @@ class MainGraduationJournal:
         composition_root: Path | None = None,
         repository_digest: str | None = None,
         base_reader: _MainBaseReader | None = None,
+        phase_a_authority_verifier: MainPhaseAAuthorityVerifier | None = None,
         max_record_bytes: int = 32 * 1024 * 1024,
     ) -> None:
         if max_record_bytes <= 0:
@@ -265,6 +295,7 @@ class MainGraduationJournal:
         )
         self._composition_repository_digest = repository_digest
         self._composition_base_reader = base_reader
+        self._phase_a_authority_verifier = phase_a_authority_verifier
         if self._policy_epoch is not None:
             _check_digest(self._policy_epoch)
 
@@ -623,6 +654,11 @@ class MainGraduationJournal:
             data = canonical_bytes(checked)
             key = self._phase_key(kind, checked)
             self._validate_phase_chain(kind, checked)
+            if kind == "lease-evidence-record":
+                self._verify_lease_authority(cast(MainLeaseEvidenceRecord, checked))
+            elif kind == "mutation-fence-resolution":
+                resolution = cast(MainMutationFenceResolution, checked)
+                self._verify_fence_authority(resolution, self._source_receipt(resolution))
         except (TypeError, ValueError, json.JSONDecodeError) as exc:
             raise MainGraduationJournalError(f"invalid main graduation {kind}") from exc
         reference = self._store.put_bytes(
@@ -638,6 +674,10 @@ class MainGraduationJournal:
                 reference = prior
         elif kind == "mutation-intent":
             intent = cast(MainMutationIntent, checked)
+            # Reserve the target slot before publishing any of the other
+            # operation indexes.  A caller may dispatch only after this method
+            # returns, so a crash cannot expose an apparently free target.
+            self._cas_target_mutation_reservation(intent, reference)
             self._cas_stage_identity(intent.external_identity.identity_digest, intent, reference)
             self._cas_operation_stage_identity(intent, reference)
             self._cas_external_object_identity(intent, reference)
@@ -659,6 +699,10 @@ class MainGraduationJournal:
                 "claimed-release-transition", transition.claim_digest, transition, reference
             )
         result = self._cas_phase_local(kind, key, checked, reference, data)
+        if kind == "mutation-receipt":
+            receipt = cast(MainMutationReceipt, checked)
+            if receipt.outcome in {"applied", "already_applied", "rejected"}:
+                self._close_target_reservation_if_terminal(receipt)
         if kind == "mutation-fence-resolution":
             self._close_target_fence_if_resolved(cast(MainMutationFenceResolution, checked))
         return result
@@ -729,6 +773,8 @@ class MainGraduationJournal:
             if self._phase_key(kind, record) != key:
                 raise MainGraduationRecordConflictError("phase-A key differs from record")
             self._validate_phase_chain(kind, record)
+            if kind == "mutation-intent":
+                self._assert_stage_identity(cast(MainMutationIntent, record))
             if kind == "unresolved-mutation-fence":
                 self._assert_target_fence(cast(MainUnresolvedMutationFence, record))
             elif kind == "release-claim":
@@ -739,6 +785,10 @@ class MainGraduationJournal:
             elif kind == "mutation-fence-resolution":
                 resolution = cast(MainMutationFenceResolution, record)
                 self._assert_phase_identity(kind, resolution.fence_digest, resolution)
+                self._verify_fence_authority(resolution, self._source_receipt(resolution))
+            elif kind == "lease-evidence-record":
+                self._assert_target_lease(cast(MainLeaseEvidenceRecord, record))
+                self._verify_lease_authority(cast(MainLeaseEvidenceRecord, record))
             elif kind == "claimed-release-transition":
                 transition = cast(MainClaimedReleaseTransitionReceipt, record)
                 self._assert_phase_identity(kind, transition.claim_digest, transition)
@@ -769,12 +819,15 @@ class MainGraduationJournal:
     def _target_fence_record_path(active: Path) -> Path:
         return active / "record.json"
 
+    @staticmethod
+    def _target_reservation_record_path(active: Path) -> Path:
+        return active / "reservation.json"
+
     def _target_fence_closed_path(self, record: MainUnresolvedMutationFence) -> Path:
-        scope = main_target_scope_digest(record.repository_digest, record.target_ref)
         return (
             self._indexes
             / "target-unresolved-fence-closed"
-            / (f"{scope.removeprefix('sha256:')}-{record.fence_digest.removeprefix('sha256:')}")
+            / record.fence_digest.removeprefix("sha256:")
         )
 
     def _cas_target_lease(
@@ -796,26 +849,33 @@ class MainGraduationJournal:
         self, record: MainUnresolvedMutationFence, reference: ArtifactRef
     ) -> None:
         path = self._target_fence_path(record)
-        if path.exists():
-            current = self._read_target_fence_envelope(path, record)
-            if current.fence_digest == record.fence_digest:
-                return
-            if self._read("mutation-fence-resolution", current.fence_digest) is None:
-                raise MainGraduationRecordConflictError("target has an unresolved mutation fence")
-            old = MainUnresolvedMutationFence.model_validate_json(
-                self._store.read_bytes(current.reference)
+        closed = self._target_fence_closed_path(record)
+        # A resolved fence is immutable history.  In particular, replaying an
+        # old ambiguous receipt must never create a new active slot.
+        if closed.is_dir():
+            self._assert_closed_fence(record, closed)
+            raise MainGraduationRecordConflictError(
+                "resolved target mutation fence cannot be reopened"
             )
-            closed = self._target_fence_closed_path(old)
-            closed.parent.mkdir(parents=True, exist_ok=True)
-            try:
-                os.replace(path, closed)
-                _sync_directory(closed.parent)
-            except FileNotFoundError:
-                pass
-            except OSError as exc:
-                raise MainGraduationJournalError(
-                    "resolved target fence could not be closed"
-                ) from exc
+        if path.exists():
+            record_path = self._target_fence_record_path(path)
+            if record_path.is_file():
+                current = self._read_target_fence_envelope(path, record)
+                if current.fence_digest == record.fence_digest:
+                    return
+                resolved = self._read_fence_resolution_by_fence(current.fence_digest)
+                if resolved is None:
+                    raise MainGraduationRecordConflictError(
+                        "target has an unresolved mutation fence"
+                    )
+                self._close_target_fence_if_resolved(resolved[0])
+                if closed.is_dir():
+                    self._assert_closed_fence(record, closed)
+                    raise MainGraduationRecordConflictError(
+                        "resolved target mutation fence cannot be reopened"
+                    )
+            elif not self._target_reservation_record_path(path).is_file():
+                raise MainGraduationJournalError("target mutation slot is malformed")
         envelope = _TargetFenceEnvelope(
             target_scope_digest=main_target_scope_digest(
                 record.repository_digest, record.target_ref
@@ -826,9 +886,10 @@ class MainGraduationJournal:
         )
         path.parent.mkdir(parents=True, exist_ok=True)
         try:
-            path.mkdir()
+            if not path.exists():
+                path.mkdir()
         except FileExistsError:
-            raise MainGraduationRecordConflictError("target mutation fence claim raced") from None
+            pass
         try:
             record_path = self._target_fence_record_path(path)
             with record_path.open("x", encoding="utf-8", newline="") as handle:
@@ -840,6 +901,101 @@ class MainGraduationJournal:
         except OSError as exc:
             raise MainGraduationJournalError(
                 "target mutation fence was not durably indexed"
+            ) from exc
+
+    def _cas_target_mutation_reservation(
+        self, intent: MainMutationIntent, reference: ArtifactRef
+    ) -> None:
+        path = self._target_fence_path(intent)
+        reservation_path = self._target_reservation_record_path(path)
+        envelope = _TargetMutationReservationEnvelope(
+            target_scope_digest=main_target_scope_digest(
+                intent.repository_digest, intent.target_ref
+            ),
+            operation_id=intent.operation_id,
+            intent_digest=intent.intent_digest,
+            reference=reference,
+        )
+        path.parent.mkdir(parents=True, exist_ok=True)
+        if path.is_dir():
+            # An exact replay after a terminal receipt is already safe; an
+            # active fence or different reservation is a target conflict.
+            if self._target_fence_record_path(path).is_file():
+                try:
+                    active = self._read_target_fence_envelope(
+                        path, MainBound(
+                            repository_digest=intent.repository_digest,
+                            target_ref=intent.target_ref,
+                        ),
+                    )
+                    active_record = MainUnresolvedMutationFence.model_validate_json(
+                        self._store.read_bytes(active.reference)
+                    )
+                except MainGraduationRecordConflictError:
+                    raise
+                except (
+                    OSError,
+                    ValueError,
+                    TypeError,
+                    UnicodeError,
+                    json.JSONDecodeError,
+                ) as exc:
+                    # Avoid trusting a caller DTO while still returning a
+                    # useful conflict for an occupied target.
+                    raise MainGraduationJournalError(
+                        "target mutation fence is unverifiable"
+                    ) from exc
+                if (
+                    active_record.operation_id == intent.operation_id
+                    and active_record.intent_digest == intent.intent_digest
+                ):
+                    return
+                raise MainGraduationRecordConflictError(
+                    "target has an unresolved mutation fence"
+                )
+            if not reservation_path.is_file():
+                # A process can die after creating the directory but before
+                # publishing its reservation file.  An empty directory has no
+                # evidence of a competing dispatch and may be repaired from
+                # this exact, already-CAS'd intent; anything else is opaque
+                # and remains fail-closed.
+                try:
+                    if any(path.iterdir()):
+                        raise MainGraduationJournalError("target mutation slot is malformed")
+                    path.rmdir()
+                except OSError as exc:
+                    raise MainGraduationJournalError("target mutation slot is malformed") from exc
+            else:
+                current = self._read_target_reservation(path)
+                if (
+                    current.operation_id == intent.operation_id
+                    and current.intent_digest == intent.intent_digest
+                    and self._store.read_bytes(current.reference) == canonical_bytes(intent)
+                ):
+                    return
+                raise MainGraduationRecordConflictError("target mutation reservation differs")
+        temporary: Path | None = None
+        try:
+            temporary = Path(tempfile.mkdtemp(prefix=".tmp-", dir=str(path.parent)))
+            temporary_reservation = self._target_reservation_record_path(temporary)
+            with temporary_reservation.open("xb") as handle:
+                handle.write(canonical_bytes(envelope))
+                handle.flush()
+                os.fsync(handle.fileno())
+            _sync_directory(temporary)
+            os.replace(temporary, path)
+            _sync_directory(path.parent)
+        except FileExistsError:
+            if temporary is not None:
+                with suppress(OSError):
+                    shutil.rmtree(temporary)
+            raise MainGraduationRecordConflictError("target mutation reservation raced") from None
+        except OSError as exc:
+            if temporary is not None:
+                with suppress(OSError):
+                    shutil.rmtree(temporary)
+            raise MainGraduationJournalError(
+                "target mutation reservation was not durably indexed"
             ) from exc
 
     def _cas_release_claim(self, record: MainReleaseClaim, reference: ArtifactRef) -> None:
@@ -954,7 +1110,10 @@ class MainGraduationJournal:
         if not path.is_file():
             raise MainGraduationJournalError(f"{kind} identity is not indexed")
         current = self._read_phase_envelope(path, kind, key)
-        if self._store.read_bytes(current.reference) != canonical_bytes(record):
+        if current.operation_id != _operation_id(record):
+            raise MainGraduationRecordConflictError(f"{kind} operation identity differs")
+        data = self._store.read_bytes(current.reference)
+        if _digest_bytes(data) != current.reference.digest or data != canonical_bytes(record):
             raise MainGraduationRecordConflictError(f"{kind} identity differs")
 
     def _assert_stage_identity(self, intent: MainMutationIntent) -> None:
@@ -964,8 +1123,10 @@ class MainGraduationJournal:
         current = self._read_phase_envelope(
             path, "mutation-intent", intent.external_identity.identity_digest
         )
+        if current.operation_id != intent.operation_id:
+            raise MainGraduationRecordConflictError("mutation stage operation identity differs")
         data = self._store.read_bytes(current.reference)
-        if data != canonical_bytes(intent):
+        if _digest_bytes(data) != current.reference.digest or data != canonical_bytes(intent):
             raise MainGraduationRecordConflictError("mutation stage identity differs")
         for path, key, description in (
             (
@@ -990,7 +1151,10 @@ class MainGraduationJournal:
             if not path.is_file():
                 raise MainGraduationJournalError(f"{description} is not indexed")
             current = self._read_phase_envelope(path, "mutation-intent", key)
-            if self._store.read_bytes(current.reference) != canonical_bytes(intent):
+            if current.operation_id != intent.operation_id:
+                raise MainGraduationRecordConflictError(f"{description} operation identity differs")
+            data = self._store.read_bytes(current.reference)
+            if _digest_bytes(data) != current.reference.digest or data != canonical_bytes(intent):
                 raise MainGraduationRecordConflictError(f"{description} differs")
 
     def _cas_operation_stage_identity(
@@ -1030,7 +1194,7 @@ class MainGraduationJournal:
         )
 
     def _read_target_fence_envelope(
-        self, path: Path, expected: MainUnresolvedMutationFence
+        self, path: Path, expected: MainBound
     ) -> _TargetFenceEnvelope:
         try:
             raw = self._target_fence_record_path(path).read_bytes()
@@ -1039,19 +1203,55 @@ class MainGraduationJournal:
             )
             if (
                 canonical_bytes(envelope) != raw
-                or envelope.target_scope_digest != expected.target_scope_digest
+                or envelope.target_scope_digest
+                != main_target_scope_digest(expected.repository_digest, expected.target_ref)
             ):
                 raise ValueError("target fence index is noncanonical")
             current = MainUnresolvedMutationFence.model_validate_json(
                 self._store.read_bytes(envelope.reference)
             )
-            if current.fence_digest != envelope.fence_digest:
+            if (
+                _digest_bytes(self._store.read_bytes(envelope.reference))
+                != envelope.reference.digest
+                or current.fence_digest != envelope.fence_digest
+            ):
                 raise MainGraduationRecordConflictError("target fence reference differs")
             return envelope
         except MainGraduationRecordConflictError:
             raise
         except (OSError, ValueError, TypeError, UnicodeError, json.JSONDecodeError) as exc:
             raise MainGraduationJournalError("target mutation fence index is malformed") from exc
+
+    def _read_target_reservation(self, path: Path) -> _TargetMutationReservationEnvelope:
+        try:
+            raw = self._target_reservation_record_path(path).read_bytes()
+            envelope = _TargetMutationReservationEnvelope.model_validate(
+                json.loads(raw.decode("utf-8"), object_pairs_hook=_strict_pairs)
+            )
+            if canonical_bytes(envelope) != raw:
+                raise ValueError("target reservation index is noncanonical")
+            intent = self._store.read_bytes(envelope.reference)
+            if _digest_bytes(intent) != envelope.reference.digest:
+                raise ValueError("target reservation artifact hash mismatch")
+            parsed = MainMutationIntent.model_validate_json(intent)
+            if (
+                parsed.operation_id != envelope.operation_id
+                or parsed.intent_digest != envelope.intent_digest
+                or main_target_scope_digest(parsed.repository_digest, parsed.target_ref)
+                != envelope.target_scope_digest
+            ):
+                raise MainGraduationRecordConflictError("target reservation reference differs")
+            return envelope
+        except MainGraduationRecordConflictError:
+            raise
+        except (
+            OSError,
+            ValueError,
+            TypeError,
+            UnicodeError,
+            json.JSONDecodeError,
+        ) as exc:
+            raise MainGraduationJournalError("target mutation reservation is malformed") from exc
 
     def _assert_target_lease(self, record: MainLeaseEvidenceRecord) -> None:
         path = self._target_lease_path(record)
@@ -1081,9 +1281,13 @@ class MainGraduationJournal:
     def _assert_target_fence(self, record: MainUnresolvedMutationFence) -> None:
         path = self._target_fence_path(record)
         if path.is_dir():
-            envelope = self._read_target_fence_envelope(path, record)
-            if envelope.fence_digest != record.fence_digest:
-                raise MainGraduationRecordConflictError("target mutation fence digest differs")
+            record_path = self._target_fence_record_path(path)
+            if record_path.is_file():
+                envelope = self._read_target_fence_envelope(path, record)
+                if envelope.fence_digest != record.fence_digest:
+                    raise MainGraduationRecordConflictError("target mutation fence digest differs")
+            elif not self._target_reservation_record_path(path).is_file():
+                raise MainGraduationJournalError("target mutation slot is malformed")
             return
         closed = self._target_fence_closed_path(record) / "record.json"
         if not closed.is_file():
@@ -1091,6 +1295,41 @@ class MainGraduationJournal:
         envelope = self._read_target_fence_envelope(closed.parent, record)
         if envelope.fence_digest != record.fence_digest:
             raise MainGraduationRecordConflictError("target mutation fence digest differs")
+
+    def _assert_closed_fence(
+        self, record: MainUnresolvedMutationFence, closed: Path
+    ) -> None:
+        if not closed.is_dir():
+            raise MainGraduationJournalError("closed target mutation fence is missing")
+        envelope = self._read_target_fence_envelope(closed, record)
+        if envelope.fence_digest != record.fence_digest:
+            raise MainGraduationRecordConflictError("closed target mutation fence differs")
+        if self._read_fence_resolution_by_fence(record.fence_digest) is None:
+            raise MainGraduationJournalError("closed target mutation fence lacks resolution")
+
+    def _read_fence_resolution_by_fence(
+        self, fence_digest: str
+    ) -> tuple[MainMutationFenceResolution, ArtifactRef] | None:
+        path = self._phase_identity_path("mutation-fence-resolution", fence_digest)
+        if not path.is_file():
+            return None
+        envelope = self._read_phase_envelope(path, "mutation-fence-resolution", fence_digest)
+        try:
+            data = self._store.read_bytes(envelope.reference)
+            if _digest_bytes(data) != envelope.reference.digest:
+                raise ValueError("resolution artifact hash mismatch")
+            resolution = MainMutationFenceResolution.model_validate_json(data)
+        except MainGraduationRecordConflictError:
+            raise
+        except (OSError, ValueError, TypeError, UnicodeError, json.JSONDecodeError) as exc:
+            raise MainGraduationJournalError("mutation fence resolution is malformed") from exc
+        if (
+            resolution.fence_digest != fence_digest
+            or envelope.operation_id != resolution.operation_id
+            or canonical_bytes(resolution) != data
+        ):
+            raise MainGraduationRecordConflictError("mutation fence resolution index differs")
+        return resolution, envelope.reference
 
     def _assert_release_claim(self, record: MainReleaseClaim) -> None:
         path = (
@@ -1110,12 +1349,15 @@ class MainGraduationJournal:
             raise MainGraduationJournalError("resolution fence is missing")
         fence = cast(MainUnresolvedMutationFence, fence_prior[0])
         active = self._target_fence_path(fence)
-        if not active.exists():
+        closed = self._target_fence_closed_path(fence)
+        if closed.is_dir():
+            self._assert_closed_fence(fence, closed)
+            if active.exists():
+                shutil.rmtree(active)
             return
         current = self._read_target_fence_envelope(active, fence)
         if current.fence_digest != fence.fence_digest:
             raise MainGraduationRecordConflictError("target fence closure differs")
-        closed = self._target_fence_closed_path(fence)
         closed.parent.mkdir(parents=True, exist_ok=True)
         try:
             os.replace(active, closed)
@@ -1124,6 +1366,25 @@ class MainGraduationJournal:
             return
         except OSError as exc:
             raise MainGraduationJournalError("resolved target fence could not be closed") from exc
+
+    def _close_target_reservation_if_terminal(self, receipt: MainMutationReceipt) -> None:
+        """Remove only a reservation whose exact receipt is terminal."""
+        scope = MainBound(
+            repository_digest=receipt.repository_digest,
+            target_ref=receipt.target_ref,
+        )
+        active = self._target_fence_path(scope)
+        reservation = self._target_reservation_record_path(active)
+        if not reservation.is_file():
+            return
+        current = self._read_target_reservation(active)
+        if current.intent_digest != receipt.intent_digest:
+            raise MainGraduationRecordConflictError("terminal receipt reservation differs")
+        reservation.unlink()
+        _sync_directory(active)
+        if not self._target_fence_record_path(active).exists():
+            active.rmdir()
+            _sync_directory(active.parent)
 
     def _verify_phase_parent_resolution(self, intent: MainMutationIntent) -> None:
         if intent.parent_resolution_digest is None:
@@ -1320,6 +1581,14 @@ class MainGraduationJournal:
             if (
                 source_receipt.intent_digest != resolution.intent_digest
                 or source_receipt.outcome not in {"ambiguous", "reconciliation_required"}
+                or source_receipt.repository_digest != resolution.repository_digest
+                or source_receipt.target_ref != resolution.target_ref
+                or source_receipt.stage != fence.stage
+                or source_receipt.external_identity.identity_digest
+                != resolution.external_identity_digest
+                or source_receipt.lease_identity != resolution.lease_identity
+                or source_receipt.lease_digest != resolution.lease_digest
+                or resolution.resolved_at < source_receipt.observed_at
             ):
                 raise MainGraduationJournalError("mutation resolution receipt is not ambiguous")
             if resolution.outcome == "observed":
@@ -1339,6 +1608,12 @@ class MainGraduationJournal:
                 )
             claim = cast(MainReleaseClaim, claim_prior[0])
             auth = cast(MainReleaseAuthorization, auth_prior[0])
+            mutation_digest = getattr(receipt, "mutation_receipt_digest", None)
+            mutation_prior = (
+                self._read("mutation-receipt", mutation_digest)
+                if isinstance(mutation_digest, str)
+                else None
+            )
             if (
                 receipt.release_authorization_digest != auth.authorization_digest
                 or receipt.claim_digest != claim.claim_digest
@@ -1347,6 +1622,13 @@ class MainGraduationJournal:
                 or receipt.hold_nonce != claim.hold_nonce
                 or receipt.issuer_identity != claim.release_issuer_identity
                 or receipt.issuer_isolation_digest != claim.issuer_isolation_digest
+                or mutation_prior is None
+                or cast(MainMutationReceipt, mutation_prior[0]).operation_id != receipt.operation_id
+                or cast(MainMutationReceipt, mutation_prior[0]).stage != "release_transition"
+                or cast(MainMutationReceipt, mutation_prior[0]).release_authorization_digest
+                != receipt.release_authorization_digest
+                or cast(MainMutationReceipt, mutation_prior[0]).release_claim_digest
+                != receipt.claim_digest
             ):
                 raise MainGraduationJournalError("claimed transition binding differs")
 
@@ -2426,8 +2708,10 @@ class MainGraduationJournal:
             or record.target_ref != request.target_ref
         ):
             raise MainGraduationRecordConflictError("main lease evidence binding differs")
-        if request.requested_at >= record.expires_at:
+        self._assert_target_lease(record)
+        if not (record.acquired_at <= request.requested_at < record.expires_at):
             raise MainGraduationJournalError("main lease evidence has expired")
+        self._verify_lease_authority(record)
         return record
 
     def release_target_lease(
@@ -2530,17 +2814,90 @@ class MainGraduationJournal:
         if not path.is_dir():
             raise MainGraduationJournalError("target mutation fence index is malformed")
         try:
-            raw = self._target_fence_record_path(path).read_bytes()
-            envelope = _TargetFenceEnvelope.model_validate(
-                json.loads(raw.decode("utf-8"), object_pairs_hook=_strict_pairs)
-            )
-            if canonical_bytes(envelope) != raw:
-                raise ValueError("target fence index is noncanonical")
-            if self._read("mutation-fence-resolution", envelope.fence_digest) is not None:
-                return
+            fence_record = self._target_fence_record_path(path)
+            if fence_record.is_file():
+                raw = fence_record.read_bytes()
+                envelope = _TargetFenceEnvelope.model_validate(
+                    json.loads(raw.decode("utf-8"), object_pairs_hook=_strict_pairs)
+                )
+                if canonical_bytes(envelope) != raw:
+                    raise ValueError("target fence index is noncanonical")
+                fence = MainUnresolvedMutationFence.model_validate_json(
+                    self._store.read_bytes(envelope.reference)
+                )
+                if (
+                    envelope.target_scope_digest
+                    != main_target_scope_digest(repository_digest, target_ref)
+                    or fence.fence_digest != envelope.fence_digest
+                ):
+                    raise MainGraduationRecordConflictError("target fence binding differs")
+                resolution = self._read_fence_resolution_by_fence(fence.fence_digest)
+                if resolution is not None:
+                    self._verify_fence_authority(resolution[0], self._source_receipt(resolution[0]))
+                    return
+            else:
+                reservation = self._read_target_reservation(path)
+                if reservation.target_scope_digest != main_target_scope_digest(
+                    repository_digest, target_ref
+                ):
+                    raise MainGraduationRecordConflictError("target reservation binding differs")
+                receipt = self._read_receipt_for_intent(reservation.intent_digest)
+                if receipt is not None and receipt[0].outcome in {
+                    "applied", "already_applied", "rejected"
+                }:
+                    return
         except (OSError, ValueError, TypeError, UnicodeError, json.JSONDecodeError) as exc:
             raise MainGraduationJournalError("target mutation fence is unverifiable") from exc
         raise MainGraduationJournalError("target has an unresolved mutation fence")
+
+    def _read_receipt_for_intent(
+        self, intent_digest: str
+    ) -> tuple[MainMutationReceipt, ArtifactRef] | None:
+        path = self._phase_identity_path("mutation-receipt", intent_digest)
+        if not path.is_file():
+            return None
+        envelope = self._read_phase_envelope(path, "mutation-receipt", intent_digest)
+        data = self._store.read_bytes(envelope.reference)
+        if _digest_bytes(data) != envelope.reference.digest:
+            raise MainGraduationJournalError("mutation receipt identity artifact is malformed")
+        receipt = MainMutationReceipt.model_validate_json(data)
+        if (
+            receipt.intent_digest != intent_digest
+            or envelope.operation_id != receipt.operation_id
+            or canonical_bytes(receipt) != data
+        ):
+            raise MainGraduationRecordConflictError("mutation receipt identity differs")
+        return receipt, envelope.reference
+
+    def _source_receipt(
+        self, resolution: MainMutationFenceResolution
+    ) -> MainMutationReceipt:
+        prior = self._read("mutation-receipt", resolution.resolved_receipt_digest)
+        if prior is None:
+            raise MainGraduationJournalError("mutation resolution receipt is missing")
+        return cast(MainMutationReceipt, prior[0])
+
+    def _verify_lease_authority(self, record: MainLeaseEvidenceRecord) -> None:
+        verifier = self._phase_a_authority_verifier
+        if verifier is None:
+            if self._release_issuer_binding is not None:
+                raise MainGraduationJournalError(
+                    "protected-main Phase-A journal requires an injected authority verifier"
+                )
+            return
+        verifier.verify_lease_evidence(record)
+
+    def _verify_fence_authority(
+        self, resolution: MainMutationFenceResolution, source_receipt: MainMutationReceipt
+    ) -> None:
+        verifier = self._phase_a_authority_verifier
+        if verifier is None:
+            if self._release_issuer_binding is not None:
+                raise MainGraduationJournalError(
+                    "protected-main Phase-A journal requires an injected authority verifier"
+                )
+            return
+        verifier.verify_fence_resolution(resolution, source_receipt)
 
     def record_claimed_release_transition(
         self, record: MainClaimedReleaseTransitionReceipt
