@@ -8,7 +8,7 @@ import json
 import os
 import re
 from pathlib import Path
-from typing import Any, Literal, cast
+from typing import Any, Literal, Protocol, cast
 
 from avo_correlate.adapters.artifacts.filesystem import FilesystemArtifactStore
 from avo_correlate.contracts.base import ArtifactRef, StrictModel
@@ -21,6 +21,7 @@ from avo_correlate.contracts.main_graduation import (
     MainAttestationManifest,
     MainCompletionPackage,
     MainCompositionArtifact,
+    MainCompositionProof,
     MainDeltaManifest,
     MainGraduationAttempt,
     MainGraduationEligibilityRecord,
@@ -54,6 +55,17 @@ class MainGraduationRecordConflictError(MainGraduationJournalError):
     """A create-once key was already bound to different canonical bytes."""
 
 
+class _MainBaseReader(Protocol):
+    """Trusted controller capability used by the concrete composition authority."""
+
+    def fresh_main_base(self) -> object: ...
+
+
+_COMPOSITION_VERIFIER_ID = "avo_correlate.adapters.git.main_composition.MainCompositionAdapter"
+_COMPOSITION_VERIFIER_VERSION = "1"
+_BASE_OBSERVER_ID = "avo_correlate.adapters.git.main_composition.MainBaseReader"
+
+
 class _RunNonceEnvelope(StrictModel):
     """Canonical global one-use identity bound to the original local record ref."""
 
@@ -71,6 +83,7 @@ _MODELS: dict[str, type[StrictModel]] = {
     "source-package": MainSourcePackageBinding,
     "delta": MainDeltaManifest,
     "composition": MainCompositionArtifact,
+    "composition-proof": MainCompositionProof,
     "queue": MainQueueObservation,
     "protection": MainProtectionManifest,
     "attestations": MainAttestationManifest,
@@ -128,6 +141,10 @@ class MainGraduationJournal:
         *,
         artifact_store: FilesystemArtifactStore | None = None,
         release_issuer_binding: MainReleaseIssuerBinding | None = None,
+        policy_epoch: str | None = None,
+        composition_root: Path | None = None,
+        repository_digest: str | None = None,
+        base_reader: _MainBaseReader | None = None,
         max_record_bytes: int = 32 * 1024 * 1024,
     ) -> None:
         if max_record_bytes <= 0:
@@ -136,7 +153,31 @@ class MainGraduationJournal:
         self._indexes = self._root / "main-graduation-index"
         self._store = artifact_store or FilesystemArtifactStore(self._root / "artifacts")
         self._release_issuer_binding = release_issuer_binding
+        self._policy_epoch = policy_epoch or (
+            canonical_digest(
+                {
+                    "controller_config_digest": release_issuer_binding.controller_config_digest,
+                    "main_policy": "ordinary",
+                }
+            )
+            if release_issuer_binding is not None
+            else None
+        )
         self._max = max_record_bytes
+        capabilities = (composition_root, repository_digest, base_reader)
+        if any(value is not None for value in capabilities) and not all(
+            value is not None for value in capabilities
+        ):
+            raise ValueError(
+                "composition authority requires Git root, repository digest, and base reader"
+            )
+        self._composition_root = (
+            composition_root.resolve() if composition_root is not None else None
+        )
+        self._composition_repository_digest = repository_digest
+        self._composition_base_reader = base_reader
+        if self._policy_epoch is not None:
+            _check_digest(self._policy_epoch)
 
     @property
     def root(self) -> Path:
@@ -165,8 +206,13 @@ class MainGraduationJournal:
                 self._require_attempt_eligibility(cast(MainGraduationAttempt, checked))
             if kind == "source-package":
                 self._verify_source_package(cast(MainSourcePackageBinding, checked))
+            elif kind == "composition-proof":
+                self._verify_composition_proof(cast(MainCompositionProof, checked))
             elif kind == "plan":
+                index = self._indexes / kind / f"{operation_id.removeprefix('sha256:')}.json"
                 self._verify_plan_evidence(cast(MainGraduationPlan, checked))
+                if not index.is_file():
+                    self._verify_plan_composition(cast(MainGraduationPlan, checked))
             elif kind == "intent":
                 self._verify_intent_lease(cast(MainGraduationIntent, checked))
             elif kind == "preparation-authorization":
@@ -250,7 +296,14 @@ class MainGraduationJournal:
             if canonical_bytes(parsed) != data:
                 raise ValueError("main graduation index is not canonical JSON")
             return ArtifactRef.model_validate(parsed)
-        except (OSError, ValueError, TypeError, UnicodeError, json.JSONDecodeError) as exc:
+        except (
+            OSError,
+            ValueError,
+            TypeError,
+            AttributeError,
+            UnicodeError,
+            json.JSONDecodeError,
+        ) as exc:
             raise MainGraduationJournalError("main graduation index is malformed") from exc
 
     def _read(self, kind: str, key: str) -> tuple[StrictModel, ArtifactRef] | None:
@@ -277,6 +330,8 @@ class MainGraduationJournal:
                 self._verify_source_package(cast(MainSourcePackageBinding, record))
             elif kind == "plan":
                 self._verify_plan_evidence(cast(MainGraduationPlan, record))
+            elif kind == "composition-proof":
+                self._verify_composition_proof(cast(MainCompositionProof, record))
             elif kind == "intent":
                 self._verify_intent_lease(cast(MainGraduationIntent, record))
             elif kind == "preparation-authorization":
@@ -453,6 +508,7 @@ class MainGraduationJournal:
                 or source.reconciliation.target_head_commit != package.source_result_commit
             ):
                 raise ValueError("source package result differs from binding")
+            self._require_integration_target(source)
             if (
                 source.reconciliation.target_head_tree != package.source_result_tree
                 or source.reconciliation.target_first_parent != package.source_result_parent
@@ -501,6 +557,188 @@ class MainGraduationJournal:
         except (OSError, ValueError, TypeError, UnicodeError, json.JSONDecodeError) as exc:
             raise MainGraduationJournalError("source package or child is unverifiable") from exc
 
+    @staticmethod
+    def _require_integration_target(package: IntegrationCampaignEvidencePackage) -> None:
+        """Require one exact protected integration target across every closure edge."""
+
+        integration_ref = "refs/heads/integration"
+        if any(
+            target_ref != integration_ref
+            for target_ref in (
+                package.intent.target_ref,
+                package.bundle.snapshot.target_ref,
+                package.bundle.comparison.target_ref,
+                package.observation.base_ref,
+                package.reconciliation.target_ref,
+            )
+        ):
+            raise ValueError("source package integration target closure differs")
+
+    def _verify_plan_composition(self, plan: MainGraduationPlan) -> None:
+        """Recompute C2 with the internally rooted concrete authority.
+
+        This is called only before claiming a new plan index.  Reads of an
+        existing plan use :meth:`_verify_plan_composition_durable` and never
+        consult live Git state.
+        """
+        if (
+            self._composition_root is None
+            or self._composition_repository_digest is None
+            or self._composition_base_reader is None
+        ):
+            raise MainGraduationJournalError(
+                "plan requires a controller-rooted composition authority"
+            )
+        proof = getattr(plan, "composition_proof", None)
+        reference = getattr(plan, "composition_proof_artifact", None)
+        if proof is None or reference is None:
+            raise MainGraduationJournalError(
+                "plan requires an exact durable composition proof"
+            )
+        try:
+            from avo_correlate.adapters.git.main_composition import MainCompositionAdapter
+
+            authority = MainCompositionAdapter(
+                self._composition_root,
+                self,
+                repository_digest=self._composition_repository_digest,
+                base_reader=self._composition_base_reader,
+                controller_config_digest=plan.controller_config_digest,
+                policy_epoch=plan.policy_epoch,
+            )
+            expected = authority.verify(plan.package, plan.delta, plan.composition)
+        except Exception as exc:
+            if isinstance(exc, MainGraduationJournalError):
+                raise
+            raise MainGraduationJournalError(
+                "controller-rooted composition authority rejected plan"
+            ) from exc
+        if canonical_bytes(expected) != canonical_bytes(proof):
+            raise MainGraduationJournalError(
+                "plan composition proof differs from rooted recomputation"
+            )
+        self._verify_composition_proof(expected, plan=plan)
+        durable = self._record("composition-proof", expected)
+        if durable != reference:
+            raise MainGraduationJournalError("plan composition proof reference differs")
+
+    def _authorize_composition(
+        self,
+        source: MainSourcePackageBinding,
+        delta: MainDeltaManifest,
+        composition: MainCompositionArtifact,
+        *,
+        controller_config_digest: str,
+        policy_epoch: str,
+    ) -> tuple[MainCompositionProof, ArtifactRef]:
+        """Private adapter path: recompute, then create the durable proof."""
+
+        if (
+            self._composition_root is None
+            or self._composition_repository_digest is None
+            or self._composition_base_reader is None
+        ):
+            raise MainGraduationJournalError(
+                "composition authority lacks trusted Git/base capabilities"
+            )
+        try:
+            from avo_correlate.adapters.git.main_composition import MainCompositionAdapter
+
+            authority = MainCompositionAdapter(
+                self._composition_root,
+                self,
+                repository_digest=self._composition_repository_digest,
+                base_reader=self._composition_base_reader,
+                controller_config_digest=controller_config_digest,
+                policy_epoch=policy_epoch,
+            )
+            proof = authority.verify(source, delta, composition)
+            self._verify_composition_proof(proof)
+            reference = self._record("composition-proof", proof)
+            return proof, reference
+        except MainGraduationJournalError:
+            raise
+        except Exception as exc:
+            raise MainGraduationJournalError(
+                "controller-rooted composition authority rejected composition"
+            ) from exc
+
+    def _verify_plan_composition_durable(self, plan: MainGraduationPlan) -> None:
+        """Validate an indexed proof using immutable records only."""
+
+        proof = getattr(plan, "composition_proof", None)
+        reference = getattr(plan, "composition_proof_artifact", None)
+        if proof is None or reference is None:
+            raise MainGraduationJournalError("plan requires an exact durable composition proof")
+        durable = self._read("composition-proof", plan.operation_id)
+        if durable is None:
+            raise MainGraduationJournalError("plan requires a durable composition proof record")
+        if canonical_bytes(durable[0]) != canonical_bytes(proof):
+            raise MainGraduationJournalError("plan composition proof differs from durable record")
+        if durable[1] != reference:
+            raise MainGraduationJournalError("plan composition proof reference differs")
+        self._verify_composition_proof(proof, plan=plan)
+
+    def _verify_composition_proof(
+        self, proof: MainCompositionProof, *, plan: MainGraduationPlan | None = None
+    ) -> None:
+        """Validate proof content and controller-rooted implementation identity."""
+
+        try:
+            payload = canonical_bytes(proof)
+            checked = MainCompositionProof.model_validate_json(payload)
+        except (TypeError, ValueError, json.JSONDecodeError) as exc:
+            raise MainGraduationJournalError("composition proof is invalid") from exc
+        if canonical_bytes(checked) != payload:
+            raise MainGraduationJournalError("composition proof is not canonical")
+        if (
+            checked.verifier_identity != _COMPOSITION_VERIFIER_ID
+            or checked.verifier_version != _COMPOSITION_VERIFIER_VERSION
+            or checked.base_observer_identity != _BASE_OBSERVER_ID
+            or checked.git_root_digest != checked.repository_digest
+        ):
+            raise MainGraduationJournalError("composition proof implementation root differs")
+        root = self._release_issuer_binding
+        if root is None:
+            raise MainGraduationJournalError("composition proof lacks controller root")
+        if (
+            checked.operation_id != root.operation_id
+            or checked.repository_digest != root.repository_digest
+            or checked.target_ref != root.target_ref
+            or checked.controller_config_digest != root.controller_config_digest
+            or checked.source_issuer != root.trusted_source_issuer
+            or checked.source_domain != root.trusted_source_domain
+        ):
+            raise MainGraduationJournalError("composition proof differs from controller root")
+        if self._policy_epoch is not None and checked.policy_epoch != self._policy_epoch:
+            raise MainGraduationJournalError(
+                "composition proof policy epoch differs from controller root"
+            )
+        if plan is not None and (
+            checked.operation_id != plan.operation_id
+            or checked.repository_digest != plan.repository_digest
+            or checked.target_ref != plan.target_ref
+            or checked.controller_config_digest != plan.controller_config_digest
+            or checked.policy_epoch != plan.policy_epoch
+            or checked.package_digest != plan.package.package_digest
+            or checked.source_operation_id != plan.package.source_operation_id
+            or checked.source_result_commit != plan.package.source_result_commit
+            or checked.source_result_parent != plan.package.source_result_parent
+            or checked.source_result_tree != plan.package.source_result_tree
+            or checked.delta_digest != plan.delta.delta_digest
+            or checked.path_manifest_digest != plan.delta.path_manifest_digest
+            or checked.ordinary_risk_digest != plan.delta.ordinary_risk_digest
+            or checked.composition_digest != plan.composition.composition_digest
+            or checked.base_commit != plan.composition.base_commit
+            or checked.base_tree != plan.composition.base_tree
+            or checked.candidate_commit != plan.composition.candidate_commit
+            or checked.candidate_tree != plan.composition.candidate_tree
+            or checked.candidate_parent_commit != plan.composition.candidate_parent_commit
+            or checked.candidate_ref != plan.composition.candidate_ref
+            or checked.retention_ref != plan.composition.retention_ref
+        ):
+            raise MainGraduationJournalError("composition proof does not bind exact plan")
+
     def _verify_plan_evidence(self, plan: MainGraduationPlan) -> None:
         """Plans may only cite the raw package and its typed immutable children."""
         durable_source = self._read("source-package", plan.operation_id)
@@ -547,6 +785,20 @@ class MainGraduationJournal:
                 raise MainGraduationJournalError("plan evidence artifact is unavailable") from exc
             if len(raw) != reference.size_bytes or _digest_bytes(raw) != reference.digest:
                 raise MainGraduationJournalError("plan evidence artifact is tampered")
+        durable_delta = self._read("delta", plan.operation_id)
+        durable_composition = self._read("composition", plan.operation_id)
+        if durable_delta is None or durable_composition is None:
+            raise MainGraduationJournalError(
+                "plan requires durable exact delta and composition records"
+            )
+        if (
+            canonical_bytes(durable_delta[0]) != canonical_bytes(plan.delta)
+            or canonical_bytes(durable_composition[0]) != canonical_bytes(plan.composition)
+        ):
+            raise MainGraduationJournalError(
+                "plan delta/composition differs from durable records"
+            )
+        self._verify_plan_composition_durable(plan)
 
     def _require_controller_issuer_binding(self, binding: MainReleaseIssuerBinding) -> None:
         """Accept authority only when it matches the journal's controller-owned root."""
@@ -1280,6 +1532,11 @@ class MainGraduationJournal:
 
     def read_composition(self, operation_id: str) -> tuple[StrictModel, ArtifactRef] | None:
         return self._read("composition", operation_id)
+
+    def read_composition_proof(
+        self, operation_id: str
+    ) -> tuple[StrictModel, ArtifactRef] | None:
+        return self._read("composition-proof", operation_id)
 
     def record_queue_observation(self, record: MainQueueObservation) -> ArtifactRef:
         return self._record("queue", record)

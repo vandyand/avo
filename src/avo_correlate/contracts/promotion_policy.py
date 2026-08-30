@@ -202,6 +202,8 @@ class PromotionPolicy:
 
     CONSTITUTIONAL_EXACT = frozenset(
         {
+            ".gitattributes",
+            ".gitmodules",
             "pyproject.toml",
             "docs/roadmap.md",
             "uv.lock",
@@ -261,11 +263,13 @@ class PromotionPolicy:
     )
     CONSTITUTIONAL_AUTHORITY_PREFIXES = (
         "src/avo_correlate/adapters/hosted_git/",
+        "src/avo_correlate/adapters/git/",
     )
     CONSTITUTIONAL_TERMS = (
         "admission",
         "budget",
         "controller",
+        "graduation",
         "lifecycle",
         "policy",
         "promotion",

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from types import SimpleNamespace
+from typing import Any
 
 import pytest
 from pydantic import ValidationError
@@ -23,6 +25,7 @@ from avo_correlate.contracts.main_graduation import (
     MainCheckObservation,
     MainCompletionPackage,
     MainCompositionArtifact,
+    MainCompositionProof,
     MainDeltaManifest,
     MainGraduationAttempt,
     MainGraduationEligibilityRecord,
@@ -48,7 +51,8 @@ from avo_correlate.contracts.main_graduation import (
     main_record_bytes,
     main_record_digest,
 )
-from avo_correlate.domain.canonical import canonical_digest
+from avo_correlate.contracts.promotion_policy import path_manifest_digest
+from avo_correlate.domain.canonical import canonical_bytes, canonical_digest
 
 # This file intentionally exercises journal seams and model validators directly.
 # Keep those focused white-box tests type-checked without making private seams public.
@@ -108,7 +112,8 @@ def composition() -> MainCompositionArtifact:
         candidate_tree=TREE,
         candidate_parent_commit=BASE,
         composition_digest=D2,
-        candidate_ref="refs/heads/avo/candidate/" + "a" * 64,
+        candidate_ref="refs/heads/avo/candidate/" + "1" * 64,
+        retention_ref="refs/avo/main-composition/" + "1" * 64,
     )
 
 
@@ -151,16 +156,175 @@ def plan() -> MainGraduationPlan:
     )
     comp = composition()
     binding = issuer()
+    proof = MainCompositionProof.model_construct(
+        operation_id=D,
+        repository_digest=R,
+        target_ref="refs/heads/main",
+        package_digest=D,
+        delta_digest=D2,
+        composition_digest=comp.composition_digest,
+        source_operation_id=D2,
+        source_result_commit=HEAD,
+        source_result_parent=BASE,
+        source_result_tree=TREE,
+        path_manifest_digest=D,
+        ordinary_risk_digest=D,
+        base_commit=BASE,
+        base_tree=TREE,
+        candidate_commit=HEAD,
+        candidate_tree=TREE,
+        candidate_parent_commit=BASE,
+        candidate_ref=comp.candidate_ref,
+        retention_ref=comp.retention_ref,
+        controller_config_digest=D2,
+        policy_epoch=D,
+        source_issuer="source-controller",
+        source_domain="integration-campaign",
+        verifier_identity="avo_correlate.adapters.git.main_composition.MainCompositionAdapter",
+        verifier_version="1",
+        base_observer_identity="avo_correlate.adapters.git.main_composition.MainBaseReader",
+        git_root_digest=R,
+        proof_digest=D,
+    )
+    proof_bytes = canonical_bytes(proof)
+    proof_ref = ref(
+        canonical_digest(proof),
+        role="main-graduation-composition-proof",
+        media_type="application/vnd.avo.main-graduation-composition-proof+json",
+    ).model_copy(update={"size_bytes": len(proof_bytes)})
     return MainGraduationPlan.model_construct(
         operation_id=D,
         repository_digest=R,
         package=package,
         delta=delta,
         composition=comp,
+        composition_proof=proof,
+        composition_proof_artifact=proof_ref,
         policy_epoch=D,
         controller_config_digest=D2,
         release_issuer_binding=binding,
         evidence_artifacts=[package.package_artifact, *package.child_artifacts],
+    )
+
+
+def authority_plan() -> MainGraduationPlan:
+    package_artifact = ref(
+        role="integration-campaign-package",
+        media_type="application/vnd.avo.integration-campaign+json",
+    )
+    package = MainSourcePackageBinding.model_validate(
+        {
+            "operation_id": D,
+            "source_operation_id": D2,
+            "repository_digest": R,
+            "package_digest": D,
+            "package_artifact": package_artifact,
+            "child_artifacts": [ref(D2, role="source-child")],
+            "source_result_commit": HEAD,
+            "source_result_tree": TREE,
+            "source_result_parent": BASE,
+            "source_issuer": "source-controller",
+        }
+    )
+    delta_values = {
+        "schema_version": 1,
+        "repository_digest": R,
+        "target_ref": "refs/heads/main",
+        "operation_id": D,
+        "package_digest": D,
+        "source_result_commit": HEAD,
+        "source_result_parent": BASE,
+        "source_result_tree": TREE,
+        "changed_paths": ["src/feature.py"],
+        "path_manifest_digest": path_manifest_digest(["src/feature.py"]),
+        "ordinary_risk_digest": canonical_digest(
+            {
+                "ordinary_risk": "ordinary",
+                "changed_paths": ["src/feature.py"],
+                "path_manifest_digest": path_manifest_digest(["src/feature.py"]),
+            }
+        ),
+        "ordinary_risk": "ordinary",
+        "deploy_performed": False,
+    }
+    delta = MainDeltaManifest.model_validate(
+        delta_values | {"delta_digest": canonical_digest(delta_values)}
+    )
+    composition_values = {
+        "schema_version": 1,
+        "repository_digest": R,
+        "target_ref": "refs/heads/main",
+        "operation_id": D,
+        "package_digest": D,
+        "delta_digest": delta.delta_digest,
+        "base_commit": BASE,
+        "base_tree": TREE,
+        "candidate_commit": HEAD,
+        "candidate_tree": TREE,
+        "candidate_parent_commit": BASE,
+        "candidate_ref": "refs/heads/avo/candidate/" + "1" * 64,
+        "retention_ref": "refs/avo/main-composition/" + "1" * 64,
+        "deploy_performed": False,
+    }
+    composition = MainCompositionArtifact.model_validate(
+        composition_values | {"composition_digest": canonical_digest(composition_values)}
+    )
+    proof_values = {
+        "schema_version": 1,
+        "repository_digest": R,
+        "target_ref": "refs/heads/main",
+        "operation_id": D,
+        "source_operation_id": D2,
+        "package_digest": D,
+        "source_result_commit": HEAD,
+        "source_result_parent": BASE,
+        "source_result_tree": TREE,
+        "delta_digest": delta.delta_digest,
+        "path_manifest_digest": delta.path_manifest_digest,
+        "ordinary_risk_digest": delta.ordinary_risk_digest,
+        "composition_digest": composition.composition_digest,
+        "base_commit": BASE,
+        "base_tree": TREE,
+        "candidate_commit": HEAD,
+        "candidate_tree": TREE,
+        "candidate_parent_commit": BASE,
+        "candidate_ref": composition.candidate_ref,
+        "retention_ref": composition.retention_ref,
+        "controller_config_digest": D2,
+        "policy_epoch": D,
+        "source_issuer": "source-controller",
+        "source_domain": "integration-campaign",
+        "verifier_identity": "avo_correlate.adapters.git.main_composition.MainCompositionAdapter",
+        "verifier_version": "1",
+        "base_observer_identity": "avo_correlate.adapters.git.main_composition.MainBaseReader",
+        "git_root_digest": R,
+    }
+    proof = MainCompositionProof.model_validate(
+        {**proof_values, "proof_digest": canonical_digest(proof_values)}
+    )
+    proof_bytes = canonical_bytes(proof)
+    proof_ref = ArtifactRef(
+        digest=canonical_digest(proof),
+        size_bytes=len(proof_bytes),
+        media_type="application/vnd.avo.main-graduation-composition-proof+json",
+        role="main-graduation-composition-proof",
+        created_at=NOW,
+    )
+    return MainGraduationPlan.model_validate(
+        {
+            "operation_id": D,
+            "repository_digest": R,
+            "target_ref": "refs/heads/main",
+            "package": package,
+            "delta": delta,
+            "composition": composition,
+            "composition_proof": proof,
+            "composition_proof_artifact": proof_ref,
+            "policy_epoch": D,
+            "controller_config_digest": D2,
+            "release_issuer_binding": issuer(),
+            "evidence_artifacts": [package_artifact],
+        }
     )
 
 
@@ -543,9 +707,37 @@ def test_simple_contract_validators_cover_success_and_failure_edges() -> None:
         source_result_tree=TREE,
         source_result_parent=BASE,
         changed_paths=["src/feature.py"],
-        path_manifest_digest=D,
-        delta_digest=D2,
-        ordinary_risk_digest=D,
+        path_manifest_digest=path_manifest_digest(["src/feature.py"]),
+        delta_digest=canonical_digest(
+            {
+                "schema_version": 1,
+                "repository_digest": R,
+                "target_ref": "refs/heads/main",
+                "operation_id": D,
+                "package_digest": D,
+                "source_result_commit": HEAD,
+                "source_result_parent": BASE,
+                "source_result_tree": TREE,
+                "changed_paths": ["src/feature.py"],
+                "path_manifest_digest": path_manifest_digest(["src/feature.py"]),
+                "ordinary_risk_digest": canonical_digest(
+                    {
+                        "ordinary_risk": "ordinary",
+                        "changed_paths": ["src/feature.py"],
+                        "path_manifest_digest": path_manifest_digest(["src/feature.py"]),
+                    }
+                ),
+                "ordinary_risk": "ordinary",
+                "deploy_performed": False,
+            }
+        ),
+        ordinary_risk_digest=canonical_digest(
+            {
+                "ordinary_risk": "ordinary",
+                "changed_paths": ["src/feature.py"],
+                "path_manifest_digest": path_manifest_digest(["src/feature.py"]),
+            }
+        ),
     )
     assert delta.changed_paths == ["src/feature.py"]
     with pytest.raises(ValidationError):
@@ -560,8 +752,26 @@ def test_simple_contract_validators_cover_success_and_failure_edges() -> None:
         candidate_commit=HEAD,
         candidate_tree=TREE,
         candidate_parent_commit=BASE,
-        composition_digest=D2,
-        candidate_ref="refs/heads/avo/candidate/" + "a" * 64,
+        composition_digest=canonical_digest(
+            {
+                "schema_version": 1,
+                "repository_digest": R,
+                "target_ref": "refs/heads/main",
+                "operation_id": D,
+                "package_digest": D,
+                "delta_digest": D2,
+                "base_commit": BASE,
+                "base_tree": TREE,
+                "candidate_commit": HEAD,
+                "candidate_tree": TREE,
+                "candidate_parent_commit": BASE,
+                "candidate_ref": "refs/heads/avo/candidate/" + "1" * 64,
+                "retention_ref": "refs/avo/main-composition/" + "1" * 64,
+                "deploy_performed": False,
+            }
+        ),
+        candidate_ref="refs/heads/avo/candidate/" + "1" * 64,
+        retention_ref="refs/avo/main-composition/" + "1" * 64,
     )
     assert valid_comp.candidate_parent_commit == BASE
     with pytest.raises(ValidationError):
@@ -855,6 +1065,74 @@ def test_journal_wrappers_and_low_level_guards(tmp_path: Path) -> None:
     with pytest.raises(ValueError):
         _strict_pairs([("x", 1), ("x", 2)])
     _sync_directory(tmp_path)
+
+
+def test_composition_verifier_binding_is_not_public(tmp_path: Path) -> None:
+    journal = MainGraduationJournal(tmp_path)
+    assert not hasattr(journal, "bind_composition_verifier")
+    with pytest.raises(TypeError):
+        MainGraduationJournal(tmp_path / "other", composition_verifier=object())  # type: ignore[call-arg]
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        "intent.target_ref",
+        "bundle.snapshot.target_ref",
+        "bundle.comparison.target_ref",
+        "observation.base_ref",
+        "reconciliation.target_ref",
+    ],
+)
+def test_journal_requires_exact_five_edge_integration_target_closure(field: str) -> None:
+    package: Any = SimpleNamespace(
+        intent=SimpleNamespace(target_ref="refs/heads/integration"),
+        bundle=SimpleNamespace(
+            snapshot=SimpleNamespace(target_ref="refs/heads/integration"),
+            comparison=SimpleNamespace(target_ref="refs/heads/integration"),
+        ),
+        observation=SimpleNamespace(base_ref="refs/heads/integration"),
+        reconciliation=SimpleNamespace(target_ref="refs/heads/integration"),
+    )
+    owner = package
+    parts = field.split(".")
+    for part in parts[:-1]:
+        owner = getattr(owner, part)
+    setattr(owner, parts[-1], "refs/heads/main")
+    with pytest.raises(ValueError, match="integration target closure"):
+        MainGraduationJournal._require_integration_target(package)
+
+
+def test_new_plan_requires_verifier_even_after_hand_recording_c2(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    value = authority_plan()
+    journal = MainGraduationJournal(tmp_path)
+    monkeypatch.setattr(journal, "_verify_plan_evidence", lambda _plan: None)
+    with pytest.raises(MainGraduationJournalError, match="composition authority"):
+        journal.record_plan(value)
+    assert not (tmp_path / "main-graduation-index" / "plan").exists()
+
+
+def test_hand_recorded_valid_looking_c2_cannot_bypass_plan_authority(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    value = authority_plan()
+    journal = MainGraduationJournal(tmp_path)
+    monkeypatch.setattr(journal, "_verify_source_package", lambda _source: None)
+    monkeypatch.setattr(journal, "_verify_plan_evidence", lambda _plan: None)
+    journal.record_source_package(value.package)
+    journal.record_delta(value.delta)
+    journal.record_composition(value.composition)
+    with pytest.raises(MainGraduationJournalError, match="composition authority"):
+        journal.record_plan(value)
+
+
+def test_restart_has_no_live_verifier_rebind_seam(tmp_path: Path) -> None:
+    first = MainGraduationJournal(tmp_path)
+    second = MainGraduationJournal(tmp_path)
+    assert not hasattr(first, "bind_composition_verifier")
+    assert not hasattr(second, "bind_composition_verifier")
 
 
 def test_journal_ledger_indexes_and_tamper_detection(tmp_path: Path) -> None:

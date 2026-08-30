@@ -144,6 +144,9 @@ def test_low_allow_and_ordinary_allow_with_independent_domains() -> None:
     [
         (["DOCS/guide.md", "TESTS/test_feature.py"], RiskClass.LOW),
         (["README.md", "src/feature.py"], RiskClass.ORDINARY),
+        ([".gitattributes"], RiskClass.CONSTITUTIONAL),
+        ([".gitmodules"], RiskClass.CONSTITUTIONAL),
+        (["src/avo_correlate/adapters/git/main_composition.py"], RiskClass.CONSTITUTIONAL),
         ([".AGENTS/SKILLS/AVO-ROADMAP/SKILL.md"], RiskClass.CONSTITUTIONAL),
         (["UV.LOCK"], RiskClass.CONSTITUTIONAL),
         (["services/api/requirements-dev.txt"], RiskClass.CONSTITUTIONAL),

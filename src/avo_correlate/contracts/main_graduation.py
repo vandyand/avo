@@ -27,7 +27,11 @@ from avo_correlate.contracts.base import (
     StrictModel,
     require_aware_datetime,
 )
-from avo_correlate.contracts.promotion_policy import PromotionPolicy, RiskClass
+from avo_correlate.contracts.promotion_policy import (
+    PromotionPolicy,
+    RiskClass,
+    path_manifest_digest,
+)
 from avo_correlate.domain.canonical import canonical_bytes, canonical_digest
 
 GitObject = Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{40}(?:[0-9a-f]{24})?$")]
@@ -46,6 +50,14 @@ def _paths(paths: list[str]) -> list[str]:
     if PromotionPolicy.derive_risk(paths) is not RiskClass.ORDINARY:
         raise ValueError("main delta paths must classify as ordinary")
     return paths
+
+
+def _main_candidate_ref(operation_id: str) -> str:
+    return f"refs/heads/avo/candidate/{operation_id.removeprefix('sha256:')}"
+
+
+def _main_retention_ref(operation_id: str) -> str:
+    return f"refs/avo/main-composition/{operation_id.removeprefix('sha256:')}"
 
 
 def _aware(value: datetime) -> datetime:
@@ -183,6 +195,24 @@ class MainDeltaManifest(MainBound):
     def validate_delta(self) -> MainDeltaManifest:
         if self.source_result_parent == self.source_result_commit:
             raise ValueError("delta must have a distinct sole parent")
+        if PromotionPolicy.derive_risk(self.changed_paths) is not RiskClass.ORDINARY:
+            raise ValueError("main delta paths must classify as ordinary")
+        expected_path = path_manifest_digest(self.changed_paths)
+        if self.path_manifest_digest != expected_path:
+            raise ValueError("delta path manifest digest mismatch")
+        expected_risk = canonical_digest(
+            {
+                "ordinary_risk": "ordinary",
+                "changed_paths": self.changed_paths,
+                "path_manifest_digest": self.path_manifest_digest,
+            }
+        )
+        if self.ordinary_risk_digest != expected_risk:
+            raise ValueError("delta ordinary risk digest mismatch")
+        if self.delta_digest != canonical_digest(
+            self.model_dump(exclude={"delta_digest"}, mode="json")
+        ):
+            raise ValueError("delta digest mismatch")
         return self
 
 
@@ -200,6 +230,7 @@ class MainCompositionArtifact(MainBound):
     candidate_parent_commit: GitObject
     composition_digest: Sha256Digest
     candidate_ref: NonEmptyString
+    retention_ref: NonEmptyString
     deploy_performed: Literal[False] = False
 
     @model_validator(mode="after")
@@ -208,6 +239,68 @@ class MainCompositionArtifact(MainBound):
             raise ValueError("composed candidate must be parented by fresh main base")
         if self.candidate_commit == self.base_commit:
             raise ValueError("composed candidate must be a new commit")
+        if self.candidate_ref != _main_candidate_ref(self.operation_id):
+            raise ValueError("composed candidate ref is outside controller namespace")
+        if self.retention_ref != _main_retention_ref(self.operation_id):
+            raise ValueError("composition retention ref is outside controller namespace")
+        if self.composition_digest != canonical_digest(
+            self.model_dump(exclude={"composition_digest"}, mode="json")
+        ):
+            raise ValueError("composition digest mismatch")
+        return self
+
+
+class MainCompositionProof(MainBound):
+    """Durable, controller-rooted proof of the exact C2 composition.
+
+    The proof is intentionally data, rather than a verifier object.  A journal
+    can therefore validate it after restart without importing or trusting a
+    caller supplied implementation.  The implementation and base-observer
+    identities are allow-listed by the journal's controller root.
+    """
+
+    schema_version: Literal[1] = 1
+    operation_id: Sha256Digest
+    source_operation_id: Sha256Digest
+    package_digest: Sha256Digest
+    source_result_commit: GitObject
+    source_result_parent: GitObject
+    source_result_tree: GitObject
+    delta_digest: Sha256Digest
+    path_manifest_digest: Sha256Digest
+    ordinary_risk_digest: Sha256Digest
+    composition_digest: Sha256Digest
+    base_commit: GitObject
+    base_tree: GitObject
+    candidate_commit: GitObject
+    candidate_tree: GitObject
+    candidate_parent_commit: GitObject
+    candidate_ref: NonEmptyString
+    retention_ref: NonEmptyString
+    controller_config_digest: Sha256Digest
+    policy_epoch: Sha256Digest
+    source_issuer: NonEmptyString
+    source_domain: Literal["integration-campaign"] = "integration-campaign"
+    verifier_identity: NonEmptyString
+    verifier_version: NonEmptyString
+    base_observer_identity: NonEmptyString
+    git_root_digest: Sha256Digest
+    proof_digest: Sha256Digest
+
+    @model_validator(mode="after")
+    def validate_proof(self) -> MainCompositionProof:
+        if self.source_result_parent == self.source_result_commit:
+            raise ValueError("composition proof requires a distinct sole parent")
+        if self.candidate_parent_commit != self.base_commit:
+            raise ValueError("composition proof candidate parent differs from base")
+        if self.candidate_ref != _main_candidate_ref(self.operation_id):
+            raise ValueError("composition proof candidate ref is outside controller namespace")
+        if self.retention_ref != _main_retention_ref(self.operation_id):
+            raise ValueError("composition proof retention ref is outside controller namespace")
+        if self.proof_digest != canonical_digest(
+            self.model_dump(exclude={"proof_digest"}, mode="json")
+        ):
+            raise ValueError("composition proof digest mismatch")
         return self
 
 
@@ -380,6 +473,10 @@ class MainGraduationPlan(MainBound):
     composition: MainCompositionArtifact = Field(
         validation_alias=AliasChoices("composition", "composition_artifact")
     )
+    composition_proof: MainCompositionProof
+    composition_proof_artifact: ArtifactRef = Field(
+        validation_alias=AliasChoices("composition_proof_artifact", "composition_proof_ref")
+    )
     policy_epoch: Sha256Digest
     controller_config_digest: Sha256Digest
     release_issuer_binding: MainReleaseIssuerBinding
@@ -406,6 +503,12 @@ class MainGraduationPlan(MainBound):
             raise ValueError("plan source package binding differs")
         if self.composition.delta_digest != self.delta.delta_digest:
             raise ValueError("plan composition delta differs")
+        if (
+            self.delta.source_result_commit != self.package.source_result_commit
+            or self.delta.source_result_tree != self.package.source_result_tree
+            or self.delta.source_result_parent != self.package.source_result_parent
+        ):
+            raise ValueError("plan delta source differs from package result")
         binding = self.release_issuer_binding
         if (
             binding.operation_id != self.operation_id
@@ -419,6 +522,26 @@ class MainGraduationPlan(MainBound):
         refs = {item.digest for item in self.evidence_artifacts}
         if len(refs) != len(self.evidence_artifacts):
             raise ValueError("plan evidence artifacts must be unique")
+        proof = self.composition_proof
+        if (
+            proof.operation_id != self.operation_id
+            or proof.repository_digest != self.repository_digest
+            or proof.target_ref != self.target_ref
+            or proof.package_digest != self.package.package_digest
+            or proof.delta_digest != self.delta.delta_digest
+            or proof.composition_digest != self.composition.composition_digest
+        ):
+            raise ValueError("plan composition proof binding differs")
+        proof_bytes = canonical_bytes(proof)
+        if (
+            self.composition_proof_artifact.digest != canonical_digest(proof)
+            or self.composition_proof_artifact.size_bytes != len(proof_bytes)
+            or self.composition_proof_artifact.role
+            != "main-graduation-composition-proof"
+            or self.composition_proof_artifact.media_type
+            != "application/vnd.avo.main-graduation-composition-proof+json"
+        ):
+            raise ValueError("plan composition proof artifact is not content-bound")
         return self
 
 
@@ -1207,6 +1330,7 @@ __all__ = [
     "MainCheckObservation",
     "MainCompletionPackage",
     "MainCompositionArtifact",
+    "MainCompositionProof",
     "MainDeltaManifest",
     "MainGraduationAttempt",
     "MainGraduationEligibilityRecord",
