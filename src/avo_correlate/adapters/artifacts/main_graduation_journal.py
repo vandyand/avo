@@ -906,6 +906,15 @@ class MainGraduationJournal:
     def _cas_target_mutation_reservation(
         self, intent: MainMutationIntent, reference: ArtifactRef
     ) -> None:
+        prior_receipt = self._read_receipt_for_intent(intent.intent_digest)
+        if prior_receipt is not None:
+            if prior_receipt[0].outcome in {"applied", "already_applied", "rejected"}:
+                raise MainGraduationRecordConflictError(
+                    "mutation intent already has a terminal receipt; dispatch is prohibited"
+                )
+            raise MainGraduationJournalError(
+                "ambiguous mutation receipt has no durable target reservation"
+            )
         path = self._target_fence_path(intent)
         reservation_path = self._target_reservation_record_path(path)
         envelope = _TargetMutationReservationEnvelope(
@@ -975,6 +984,7 @@ class MainGraduationJournal:
                     return
                 raise MainGraduationRecordConflictError("target mutation reservation differs")
         temporary: Path | None = None
+        published = False
         try:
             temporary = Path(tempfile.mkdtemp(prefix=".tmp-", dir=str(path.parent)))
             temporary_reservation = self._target_reservation_record_path(temporary)
@@ -984,16 +994,42 @@ class MainGraduationJournal:
                 os.fsync(handle.fileno())
             _sync_directory(temporary)
             os.replace(temporary, path)
+            published = True
             _sync_directory(path.parent)
-        except FileExistsError:
-            if temporary is not None:
-                with suppress(OSError):
-                    shutil.rmtree(temporary)
-            raise MainGraduationRecordConflictError("target mutation reservation raced") from None
         except OSError as exc:
             if temporary is not None:
                 with suppress(OSError):
                     shutil.rmtree(temporary)
+            # On Windows, replacing a directory which appeared concurrently
+            # can surface as a generic OSError rather than FileExistsError.
+            # Inspect the winner before classifying the race, but never remove
+            # or overwrite it.  An exact winner is safe to reuse; an occupied
+            # or unverifiable slot remains fail-closed.
+            if not published and path.is_dir() and reservation_path.is_file():
+                try:
+                    current = self._read_target_reservation(path)
+                    exact = (
+                        current.operation_id == intent.operation_id
+                        and current.intent_digest == intent.intent_digest
+                        and self._store.read_bytes(current.reference)
+                        == canonical_bytes(intent)
+                    )
+                except (
+                    MainGraduationJournalError,
+                    OSError,
+                    ValueError,
+                    TypeError,
+                    UnicodeError,
+                    json.JSONDecodeError,
+                ) as inspect_exc:
+                    raise MainGraduationJournalError(
+                        "target mutation reservation race is unverifiable"
+                    ) from inspect_exc
+                if exact:
+                    return
+                raise MainGraduationRecordConflictError(
+                    "target mutation reservation raced"
+                ) from None
             raise MainGraduationJournalError(
                 "target mutation reservation was not durably indexed"
             ) from exc
@@ -2880,11 +2916,9 @@ class MainGraduationJournal:
     def _verify_lease_authority(self, record: MainLeaseEvidenceRecord) -> None:
         verifier = self._phase_a_authority_verifier
         if verifier is None:
-            if self._release_issuer_binding is not None:
-                raise MainGraduationJournalError(
-                    "protected-main Phase-A journal requires an injected authority verifier"
-                )
-            return
+            raise MainGraduationJournalError(
+                "Phase-A journal requires an injected authority verifier"
+            )
         verifier.verify_lease_evidence(record)
 
     def _verify_fence_authority(
@@ -2892,11 +2926,9 @@ class MainGraduationJournal:
     ) -> None:
         verifier = self._phase_a_authority_verifier
         if verifier is None:
-            if self._release_issuer_binding is not None:
-                raise MainGraduationJournalError(
-                    "protected-main Phase-A journal requires an injected authority verifier"
-                )
-            return
+            raise MainGraduationJournalError(
+                "Phase-A journal requires an injected authority verifier"
+            )
         verifier.verify_fence_resolution(resolution, source_receipt)
 
     def record_claimed_release_transition(

@@ -17,6 +17,7 @@ from typing import Any, cast
 
 import pytest
 
+import avo_correlate.adapters.artifacts.main_graduation_journal as journal_module
 from avo_correlate.adapters.artifacts.main_graduation_journal import (
     MainGraduationJournal,
     MainGraduationJournalError,
@@ -39,6 +40,7 @@ from avo_correlate.contracts import (
     main_target_scope_digest,
 )
 from avo_correlate.domain.canonical import canonical_bytes, canonical_digest
+from tests.unit.phase_a_test_support import TEST_PHASE_A_AUTHORITY
 
 R = "sha256:" + "1" * 64
 OP = "sha256:" + "2" * 64
@@ -49,6 +51,10 @@ D3 = "sha256:" + "6" * 64
 BASE = "a" * 40
 HEAD = "b" * 40
 NOW = datetime(2026, 1, 1, tzinfo=UTC)
+
+
+def _journal(root: Path) -> MainGraduationJournal:
+    return MainGraduationJournal(root, phase_a_authority_verifier=TEST_PHASE_A_AUTHORITY)
 
 
 def _with_digest(model: type[StrictModel], field: str, **values: Any) -> StrictModel:
@@ -274,7 +280,7 @@ def _disable_phase_prerequisites(journal: MainGraduationJournal) -> None:
 def test_intent_operation_stage_and_external_object_identities_are_create_once(
     tmp_path: Path,
 ) -> None:
-    journal = MainGraduationJournal(tmp_path)
+    journal = _journal(tmp_path)
     _disable_phase_prerequisites(journal)
     first = _intent()
     journal.record_mutation_intent(first)
@@ -288,7 +294,7 @@ def test_intent_operation_stage_and_external_object_identities_are_create_once(
 
 
 def test_receipt_resolution_and_transition_identities_are_one_use(tmp_path: Path) -> None:
-    journal = MainGraduationJournal(tmp_path)
+    journal = _journal(tmp_path)
     _disable_phase_prerequisites(journal)
     intent = _intent()
     journal.record_mutation_intent(intent)
@@ -313,7 +319,7 @@ def test_receipt_resolution_and_transition_identities_are_one_use(tmp_path: Path
 
 
 def test_target_fence_has_one_active_winner_under_concurrency(tmp_path: Path) -> None:
-    seed = MainGraduationJournal(tmp_path)
+    seed = _journal(tmp_path)
     _disable_phase_prerequisites(seed)
     intent = _intent()
     seed.record_mutation_intent(intent)
@@ -331,7 +337,7 @@ def test_target_fence_has_one_active_winner_under_concurrency(tmp_path: Path) ->
     )
 
     def attempt(fence: MainUnresolvedMutationFence) -> str:
-        journal = MainGraduationJournal(tmp_path)
+        journal = _journal(tmp_path)
         _disable_phase_prerequisites(journal)
         try:
             journal.record_unresolved_mutation_fence(fence)
@@ -346,7 +352,7 @@ def test_target_fence_has_one_active_winner_under_concurrency(tmp_path: Path) ->
 
 
 def test_closed_fence_replay_does_not_reopen_the_target_fence(tmp_path: Path) -> None:
-    journal = MainGraduationJournal(tmp_path)
+    journal = _journal(tmp_path)
     _disable_phase_prerequisites(journal)
     intent = _intent()
     journal.record_mutation_intent(intent)
@@ -364,14 +370,14 @@ def test_closed_fence_replay_does_not_reopen_the_target_fence(tmp_path: Path) ->
 
 
 def test_phase_a_restart_repairs_local_pointer_but_requires_global_indexes(tmp_path: Path) -> None:
-    journal = MainGraduationJournal(tmp_path)
+    journal = _journal(tmp_path)
     _disable_phase_prerequisites(journal)
     intent = _intent()
     reference = journal.record_mutation_intent(intent)
     local = journal._phase_local_path("mutation-intent", intent.intent_digest)  # pyright: ignore[reportPrivateUsage]
     local.unlink()
 
-    restarted = MainGraduationJournal(tmp_path)
+    restarted = _journal(tmp_path)
     _disable_phase_prerequisites(restarted)
     assert restarted.record_mutation_intent(intent).digest == reference.digest
     assert restarted.read_mutation_intent(intent.intent_digest) is not None
@@ -385,7 +391,7 @@ def test_phase_a_restart_repairs_local_pointer_but_requires_global_indexes(tmp_p
 
 
 def test_tampered_global_envelope_and_missing_cas_artifact_fail_closed(tmp_path: Path) -> None:
-    journal = MainGraduationJournal(tmp_path)
+    journal = _journal(tmp_path)
     _disable_phase_prerequisites(journal)
     intent = _intent()
     reference = journal.record_mutation_intent(intent)
@@ -415,7 +421,7 @@ def test_tampered_global_envelope_and_missing_cas_artifact_fail_closed(tmp_path:
 
 
 def test_lease_expiry_and_exact_release_are_fail_closed(tmp_path: Path) -> None:
-    journal = MainGraduationJournal(tmp_path)
+    journal = _journal(tmp_path)
     record = _lease_record()
     journal.record_lease_evidence_record(record)
     with pytest.raises(MainGraduationJournalError, match="expired"):
@@ -439,7 +445,7 @@ def test_run_nonce_and_webhook_global_indexes_repair_missing_local_pointers(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A crash after global CAS but before the local pointer is recoverable."""
-    journal = MainGraduationJournal(tmp_path)
+    journal = _journal(tmp_path)
     admission = MainQueueAdmissionObservation.model_validate(
         {
             "repository_digest": R,
@@ -548,7 +554,7 @@ def test_resolution_outcome_rules_do_not_treat_not_applied_as_observed() -> None
             recorded_at=NOW + timedelta(minutes=2),
         ),
     )
-    journal = MainGraduationJournal(Path("."))
+    journal = _journal(Path("."))
     # The record is not needed for this contract-level check; the validator
     # must never interpret a terminal not-applied result as authorization.
     journal._read = lambda kind, key: (  # type: ignore[method-assign]
@@ -559,7 +565,7 @@ def test_resolution_outcome_rules_do_not_treat_not_applied_as_observed() -> None
 
 
 def test_rejected_dispatch_never_qualifies_for_an_unresolved_fence(tmp_path: Path) -> None:
-    journal = MainGraduationJournal(tmp_path)
+    journal = _journal(tmp_path)
     _disable_phase_prerequisites(journal)
     intent = _intent()
     journal.record_mutation_intent(intent)
@@ -580,9 +586,71 @@ def test_intent_has_a_target_fence_before_any_provider_dispatch(tmp_path: Path) 
     called; otherwise a crash after dispatch but before a receipt allows a
     second attempt to race the unknown external state.
     """
-    journal = MainGraduationJournal(tmp_path)
+    journal = _journal(tmp_path)
     _disable_phase_prerequisites(journal)
     intent = _intent()
     journal.record_mutation_intent(intent)
     with pytest.raises(MainGraduationJournalError, match="unresolved"):
         journal.assert_no_unresolved_mutation_fence(R, "refs/heads/main")
+
+
+def test_phase_a_lease_rejects_missing_authority_verifier(tmp_path: Path) -> None:
+    with pytest.raises(MainGraduationJournalError, match="authority verifier"):
+        MainGraduationJournal(tmp_path).record_lease_evidence_record(_lease_record())
+
+
+def test_phase_a_resolution_rejects_missing_authority_verifier(tmp_path: Path) -> None:
+    journal = _journal(tmp_path)
+    _disable_phase_prerequisites(journal)
+    intent = _intent()
+    journal.record_mutation_intent(intent)
+    receipt = _receipt(intent)
+    journal.record_mutation_receipt(receipt)
+    fence = _fence(receipt)
+    journal.record_unresolved_mutation_fence(fence)
+    journal._phase_a_authority_verifier = None  # type: ignore[reportPrivateUsage]
+    with pytest.raises(MainGraduationJournalError, match="authority verifier"):
+        journal.record_mutation_fence_resolution(_resolution(fence))
+
+
+def test_terminal_intent_replay_cannot_reopen_reservation(tmp_path: Path) -> None:
+    journal = _journal(tmp_path)
+    _disable_phase_prerequisites(journal)
+    intent = _intent()
+    journal.record_mutation_intent(intent)
+    terminal = _rejected_receipt(intent)
+    journal.record_mutation_receipt(terminal)
+    active = journal._target_fence_path(intent)  # pyright: ignore[reportPrivateUsage]
+    assert not active.exists()
+
+    restarted = _journal(tmp_path)
+    _disable_phase_prerequisites(restarted)
+    with pytest.raises(MainGraduationRecordConflictError, match="dispatch is prohibited"):
+        restarted.record_mutation_intent(intent)
+    assert not active.exists()
+
+
+def test_generic_windows_reservation_race_reuses_exact_winner(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A destination race must not discard an exact reservation winner."""
+    journal = _journal(tmp_path)
+    _disable_phase_prerequisites(journal)
+    intent = _intent()
+    active = journal._target_fence_path(intent)  # pyright: ignore[reportPrivateUsage]
+    original_replace = journal_module.os.replace
+
+    def race(source: object, destination: object) -> None:
+        if Path(destination) == active and not active.exists():
+            original_replace(source, destination)
+            # Windows may report a directory replacement race as a generic
+            # OSError even though the competing reservation is now present.
+            raise OSError("destination appeared during reservation publish")
+        original_replace(source, destination)
+
+    monkeypatch.setattr(journal_module.os, "replace", race)
+    journal.record_mutation_intent(intent)
+
+    assert active.is_dir()
+    assert journal._target_reservation_record_path(active).is_file()  # type: ignore[reportPrivateUsage]
+    assert not list(active.parent.glob(".tmp-*"))

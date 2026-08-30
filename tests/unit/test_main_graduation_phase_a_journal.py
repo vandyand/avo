@@ -11,12 +11,17 @@ from avo_correlate.adapters.artifacts.main_graduation_journal import (
 )
 from avo_correlate.contracts import MainLeaseEvidenceReadRequest, MainLeaseEvidenceRecord
 from avo_correlate.domain.canonical import canonical_digest
+from tests.unit.phase_a_test_support import TEST_PHASE_A_AUTHORITY
 
 R = "sha256:" + "1" * 64
 OP = "sha256:" + "2" * 64
 OP2 = "sha256:" + "3" * 64
 P = "sha256:" + "4" * 64
 NOW = datetime(2026, 1, 1, tzinfo=UTC)
+
+
+def _journal(root: Path) -> MainGraduationJournal:
+    return MainGraduationJournal(root, phase_a_authority_verifier=TEST_PHASE_A_AUTHORITY)
 
 
 def lease(operation_id: str = OP) -> MainLeaseEvidenceRecord:
@@ -43,13 +48,13 @@ def lease(operation_id: str = OP) -> MainLeaseEvidenceRecord:
 
 
 def test_lease_pointer_replays_and_repairs_a_crash_window(tmp_path: Path) -> None:
-    journal = MainGraduationJournal(tmp_path)
+    journal = _journal(tmp_path)
     record = lease()
     reference = journal.record_lease_evidence_record(record)
     local = journal._phase_local_path("lease-evidence-record", record.operation_id)  # pyright: ignore[reportPrivateUsage]
     local.unlink()
 
-    restarted = MainGraduationJournal(tmp_path)
+    restarted = _journal(tmp_path)
     assert restarted.record_lease_evidence_record(record) == reference
     assert restarted.read_lease_evidence_record(record.operation_id) is not None
     assert (
@@ -67,7 +72,7 @@ def test_lease_pointer_replays_and_repairs_a_crash_window(tmp_path: Path) -> Non
 
 
 def test_target_lease_is_create_once_and_exactly_releasable(tmp_path: Path) -> None:
-    journal = MainGraduationJournal(tmp_path)
+    journal = _journal(tmp_path)
     record = lease()
     journal.record_lease_evidence_record(record)
     with pytest.raises(MainGraduationRecordConflictError):
@@ -81,7 +86,7 @@ def test_same_lease_is_safe_under_concurrent_replay(tmp_path: Path) -> None:
     record = lease()
 
     def write(_: int) -> str:
-        return MainGraduationJournal(tmp_path).record_lease_evidence_record(record).digest
+        return _journal(tmp_path).record_lease_evidence_record(record).digest
 
     with ThreadPoolExecutor(max_workers=4) as pool:
         results = list(pool.map(write, range(4)))
