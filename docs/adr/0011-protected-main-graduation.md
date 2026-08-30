@@ -4,6 +4,12 @@ Status: accepted for the AVO-004.7 architecture; implementation and hosted gate 
 Live `main` mutation is blocked by current GitHub hosting capability and missing isolated
 release-hold authority.
 
+C4 Phase A contract/journal gate: complete on 2026-08-30 at code HEAD
+`0cb20c50c43cd78f75b23da025e3bbe4e0f5ee78`, with Terra approval. This records no live
+coordinator/provider executor readiness and does not complete AVO-004.7; the next ready gate
+is the live executor implementation using these contracts, including the required P2
+end-to-end on-disk recovery fixture.
+
 ## Context
 
 AVO-004.5 established a protected, PR-native promotion lifecycle for the `integration`

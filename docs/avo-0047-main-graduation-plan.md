@@ -1,6 +1,7 @@
 # AVO-004.7 protected-main graduation implementation plan
 
-Status: implementation plan; gate started on 2026-08-29, hosted `main` mutation blocked
+Status: implementation plan; C4 Phase A complete on 2026-08-30 at HEAD
+`0cb20c50c43cd78f75b23da025e3bbe4e0f5ee78` with Terra approval; hosted `main` mutation blocked
 pending organization-hosting/merge-queue (max-one-entry plus admission/hold) capability
 and explicit isolated release-hold issuer authority.
 
@@ -22,6 +23,11 @@ providers. Human authority remains available for exceptions and constitutional c
 not routine approvals.
 
 ## C4 Phase A — contract-first coordinator boundary
+
+Phase A is complete at the recorded HEAD; see the [Phase A result](avo-0047-c4-phase-a-result.md).
+This closes only the contract/journal gate. The next ready gate is the live coordinator/provider
+executor, including the required end-to-end on-disk recovery fixture as P2 coverage. It does not
+establish live executor readiness or complete AVO-004.7.
 
 Phase A freezes the coordinator and recovery contracts before any provider implementation.
 It is documentation, schema, journal, and test-contract work only: it creates no candidate,
@@ -133,7 +139,8 @@ provider and attester evidence can bind the exact merge group.
 
 ### Gate P2 — coordinator/recovery proof
 
-Accept C4–C6 after each durable boundary has crash/restart tests, duplicate-runner tests,
+Accept the live C4–C6 implementation after each durable boundary has crash/restart tests,
+including the required end-to-end on-disk recovery fixture, duplicate-runner tests,
 stale-base tests, and immutable artifact replay. The runner must emit a durable eligibility
 ledger before counting any attempt toward the threshold.
 

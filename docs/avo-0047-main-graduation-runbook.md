@@ -1,6 +1,8 @@
 # AVO-004.7 protected-main graduation runbook
 
-Status: activation and evidence runbook; live `main` mutation is blocked until both
+Status: activation and evidence runbook; C4 Phase A contract/journal gate complete on
+2026-08-30 at HEAD `0cb20c50c43cd78f75b23da025e3bbe4e0f5ee78` with Terra approval; live `main`
+mutation is blocked until both
 organization-hosting/merge-queue capability and isolated release-hold authority are
 explicitly authorized.
 
@@ -8,6 +10,10 @@ This runbook operationalizes [ADR 0011](adr/0011-protected-main-graduation.md) a
 [implementation plan](avo-0047-main-graduation-plan.md). It is limited to the declared
 single-host, trusted-team boundary. It does not authorize deployment, production effects,
 repository transfer, branch-protection mutation, or direct ref writes.
+
+Phase A completion is contract/journal evidence only. The next ready gate is implementation
+of the live coordinator/provider executor and its required end-to-end on-disk recovery fixture
+for P2 coverage; no provider or `main` mutation is authorized by this status.
 
 ## 1. Activation prerequisites
 
