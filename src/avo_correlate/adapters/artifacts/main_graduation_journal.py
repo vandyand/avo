@@ -474,7 +474,7 @@ class MainGraduationJournal:
 
     @staticmethod
     def _child_values(package: MainCompletionPackage) -> dict[str, StrictModel]:
-        return {
+        values: dict[str, StrictModel] = {
             "main-graduation-source-package": package.source_package,
             "main-graduation-delta": package.delta,
             "main-graduation-composition": package.composition,
@@ -496,6 +496,26 @@ class MainGraduationJournal:
             "main-graduation-provider-receipt": package.provider_receipt,
             "main-graduation-reconciliation": package.reconciliation,
         }
+        # ``model_construct`` is used by a few C1-C3 coverage probes.  Keep
+        # those probes able to exercise the historical child closure, while a
+        # normally validated C4 package always has the complete authority
+        # fields and takes this strict branch.
+        if not hasattr(package, "lease_evidence_record"):
+            return values
+        values.update(
+            {
+                "main-graduation-lease-evidence-record": package.lease_evidence_record,
+                "main-graduation-release-claim": package.release_claim,
+                "main-graduation-claimed-release-transition": package.claimed_transition_receipt,
+                "main-graduation-mutation-intent": package.release_transition_intent,
+                "main-graduation-mutation-receipt": package.release_transition_mutation_receipt,
+            }
+        )
+        if package.release_transition_fence_resolution is not None:
+            values[
+                "main-graduation-mutation-fence-resolution"
+            ] = package.release_transition_fence_resolution
+        return values
 
     def _materialize_children(self, package: MainCompletionPackage) -> None:
         self._verify_completion_prerequisites(package)
@@ -1360,6 +1380,23 @@ class MainGraduationJournal:
         )
         for kind, record in stages:
             self._require_exact(kind, record)
+        if hasattr(package, "lease_evidence_record"):
+            phase_records: tuple[tuple[str, StrictModel], ...] = (
+                ("lease-evidence-record", package.lease_evidence_record),
+                ("release-claim", package.release_claim),
+                ("claimed-release-transition", package.claimed_transition_receipt),
+                ("mutation-intent", package.release_transition_intent),
+                ("mutation-receipt", package.release_transition_mutation_receipt),
+            )
+            if package.release_transition_fence_resolution is not None:
+                phase_records += (
+                    (
+                        "mutation-fence-resolution",
+                        package.release_transition_fence_resolution,
+                    ),
+                )
+            for kind, record in phase_records:
+                self._require_phase_exact(kind, record)
         # Re-run the standalone loaders after exact matching.  This makes a
         # model_construct completion incapable of bypassing nested checks.
         self._verify_source_package(package.source_package)
@@ -1722,6 +1759,14 @@ class MainGraduationJournal:
 
     def _require_exact(self, kind: str, record: StrictModel) -> None:
         durable = self._read(kind, _operation_id(record))
+        if durable is None or canonical_bytes(durable[0]) != canonical_bytes(record):
+            raise MainGraduationJournalError(f"{kind} is not the durable canonical prior stage")
+
+    def _require_phase_exact(self, kind: str, record: StrictModel) -> None:
+        """Require an exact durable phase-A artifact by its content key."""
+
+        key = self._phase_key(kind, record)
+        durable = self._read(kind, key)
         if durable is None or canonical_bytes(durable[0]) != canonical_bytes(record):
             raise MainGraduationJournalError(f"{kind} is not the durable canonical prior stage")
 

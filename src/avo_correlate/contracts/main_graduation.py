@@ -8,7 +8,7 @@ release-check states are represented by separate records.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Annotated, Literal, TypeVar
+from typing import TYPE_CHECKING, Annotated, Literal, TypeVar, cast
 
 from pydantic import (
     AliasChoices,
@@ -36,6 +36,16 @@ from avo_correlate.domain.canonical import canonical_bytes, canonical_digest
 
 GitObject = Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{40}(?:[0-9a-f]{24})?$")]
 MainRef = Literal["refs/heads/main"]
+
+if TYPE_CHECKING:
+    from avo_correlate.contracts.main_graduation_phase_a import (
+        MainClaimedReleaseTransitionReceipt,
+        MainLeaseEvidenceRecord,
+        MainMutationFenceResolution,
+        MainMutationIntent,
+        MainMutationReceipt,
+        MainReleaseClaim,
+    )
 
 
 def _paths(paths: list[str]) -> list[str]:
@@ -906,7 +916,17 @@ class MainReconciliation(MainBound):
 
 
 class MainCompletionPackage(MainBound):
-    """Final immutable package; its child refs are checked by the journal."""
+    """Final immutable package; its child refs are checked by the journal.
+
+    ``MainReleaseTransitionReceipt`` is retained as a historical C1-C3
+    observation for compatibility with the earlier evidence chain.  It is not
+    release authority for a C4 completion.  A C4 package must also carry the
+    durable lease, one-use claim, claim-bound transition receipt, and the
+    release-transition mutation chain below.  The fence resolution is an
+    explicitly supplied ``None`` for the normal terminal path and an observed
+    resolution for an ambiguous dispatch path; it is intentionally not a
+    default so a caller cannot omit the branch decision.
+    """
 
     schema_version: Literal[1] = 1
     operation_id: Sha256Digest
@@ -925,6 +945,12 @@ class MainCompletionPackage(MainBound):
     hold_observation: MainReleaseHoldObservation
     release_authorization: MainReleaseAuthorization
     transition_receipt: MainReleaseTransitionReceipt
+    lease_evidence_record: MainLeaseEvidenceRecord
+    release_claim: MainReleaseClaim
+    claimed_transition_receipt: MainClaimedReleaseTransitionReceipt
+    release_transition_intent: MainMutationIntent
+    release_transition_mutation_receipt: MainMutationReceipt
+    release_transition_fence_resolution: MainMutationFenceResolution | None
     provider_receipt: MainProviderReceipt
     reconciliation: MainReconciliation
     artifacts: list[ArtifactRef] = Field(min_length=1)
@@ -960,6 +986,146 @@ class MainCompletionPackage(MainBound):
             for record in records
         ):
             raise ValueError("completion child operation IDs differ")
+        # The legacy transition receipt above is deliberately not sufficient
+        # to close a C4 operation.  Require the complete durable authority
+        # chain and bind every new child to the same claim and lease.
+        c4_fields_present = all(
+            hasattr(self, name)
+            for name in (
+                "lease_evidence_record",
+                "release_claim",
+                "claimed_transition_receipt",
+                "release_transition_intent",
+                "release_transition_mutation_receipt",
+                "release_transition_fence_resolution",
+            )
+        )
+        lease = cast(MainLeaseEvidenceRecord, None)
+        claim = cast(MainReleaseClaim, None)
+        claimed = cast(MainClaimedReleaseTransitionReceipt, None)
+        release_intent = cast(MainMutationIntent, None)
+        mutation = cast(MainMutationReceipt, None)
+        if c4_fields_present:
+            authority = (
+                self.lease_evidence_record,
+                self.release_claim,
+                self.claimed_transition_receipt,
+                self.release_transition_intent,
+                self.release_transition_mutation_receipt,
+            )
+            if any(record.operation_id != self.operation_id for record in authority):
+                raise ValueError("C4 completion authority operation IDs differ")
+            if any(
+                record.repository_digest != self.repository_digest
+                or record.target_ref != self.target_ref
+                for record in authority
+            ):
+                raise ValueError("C4 completion authority target binding differs")
+            lease = cast(
+                MainLeaseEvidenceRecord, getattr(self, "lease_evidence_record", None)
+            )
+            claim = cast(MainReleaseClaim, getattr(self, "release_claim", None))
+            claimed = cast(
+                MainClaimedReleaseTransitionReceipt,
+                getattr(self, "claimed_transition_receipt", None),
+            )
+            release_intent = cast(
+                MainMutationIntent, getattr(self, "release_transition_intent", None)
+            )
+            mutation = cast(
+                MainMutationReceipt,
+                getattr(self, "release_transition_mutation_receipt", None),
+            )
+        if c4_fields_present and (
+            claim.authorization_digest != self.release_authorization.authorization_digest
+            or claim.hold_observation_digest != canonical_digest(self.hold_observation)
+            or claim.lease_digest != lease.lease_digest
+            or claim.lease_epoch_digest != lease.lease_epoch_digest
+            or claim.lease_expires_at != lease.expires_at
+            or claim.lease_identity != lease.owner
+            or claim.target_scope_digest
+            != main_target_scope_digest(self.repository_digest, self.target_ref)
+            or self.release_authorization.lease_digest != lease.lease_digest
+            or self.release_authorization.lease_identity != lease.owner
+        ):
+            raise ValueError("C4 release claim is not bound to the durable lease and hold")
+        if c4_fields_present and (
+            claimed.release_authorization_digest != self.release_authorization.authorization_digest
+            or claimed.claim_digest != claim.claim_digest
+            or claimed.group_sha != claim.group_sha
+            or claimed.hold_run_id != claim.hold_run_id
+            or claimed.hold_nonce != claim.hold_nonce
+            or claimed.issuer_identity != claim.release_issuer_identity
+            or claimed.release_issuer_app_id != claim.release_issuer_app_id
+            or claimed.issuer_isolation_digest != claim.issuer_isolation_digest
+            or claimed.outcome not in {"transitioned", "already_transitioned"}
+        ):
+            raise ValueError("C4 claimed transition is not bound to the release claim")
+        if c4_fields_present and (
+            self.transition_receipt.operation_id != claimed.operation_id
+            or self.transition_receipt.repository_digest != claimed.repository_digest
+            or self.transition_receipt.target_ref != claimed.target_ref
+            or self.transition_receipt.release_authorization_digest
+            != claimed.release_authorization_digest
+            or self.transition_receipt.group_sha != claimed.group_sha
+            or self.transition_receipt.hold_run_id != claimed.hold_run_id
+            or self.transition_receipt.hold_nonce != claimed.hold_nonce
+            or self.transition_receipt.issuer_identity != claimed.issuer_identity
+            or self.transition_receipt.release_issuer_app_id
+            != claimed.release_issuer_app_id
+            or self.transition_receipt.issuer_isolation_digest
+            != claimed.issuer_isolation_digest
+            or self.transition_receipt.outcome != claimed.outcome
+        ):
+            raise ValueError("legacy transition observation is not claim-bound")
+        if c4_fields_present and (
+            release_intent.stage != "release_transition"
+            or release_intent.intent_digest
+            != canonical_digest(
+                release_intent.model_dump(exclude={"intent_digest"}, mode="json")
+            )
+            or release_intent.release_authorization_digest
+            != self.release_authorization.authorization_digest
+            or release_intent.release_claim_digest != claim.claim_digest
+            or release_intent.lease_identity != lease.owner
+            or release_intent.lease_digest != lease.lease_digest
+            or release_intent.lease_epoch_digest != lease.lease_epoch_digest
+        ):
+            raise ValueError("C4 release mutation intent is not claim and lease bound")
+        if c4_fields_present and (
+            mutation.stage != "release_transition"
+            or mutation.receipt_digest
+            != canonical_digest(mutation.model_dump(exclude={"receipt_digest"}, mode="json"))
+            or mutation.intent_digest != release_intent.intent_digest
+            or mutation.external_identity != release_intent.external_identity
+            or mutation.release_authorization_digest
+            != self.release_authorization.authorization_digest
+            or mutation.release_claim_digest != claim.claim_digest
+            or mutation.lease_digest != lease.lease_digest
+            or mutation.lease_epoch_digest != lease.lease_epoch_digest
+        ):
+            raise ValueError("C4 release mutation receipt is not claim and intent bound")
+        resolution = cast(
+            MainMutationFenceResolution | None,
+            getattr(self, "release_transition_fence_resolution", None),
+        )
+        if c4_fields_present and mutation.outcome in {"applied", "already_applied"}:
+            if resolution is not None:
+                raise ValueError("terminal C4 mutation cannot carry a fence resolution")
+        elif c4_fields_present and mutation.outcome in {"ambiguous", "reconciliation_required"}:
+            if resolution is None or resolution.outcome != "observed":
+                raise ValueError("ambiguous C4 mutation requires an observed fence resolution")
+            if (
+                resolution.operation_id != self.operation_id
+                or resolution.intent_digest != release_intent.intent_digest
+                or resolution.resolved_receipt_digest != mutation.receipt_digest
+                or resolution.lease_digest != lease.lease_digest
+                or resolution.external_identity_digest
+                != release_intent.external_identity.identity_digest
+            ):
+                raise ValueError("C4 fence resolution is not bound to the release mutation")
+        elif c4_fields_present:
+            raise ValueError("C4 completion requires a dispatched release mutation")
         if self.transition_receipt.outcome not in {"transitioned", "already_transitioned"}:
             raise ValueError("completion requires terminal release transition")
         if self.provider_receipt.outcome != "observed":
@@ -1188,6 +1354,18 @@ class MainCompletionPackage(MainBound):
             "main-graduation-provider-receipt",
             "main-graduation-reconciliation",
         }
+        if c4_fields_present:
+            required_roles.update(
+                {
+                    "main-graduation-lease-evidence-record",
+                    "main-graduation-release-claim",
+                    "main-graduation-claimed-release-transition",
+                    "main-graduation-mutation-intent",
+                    "main-graduation-mutation-receipt",
+                }
+            )
+            if self.release_transition_fence_resolution is not None:
+                required_roles.add("main-graduation-mutation-fence-resolution")
         if set(roles) != required_roles:
             raise ValueError("completion artifact closure is incomplete")
         return self
@@ -1422,6 +1600,10 @@ from avo_correlate.contracts.main_graduation_phase_a import (  # noqa: E402
     main_stage_nonce,
     main_target_scope_digest,
 )
+
+# The C4 completion model uses phase-A records as forward references to keep
+# the historical C1-C3 contract module acyclic during class definition.
+MainCompletionPackage.model_rebuild()
 
 __all__ += [
     "MainClaimedReleaseTransitionReceipt",
