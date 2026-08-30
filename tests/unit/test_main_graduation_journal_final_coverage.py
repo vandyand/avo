@@ -24,7 +24,7 @@ from avo_correlate.adapters.artifacts.main_graduation_journal import (
     _check_digest,
     _strict_pairs,
 )
-from avo_correlate.contracts.base import StrictModel
+from avo_correlate.contracts.base import ArtifactRef, StrictModel
 from avo_correlate.contracts.main_graduation import (
     EligibilityLedgerStarted,
     MainGraduationAttempt,
@@ -479,8 +479,6 @@ def test_phase_identity_indexes_are_create_once_and_conflict_closed(tmp_path: Pa
 
 
 def test_target_fence_open_claim_is_atomic_under_competing_writers(tmp_path: Path) -> None:
-    journal = MainGraduationJournal(tmp_path)
-
     def make_fence(digest_seed: str) -> MainUnresolvedMutationFence:
         values = {
             "repository_digest": R,
@@ -493,7 +491,7 @@ def test_target_fence_open_claim_is_atomic_under_competing_writers(tmp_path: Pat
             "lease_identity": "avo-controller",
             "lease_digest": D,
             "target_scope_digest": main_target_scope_digest(R, "refs/heads/main"),
-            "opened_at": NOW,
+                "opened_at": NOW + timedelta(seconds=0 if digest_seed == D else 1),
         }
         probe = MainUnresolvedMutationFence.model_construct(**values, fence_digest=digest_seed)
         values["fence_digest"] = canonical_digest(
@@ -501,30 +499,40 @@ def test_target_fence_open_claim_is_atomic_under_competing_writers(tmp_path: Pat
         )
         return MainUnresolvedMutationFence.model_validate(values)
 
-    fences = [make_fence(D), make_fence(D2)]
-    references = [
-        journal._store.put_bytes(  # pyright: ignore[reportPrivateUsage]
-            canonical_bytes(fence),
-            media_type="application/vnd.avo.main-graduation-unresolved-mutation-fence+json",
-            role="main-graduation-unresolved-mutation-fence",
-            max_bytes=journal._max,  # pyright: ignore[reportPrivateUsage]
-        )
-        for fence in fences
-    ]
-
-    def claim(index: int) -> str:
-        try:
-            journal._cas_target_fence(  # pyright: ignore[reportPrivateUsage]
-                fences[index], references[index]
+    # Repeat the race against fresh scopes.  Before target-fence publication
+    # became atomic, the loser could read the winner's mkdir-created but still
+    # empty record.json and fail with a malformed-index error.
+    for iteration in range(20):
+        journal = MainGraduationJournal(tmp_path / str(iteration))
+        fences = [make_fence(D), make_fence(D2)]
+        references = [
+            journal._store.put_bytes(  # pyright: ignore[reportPrivateUsage]
+                canonical_bytes(fence),
+                media_type="application/vnd.avo.main-graduation-unresolved-mutation-fence+json",
+                role="main-graduation-unresolved-mutation-fence",
+                max_bytes=journal._max,  # pyright: ignore[reportPrivateUsage]
             )
-        except MainGraduationRecordConflictError:
-            return "conflict"
-        return "claimed"
+            for fence in fences
+        ]
 
-    outcomes: list[str]
-    with ThreadPoolExecutor(max_workers=2) as pool:
-        outcomes = list(pool.map(claim, range(2)))
-    assert sorted(outcomes) == ["claimed", "conflict"]
+        def claim(
+            index: int,
+            *,
+            target_journal: MainGraduationJournal = journal,
+            target_fences: list[MainUnresolvedMutationFence] = fences,
+            target_references: list[ArtifactRef] = references,
+        ) -> str:
+            try:
+                target_journal._cas_target_fence(  # pyright: ignore[reportPrivateUsage]
+                    target_fences[index], target_references[index]
+                )
+            except MainGraduationRecordConflictError:
+                return "conflict"
+            return "claimed"
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            outcomes = list(pool.map(claim, range(2)))
+        assert sorted(outcomes) == ["claimed", "conflict"]
 
 
 def test_eligibility_sequence_and_attempt_recovery_branches(

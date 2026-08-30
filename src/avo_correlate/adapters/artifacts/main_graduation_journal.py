@@ -924,23 +924,11 @@ class MainGraduationJournal:
             reference=reference,
         )
         path.parent.mkdir(parents=True, exist_ok=True)
-        try:
-            if not path.exists():
-                path.mkdir()
-        except FileExistsError:
-            pass
-        try:
-            record_path = self._target_fence_record_path(path)
-            with record_path.open("x", encoding="utf-8", newline="") as handle:
-                handle.write(canonical_bytes(envelope).decode("utf-8"))
-                handle.flush()
-                os.fsync(handle.fileno())
-            _sync_directory(path)
-            _sync_directory(path.parent)
-        except FileExistsError:
-            # A competing writer may publish the target fence between the
-            # existence check and exclusive record creation.  Re-read the
-            # durable winner and classify only an exact replay as harmless.
+        payload = canonical_bytes(envelope)
+        record_path = self._target_fence_record_path(path)
+
+        def classify_existing() -> None:
+            """Classify a complete competing winner without trusting partial data."""
             try:
                 current = self._read_target_fence_envelope(path, record)
             except MainGraduationRecordConflictError:
@@ -960,6 +948,43 @@ class MainGraduationJournal:
             raise MainGraduationRecordConflictError(
                 "target mutation fence raced"
             ) from None
+
+        # Claim the directory exclusively, then publish record.json with an
+        # atomic create-only link.  The directory itself can briefly be empty
+        # after a crash, but no reader can mistake that for a durable fence:
+        # record.json is the readiness marker and is never written in place.
+        try:
+            path.mkdir()
+        except FileExistsError:
+            pass
+        except OSError as exc:
+            raise MainGraduationJournalError(
+                "target mutation fence was not durably indexed"
+            ) from exc
+        if not path.is_dir():
+            raise MainGraduationJournalError("target mutation fence slot is malformed")
+        if record_path.is_file():
+            classify_existing()
+            return
+        reservation_path = self._target_reservation_record_path(path)
+        if reservation_path.is_file():
+            # A mutation reservation may already own this target.  It is safe
+            # to add this fence only when the durable reservation names the
+            # exact same intent.
+            reservation = self._read_target_reservation(path)
+            if (
+                reservation.operation_id != record.operation_id
+                or reservation.intent_digest != record.intent_digest
+            ):
+                raise MainGraduationRecordConflictError(
+                    "target mutation reservation differs"
+                )
+        try:
+            _write_exclusive_durable(record_path, payload)
+            _sync_directory(path)
+            _sync_directory(path.parent)
+        except FileExistsError:
+            classify_existing()
         except OSError as exc:
             raise MainGraduationJournalError(
                 "target mutation fence was not durably indexed"
