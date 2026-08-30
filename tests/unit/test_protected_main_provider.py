@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+from datetime import UTC, datetime
 from typing import cast
 
 import pytest
@@ -61,7 +62,9 @@ def test_check_observation_is_exact_sha_app_and_unique() -> None:
             },
         )
 
-    check = provider(transport).observe_pr_head_admission_check(SHA)
+    check = provider(transport).observe_pr_head_admission_check(
+        SHA, freshness_cutoff=datetime(2026, 1, 1, tzinfo=UTC)
+    )
     assert check.sha == SHA
     assert check.app_id == 9001
     assert calls == ["GET"]
@@ -90,6 +93,6 @@ def test_wrong_sha_and_mutation_authority_fail_closed() -> None:
 
     main = provider(transport)
     with pytest.raises(ProtectedMainProviderError):
-        main.observe_pr_head_admission_check(SHA)
+        main.observe_pr_head_admission_check(SHA, freshness_cutoff=datetime(2026, 1, 1, tzinfo=UTC))
     assert not hasattr(main, "merge")
     assert not hasattr(main, "enqueue")

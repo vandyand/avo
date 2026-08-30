@@ -34,6 +34,7 @@ from avo_correlate.contracts.main_graduation import (
     MainQueueObservation,
     MainReleaseAuthorization,
     MainReleaseHoldObservation,
+    MainReleaseIssuerBinding,
     MainReleaseTransitionReceipt,
 )
 from avo_correlate.domain.canonical import canonical_digest
@@ -345,6 +346,111 @@ class ProtectedMainProvider:
             raise ProtectedMainProviderError("GitHub GraphQL query failed")
         return _object(raw.get("data"), "GraphQL data")
 
+    def _read_rulesets(self) -> list[JsonObject]:
+        """Read every repository ruleset page with bounded, stable pagination."""
+        result: list[JsonObject] = []
+        seen: set[int] = set()
+        for page in range(1, 101):
+            raw = self._call(
+                self.repository_path
+                + f"/rulesets?includes_parents=true&targets=branch&per_page=100&page={page}"
+            )
+            items = _items(raw, "rulesets")
+            if not items:
+                return result
+            if len(items) > 100:
+                raise ProtectedMainProviderError("ruleset page exceeds configured bound")
+            for item in items:
+                ident = _int(item, "id", "ruleset")
+                if ident <= 0 or ident in seen:
+                    raise ProtectedMainProviderError("ruleset identity is duplicated or invalid")
+                seen.add(ident)
+                result.append(item)
+            if len(items) < 100:
+                return result
+        raise ProtectedMainProviderError("ruleset pagination exceeded configured bound")
+
+    def _queue_configuration(self, config: JsonObject | None = None) -> JsonObject:
+        if config is None:
+            data = self._graphql(
+                _MERGE_QUEUE_QUERY,
+                {"owner": self.owner, "name": self.repo, "branch": "main"},
+            )
+            repository = _nested(data, "repository", "GraphQL data")
+            queue = _object(repository.get("mergeQueue"), "merge queue")
+            config = _nested(queue, "configuration", "merge queue")
+        return config
+
+    def _ruleset_protection_epoch(self, queue_config: JsonObject) -> str:
+        """Require the official active merge-queue ruleset, including no bypass."""
+        applicable: list[JsonObject] = []
+        merge_rules: list[tuple[JsonObject, JsonObject]] = []
+        for summary in self._read_rulesets():
+            ident = _int(summary, "id", "ruleset")
+            full = _object(self._call(self.repository_path + f"/rulesets/{ident}"), "ruleset")
+            if _int(full, "id", "ruleset") != ident:
+                raise ProtectedMainProviderError("ruleset response identity differs from request")
+            for field in ("name", "source_type", "source", "target", "enforcement"):
+                _str(full, field, "ruleset")
+            conditions = _nested(full, "conditions", "ruleset")
+            refs = _nested(conditions, "ref_name", "ruleset conditions")
+            include = refs.get("include")
+            exclude = refs.get("exclude")
+            if not isinstance(include, list) or any(not isinstance(item, str) for item in include):
+                raise ProtectedMainProviderError("ruleset ref conditions are incomplete")
+            if not isinstance(exclude, list) or any(not isinstance(item, str) for item in exclude):
+                raise ProtectedMainProviderError("ruleset ref exclusions are incomplete")
+            if "refs/heads/main" not in include or "refs/heads/main" in exclude:
+                continue
+            applicable.append(full)
+            if _str(full, "target", "ruleset") != "branch":
+                raise ProtectedMainProviderError("main ruleset target is not branch")
+            if _str(full, "enforcement", "ruleset") != "active":
+                raise ProtectedMainProviderError("main ruleset is not actively enforced")
+            bypass = full.get("bypass_actors")
+            if not isinstance(bypass, list):
+                raise ProtectedMainProviderError("ruleset bypass actors are unavailable")
+            if bypass:
+                raise ProtectedMainProviderError("main ruleset permits bypass actors")
+            rules = _items(full.get("rules"), "ruleset rules")
+            for rule in rules:
+                if _str(rule, "type", "ruleset rule") == "merge_queue":
+                    merge_rules.append((full, _nested(rule, "parameters", "merge queue rule")))
+        if len(merge_rules) != 1 or not applicable:
+            raise ProtectedMainProviderError(
+                "active main merge_queue ruleset is missing or conflicting"
+            )
+        _, parameters = merge_rules[0]
+        if (
+            _int(parameters, "max_entries_to_merge", "merge queue rule")
+            != _int(queue_config, "maximumEntriesToMerge", "merge queue configuration")
+            or _str(parameters, "merge_method", "merge queue rule").casefold()
+            != _str(queue_config, "mergeMethod", "merge queue configuration").casefold()
+            or _str(parameters, "grouping_strategy", "merge queue rule").casefold()
+            != _str(queue_config, "mergingStrategy", "merge queue configuration").casefold()
+        ):
+            raise ProtectedMainProviderError("ruleset and GraphQL merge queue configuration drift")
+        normalized = [
+            {
+                key: value
+                for key, value in ruleset.items()
+                if key
+                in {
+                    "id",
+                    "name",
+                    "source_type",
+                    "source",
+                    "target",
+                    "enforcement",
+                    "conditions",
+                    "rules",
+                    "bypass_actors",
+                }
+            }
+            for ruleset in applicable
+        ]
+        return _json_digest({"rulesets": normalized, "graphql_queue_configuration": queue_config})
+
     def _read_commit(self, sha: str, context: str) -> tuple[str, str, tuple[str, ...]]:
         raw = _object(
             self._call(self.repository_path + "/git/commits/" + _git(sha, context)), context
@@ -472,7 +578,7 @@ class ProtectedMainProvider:
             datetime.now(UTC),
         )
 
-    def observe_protection(self) -> MainProtectionManifest:
+    def observe_protection(self, queue_config: JsonObject | None = None) -> MainProtectionManifest:
         raw = _object(self._call(self.repository_path + "/branches/main/protection"), "protection")
         required = _nested(raw, "required_status_checks", "protection")
         contexts = required.get("contexts")
@@ -480,7 +586,8 @@ class ProtectedMainProvider:
         if not isinstance(contexts, list) or any(not isinstance(item, str) for item in contexts):
             raise ProtectedMainProviderError("required check contexts are incomplete")
         names = cast(list[str], contexts)
-        if names != list(self.trusted_check_contexts):
+        expected_contexts = {*self.trusted_check_contexts, "avo-main-release"}
+        if len(names) != len(expected_contexts) or set(names) != expected_contexts:
             raise ProtectedMainProviderError("required checks differ from controller configuration")
         if not isinstance(checks, list) or len(checks) != len(names):
             raise ProtectedMainProviderError("required check App identities are incomplete")
@@ -490,9 +597,17 @@ class ProtectedMainProvider:
             check_apps[_str(check, "context", "required protection check")] = _int(
                 check, "app_id", "required protection check"
             )
-        if check_apps != {name: self.validation_app_id for name in names}:
-            raise ProtectedMainProviderError("required check App identity differs from App 15368")
-        protection_epoch = _json_digest(_stable_observation(raw))
+        expected_apps = {
+            **{name: self.validation_app_id for name in self.trusted_check_contexts},
+            "avo-main-release": self.release_issuer_app_id,
+        }
+        if check_apps != expected_apps:
+            raise ProtectedMainProviderError("required check App identities differ from controller")
+        config = self._queue_configuration(queue_config)
+        ruleset_epoch = self._ruleset_protection_epoch(config)
+        protection_epoch = _json_digest(
+            {"branch_protection": _stable_observation(raw), "ruleset_epoch": ruleset_epoch}
+        )
         payload = {
             "repository_digest": self.repository_digest,
             "target_ref": "refs/heads/main",
@@ -595,7 +710,7 @@ class ProtectedMainProvider:
                 raise ProtectedMainProviderError("merge queue entry is not singleton")
             entry_id = _str(entry, "id", "merge queue entry")
             parents = [base.commit, entry_head]
-        protection = self.observe_protection()
+        protection = self.observe_protection(config)
         normalized_manifest = {
             "enabled": True,
             "max_entries_per_group": max_entries,
@@ -827,7 +942,22 @@ class ProtectedMainProvider:
             or any(not item or item == "avo-main-release" for item in contexts)
         ):
             raise ProtectedMainProviderError("allowlisted check contexts must be unique")
-        checks = self.observe_check_runs(group_sha)
+        all_checks = self.observe_check_runs(group_sha)
+        release_checks = [check for check in all_checks if check.context == "avo-main-release"]
+        checks = [check for check in all_checks if check.context != "avo-main-release"]
+        if len(release_checks) != 1:
+            raise ProtectedMainProviderError("merge-group release hold is missing or duplicated")
+        release = release_checks[0]
+        if (
+            release.app_id != self.release_issuer_app_id
+            or release.app_id == self.validation_app_id
+            or release.status != "in_progress"
+            or release.conclusion != "pending"
+            or release.observed_at < freshness_cutoff
+        ):
+            raise ProtectedMainProviderError(
+                "merge-group release hold is not isolated pending evidence"
+            )
         if any(check.app_id != self.validation_app_id for check in checks):
             raise ProtectedMainProviderError("merge-group validation check has the wrong App")
         try:
@@ -849,7 +979,9 @@ class ProtectedMainProvider:
                 raise
             raise ProtectedMainProviderError("merge-group checks are incomplete or stale") from exc
 
-    def observe_pr_head_admission_check(self, head_sha: str) -> MainCheckObservation:
+    def observe_pr_head_admission_check(
+        self, head_sha: str, *, freshness_cutoff: datetime
+    ) -> MainCheckObservation:
         """Return the one non-release admission success for an exact PR head."""
         checks = self.observe_check_runs(head_sha)
         matches = [check for check in checks if check.context == "avo-main-release"]
@@ -864,9 +996,37 @@ class ProtectedMainProvider:
             or check.conclusion != "success"
         ):
             raise ProtectedMainProviderError("PR head admission check has wrong SHA, App, or state")
+        if freshness_cutoff.tzinfo is None:
+            raise ProtectedMainProviderError("freshness cutoff must be timezone-aware")
+        if check.observed_at < freshness_cutoff:
+            raise ProtectedMainProviderError("PR head admission check is stale")
         return check
 
     observe_admission_check = observe_pr_head_admission_check
+
+    def observe_group_hold_check(
+        self, group_sha: str, *, freshness_cutoff: datetime
+    ) -> MainCheckObservation:
+        """Observe the single pending isolated release hold on an exact group SHA."""
+        group_sha = _git(group_sha, "group hold SHA")
+        checks = self.observe_check_runs(group_sha)
+        matches = [check for check in checks if check.context == "avo-main-release"]
+        if len(matches) != 1:
+            raise ProtectedMainProviderError("group release hold is missing or duplicated")
+        check = matches[0]
+        if (
+            check.sha != group_sha
+            or check.app_id != self.release_issuer_app_id
+            or check.app_id == self.validation_app_id
+            or check.status != "in_progress"
+            or check.conclusion != "pending"
+        ):
+            raise ProtectedMainProviderError("group release hold has wrong SHA, App, or state")
+        if freshness_cutoff.tzinfo is None:
+            raise ProtectedMainProviderError("freshness cutoff must be timezone-aware")
+        if check.observed_at < freshness_cutoff:
+            raise ProtectedMainProviderError("group release hold is stale")
+        return check
 
     @staticmethod
     def _parse_contract(payload: JsonObject, model: Any, context: str) -> object:
@@ -969,6 +1129,7 @@ class MainGraduationAttester:
         *,
         preparation_authorization_digest: str | None = None,
         admission_check: MainCheckObservation | None = None,
+        freshness_cutoff: datetime,
     ) -> MainQueueAdmissionObservation:
         if (
             observation.repository_digest != self.provider.repository_digest
@@ -1002,8 +1163,12 @@ class MainGraduationAttester:
         if observation.validation_app_id != 15368 or observation.release_transition:
             raise ProtectedMainProviderError("admission is not validation-only PR-head success")
         check = admission_check or self.provider.observe_pr_head_admission_check(
-            pull_request.head_commit
+            pull_request.head_commit, freshness_cutoff=freshness_cutoff
         )
+        if freshness_cutoff.tzinfo is None:
+            raise ProtectedMainProviderError("freshness cutoff must be timezone-aware")
+        if check.observed_at < freshness_cutoff or check.observed_at > datetime.now(UTC):
+            raise ProtectedMainProviderError("admission check is stale or in the future")
         if (
             check.sha != pull_request.head_commit
             or check.context != "avo-main-release"
@@ -1011,6 +1176,8 @@ class MainGraduationAttester:
             or check.app_id == self.provider.validation_app_id
             or check.status != "completed"
             or check.conclusion != "success"
+            or check.run_id != observation.admission_run_id
+            or check.nonce != observation.admission_nonce
         ):
             raise ProtectedMainProviderError(
                 "admission check is not exact isolated PR-head success"
@@ -1028,6 +1195,9 @@ class MainGraduationAttester:
         admission: MainQueueAdmissionObservation,
         group: MainMergeGroupObservation,
         queue: MainQueueObservation,
+        *,
+        hold_check: MainCheckObservation | None = None,
+        freshness_cutoff: datetime,
     ) -> MainReleaseHoldObservation:
         if (
             hold.repository_digest != self.provider.repository_digest
@@ -1068,6 +1238,23 @@ class MainGraduationAttester:
             or hold.hold_nonce == admission.admission_nonce
         ):
             raise ProtectedMainProviderError("group hold must use a new run ID and nonce")
+        check = hold_check or self.provider.observe_group_hold_check(
+            group.group_sha, freshness_cutoff=freshness_cutoff
+        )
+        if freshness_cutoff.tzinfo is None:
+            raise ProtectedMainProviderError("freshness cutoff must be timezone-aware")
+        if check.observed_at < freshness_cutoff or check.observed_at > datetime.now(UTC):
+            raise ProtectedMainProviderError("hold check is stale or in the future")
+        if (
+            check.sha != group.group_sha
+            or check.context != "avo-main-release"
+            or check.app_id != self.provider.release_issuer_app_id
+            or check.status != "in_progress"
+            or check.conclusion != "pending"
+            or check.run_id != hold.hold_run_id
+            or check.nonce != hold.hold_nonce
+        ):
+            raise ProtectedMainProviderError("hold check is not exact isolated pending evidence")
         return hold
 
     def attest_merge_group_checks(
@@ -1103,21 +1290,30 @@ class MainGraduationAttester:
         self,
         authorization: MainReleaseAuthorization,
         hold: MainReleaseHoldObservation,
-        issuer_identity: str | None = None,
+        issuer_identity: MainReleaseIssuerBinding | None = None,
     ) -> MainReleaseAuthorization:
-        if issuer_identity != self.provider.release_issuer_identity:
-            raise ProtectedMainProviderError("wrong release issuer")
+        if not isinstance(issuer_identity, MainReleaseIssuerBinding):
+            raise ProtectedMainProviderError(
+                "typed authenticated release issuer binding is required"
+            )
         if (
-            authorization.release_issuer_identity != issuer_identity
-            or authorization.release_issuer_app_id != self.provider.release_issuer_app_id
+            issuer_identity.issuer_id != self.provider.release_issuer_identity
+            or issuer_identity.app_id != self.provider.release_issuer_app_id
+            or issuer_identity.isolation_digest != self.provider.issuer_isolation_digest
+            or issuer_identity.operation_id != authorization.operation_id
+            or issuer_identity.repository_digest != authorization.repository_digest
+            or issuer_identity.target_ref != authorization.target_ref
+        ):
+            raise ProtectedMainProviderError("wrong release issuer binding")
+        if (
+            authorization.release_issuer_identity != issuer_identity.issuer_id
+            or authorization.release_issuer_app_id != issuer_identity.app_id
         ):
             raise ProtectedMainProviderError("release authorization issuer mismatch")
         if authorization.release_issuer_app_id == 15368 or authorization.used:
             raise ProtectedMainProviderError(
                 "validation App 15368 or reused authorization cannot release"
             )
-        if issuer_identity is None:
-            raise ProtectedMainProviderError("authenticated isolated issuer identity is required")
         if (
             authorization.repository_digest != hold.repository_digest
             or authorization.target_ref != hold.target_ref

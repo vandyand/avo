@@ -21,6 +21,9 @@ from avo_correlate.adapters.hosted_git.protected_main import (
 from avo_correlate.contracts.main_graduation import (
     MainCheckObservation,
     MainQueueAdmissionObservation,
+    MainReleaseAuthorization,
+    MainReleaseHoldObservation,
+    MainReleaseIssuerBinding,
 )
 
 A = "a" * 40
@@ -55,6 +58,30 @@ class FakeTransport:
             "mergeMethod": "SQUASH",
             "mergingStrategy": "ALLGREEN",
         }
+        self.ruleset: JsonObject = {
+            "id": 42,
+            "name": "protected-main",
+            "source_type": "Repository",
+            "source": "avo/repo",
+            "target": "branch",
+            "enforcement": "active",
+            "bypass_actors": [],
+            "conditions": {"ref_name": {"include": ["refs/heads/main"], "exclude": []}},
+            "rules": [{
+                "type": "merge_queue",
+                "parameters": {
+                    "max_entries_to_merge": 1,
+                    "merge_method": "SQUASH",
+                    "grouping_strategy": "ALLGREEN",
+                },
+            }],
+        }
+        self.ruleset_page: list[JsonObject] = [{"id": 42}]
+        self.protection_contexts: list[str] = ["unit-validation", "avo-main-release"]
+        self.protection_checks: list[JsonObject] = [
+            {"context": "unit-validation", "app_id": 15368},
+            {"context": "avo-main-release", "app_id": 9001},
+        ]
         self.runs: list[JsonObject] = []
 
     def __call__(
@@ -97,12 +124,16 @@ class FakeTransport:
         if url == prefix + "/pulls/7":
             return 200, self.pr
         if url == prefix + "/branches/main/protection":
-            return 200, {
+            return 200, cast(JsonValue, {
                 "required_status_checks": {
-                    "contexts": ["unit-validation"],
-                    "checks": [{"context": "unit-validation", "app_id": 15368}],
+                    "contexts": self.protection_contexts,
+                    "checks": self.protection_checks,
                 }
-            }
+            })
+        if url == prefix + "/rulesets?includes_parents=true&targets=branch&per_page=100&page=1":
+            return 200, cast(JsonValue, self.ruleset_page)
+        if url == prefix + "/rulesets/42":
+            return 200, self.ruleset
         if url == prefix + "/git/ref/heads/main":
             return 200, {"ref": "refs/heads/main", "object": {"type": "commit", "sha": A}}
         if "/git/commits/" in url:
@@ -190,6 +221,64 @@ def test_queue_rejects_unsafe_graphql_configuration(field: str, value: JsonValue
     fake.queue_config[field] = value
     with pytest.raises(ProtectedMainProviderError):
         provider(fake).observe_queue()
+
+
+RULESET_MUTATIONS: list[dict[str, JsonValue]] = [
+    {"enforcement": "disabled"},
+    {"enforcement": "evaluate"},
+    {"bypass_actors": [{}]},
+    {"bypass_actors": None},
+    {"rules": []},
+    {"conditions": {"ref_name": {"include": ["refs/heads/dev"], "exclude": []}}},
+]
+
+
+@pytest.mark.parametrize("mutation", RULESET_MUTATIONS)
+def test_protection_requires_active_full_ruleset_without_bypass(
+    mutation: dict[str, JsonValue]
+) -> None:
+    fake = FakeTransport()
+    fake.ruleset.update(mutation)
+    with pytest.raises(ProtectedMainProviderError):
+        provider(fake).observe_protection()
+
+
+def test_ruleset_page_bounds_fail_closed() -> None:
+    fake = FakeTransport()
+    fake.ruleset_page = [{"id": index + 1} for index in range(101)]
+    with pytest.raises(ProtectedMainProviderError):
+        provider(fake).observe_protection()
+
+
+@pytest.mark.parametrize(
+    "contexts,checks",
+    [
+        (["unit-validation"], [{"context": "unit-validation", "app_id": 15368}]),
+        (
+            ["unit-validation", "avo-main-release"],
+            [
+                {"context": "unit-validation", "app_id": 15368},
+                {"context": "avo-main-release", "app_id": 15368},
+            ],
+        ),
+        (
+            ["unit-validation", "avo-main-release", "extra"],
+            [
+                {"context": "unit-validation", "app_id": 15368},
+                {"context": "avo-main-release", "app_id": 9001},
+                {"context": "extra", "app_id": 15368},
+            ],
+        ),
+    ],
+)
+def test_protection_requires_validation_contexts_plus_isolated_release(
+    contexts: list[str], checks: list[JsonObject]
+) -> None:
+    fake = FakeTransport()
+    fake.protection_contexts = contexts
+    fake.protection_checks = checks
+    with pytest.raises(ProtectedMainProviderError):
+        provider(fake).observe_protection()
 
 
 def test_queue_rejects_graphql_errors_and_missing_queue() -> None:
@@ -284,7 +373,11 @@ def test_check_run_exact_sha_app_state_and_freshness(mutation: dict[str, JsonVal
     fake = FakeTransport()
     run = check()
     run.update(mutation)
-    fake.runs = [run]
+    hold = check(sha=G, name="avo-main-release", app_id=9001)
+    hold["id"] = 2
+    hold["status"] = "in_progress"
+    hold["conclusion"] = None
+    fake.runs = [run, hold]
     with pytest.raises(ProtectedMainProviderError):
         provider(fake).observe_merge_group_checks(
             G, operation_id="sha256:" + "2" * 64, package_digest="sha256:" + "3" * 64,
@@ -310,12 +403,69 @@ def test_check_run_duplicate_context_run_id_nonce_and_release_role_are_rejected(
         )
 
 
+@pytest.mark.parametrize("timestamp", ["2026-01-01T00:00:00Z", "2099-01-01T00:00:00Z"])
+def test_pr_head_admission_check_honors_freshness_cutoff_and_future_rejection(
+    timestamp: str,
+) -> None:
+    fake = FakeTransport()
+    fake.runs = [check(sha=D, name="avo-main-release", app_id=9001, completed_at=timestamp)]
+    cutoff = datetime(2026, 6, 1, tzinfo=UTC)
+    with pytest.raises(ProtectedMainProviderError):
+        provider(fake).observe_pr_head_admission_check(D, freshness_cutoff=cutoff)
+
+
+def test_group_hold_check_is_exact_isolated_pending_run() -> None:
+    fake = FakeTransport()
+    hold = check(sha=G, name="avo-main-release", app_id=9001)
+    hold["status"] = "in_progress"
+    hold["conclusion"] = None
+    fake.runs = [hold]
+    observed = provider(fake).observe_group_hold_check(
+        G, freshness_cutoff=datetime(2026, 1, 1, tzinfo=UTC)
+    )
+    assert observed.run_id == "1"
+    fake.runs = [check(sha=G, name="avo-main-release", app_id=15368)]
+    with pytest.raises(ProtectedMainProviderError):
+        provider(fake).observe_group_hold_check(
+            G, freshness_cutoff=datetime(2026, 1, 1, tzinfo=UTC)
+        )
+
+
+def test_merge_group_checks_separate_validation_checks_from_release_hold() -> None:
+    fake = FakeTransport()
+    validation = check(sha=G)
+    hold = check(sha=G, name="avo-main-release", app_id=9001)
+    hold["id"] = 2
+    hold["status"] = "in_progress"
+    hold["conclusion"] = None
+    fake.runs = [validation, hold]
+    observed = provider(fake).observe_merge_group_checks(
+        G,
+        operation_id="sha256:" + "2" * 64,
+        package_digest="sha256:" + "3" * 64,
+        composition_digest="sha256:" + "4" * 64,
+        config_digest="sha256:" + "5" * 64,
+        freshness_cutoff=datetime(2026, 1, 1, tzinfo=UTC),
+    )
+    assert [item.context for item in observed.checks] == ["unit-validation"]
+
+
 def test_provider_has_no_enqueue_or_merge_authority() -> None:
     fake = FakeTransport()
     main = provider(fake)
     assert not hasattr(main, "enqueue")
     assert not hasattr(main, "merge")
     assert all(method == "GET" for method, _, _ in fake.calls)
+
+
+def test_release_attestation_rejects_caller_supplied_identity_string() -> None:
+    attester = MainGraduationAttester(provider(FakeTransport()))
+    with pytest.raises(ProtectedMainProviderError):
+        attester.attest_release(
+            cast(MainReleaseAuthorization, None),
+            cast(MainReleaseHoldObservation, None),
+            cast(MainReleaseIssuerBinding, "isolated-release"),
+        )
 
 
 def test_admission_attester_binds_issuer_isolation_and_pr_head_role() -> None:
@@ -359,5 +509,22 @@ def test_admission_attester_binds_issuer_isolation_and_pr_head_role() -> None:
     )
     with pytest.raises(ProtectedMainProviderError):
         MainGraduationAttester(main).attest_admission(
-            admission, pr, queue, admission_check=check_value
+            admission,
+            pr,
+            queue,
+            admission_check=check_value,
+            freshness_cutoff=datetime(2026, 1, 1, tzinfo=UTC),
+        )
+
+    admission = admission.model_copy(
+        update={"issuer_isolation_digest": main.issuer_isolation_digest}
+    )
+    check_value = check_value.model_copy(update={"run_id": "different-run"})
+    with pytest.raises(ProtectedMainProviderError):
+        MainGraduationAttester(main).attest_admission(
+            admission,
+            pr,
+            queue,
+            admission_check=check_value,
+            freshness_cutoff=datetime(2026, 1, 1, tzinfo=UTC),
         )
