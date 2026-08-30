@@ -1467,8 +1467,8 @@ def test_journal_materializes_and_verifies_every_completion_child(
     journal = MainGraduationJournal(tmp_path)
     package = completion()
     monkeypatch.setattr(journal, "_verify_completion_prerequisites", lambda _package: None)
-    values = journal._child_values(package)
-    references = []
+    values: dict[str, Any] = journal._child_values(package)
+    references: list[ArtifactRef] = []
     for role, value in values.items():
         payload = canonical_bytes(value)
         references.append(
@@ -1642,12 +1642,13 @@ def test_journal_source_package_closure_reads_all_canonical_children(
         ),
     )
     journal._verify_source_package(binding)
-    for field, value in (
+    mutations: tuple[tuple[str, Any], ...] = (
         ("deploy_performed", True),
         ("intent", SimpleNamespace(target_ref="refs/heads/integration", repository_digest=D,
                                    operation_id=D2)),
         ("evidence_artifacts", []),
-    ):
+    )
+    for field, value in mutations:
         broken = SimpleNamespace(**{**vars(source), field: value})
         monkeypatch.setattr(
             journal_module.IntegrationCampaignEvidencePackage,
