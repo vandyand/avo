@@ -48,6 +48,11 @@
       "title": "Schema Version",
       "type": "integer"
     },
+    "source_receipt_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Source Receipt Digest",
+      "type": "string"
+    },
     "stage": {
       "enum": [
         "candidate_publication",
@@ -83,6 +88,7 @@
     "operation_id",
     "stage",
     "intent_digest",
+    "source_receipt_digest",
     "external_identity_digest",
     "lease_identity",
     "lease_digest",

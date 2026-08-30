@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 from pathlib import Path
 from typing import Any
@@ -23,6 +24,7 @@ from avo_correlate.adapters.artifacts.main_graduation_journal import (
     _check_digest,
     _strict_pairs,
 )
+from avo_correlate.contracts.base import StrictModel
 from avo_correlate.contracts.main_graduation import (
     EligibilityLedgerStarted,
     MainGraduationAttempt,
@@ -30,6 +32,10 @@ from avo_correlate.contracts.main_graduation import (
     MainInverseDeltaArtifact,
     MainRollbackAuthorization,
     MainRollbackIntent,
+)
+from avo_correlate.contracts.main_graduation_phase_a import (
+    MainUnresolvedMutationFence,
+    main_target_scope_digest,
 )
 from avo_correlate.domain.canonical import canonical_bytes, canonical_digest
 from tests.unit.test_main_graduation_journal_coverage import (
@@ -403,6 +409,122 @@ def test_run_nonce_and_delivery_conflicts_are_detected(
     with pytest.raises(MainGraduationJournalError, match="malformed"):
         journal._index_run_nonce("hold", record, reference)
     assert package.operation_id == D
+
+
+def test_global_run_nonce_and_webhook_indexes_recover_orphaned_local_records(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A committed global claim must be able to rebuild its local pointer."""
+
+    journal = MainGraduationJournal(tmp_path)
+    package = completion()
+    admission = package.admission_observation
+    admission_bytes = canonical_bytes(admission)
+    admission_ref = journal._store.put_bytes(  # pyright: ignore[reportPrivateUsage]
+        admission_bytes,
+        media_type="application/vnd.avo.main-graduation-queue-admission+json",
+        role="main-graduation-queue-admission",
+        max_bytes=journal._max,  # pyright: ignore[reportPrivateUsage]
+    )
+    monkeypatch.setattr(journal, "_read", lambda _kind, _key: None)
+    journal._index_run_nonce("admission", admission, admission_ref)  # pyright: ignore[reportPrivateUsage]
+    assert journal._index_run_nonce(  # pyright: ignore[reportPrivateUsage]
+        "admission", admission, admission_ref
+    ) == admission_ref
+
+    webhook = package.hold_observation.merge_group_receipt
+    webhook_ref = journal._store.put_bytes(  # pyright: ignore[reportPrivateUsage]
+        canonical_bytes(webhook),
+        media_type="application/vnd.avo.main-graduation-merge-group-webhook-receipt+json",
+        role="main-graduation-merge-group-webhook-receipt",
+        max_bytes=journal._max,  # pyright: ignore[reportPrivateUsage]
+    )
+    journal._index_webhook_delivery(webhook, webhook_ref)  # pyright: ignore[reportPrivateUsage]
+    assert journal._index_webhook_delivery(  # pyright: ignore[reportPrivateUsage]
+        webhook, webhook_ref
+    ) == webhook_ref
+
+
+class _IdentityFixture(StrictModel):
+    operation_id: str
+    payload: str
+
+
+def test_phase_identity_indexes_are_create_once_and_conflict_closed(tmp_path: Path) -> None:
+    journal = MainGraduationJournal(tmp_path)
+    first = _IdentityFixture(operation_id=D, payload="one")
+    first_ref = journal._store.put_bytes(  # pyright: ignore[reportPrivateUsage]
+        canonical_bytes(first),
+        media_type="application/vnd.avo.main-graduation-mutation-receipt+json",
+        role="main-graduation-mutation-receipt",
+        max_bytes=journal._max,  # pyright: ignore[reportPrivateUsage]
+    )
+    journal._cas_phase_identity(  # pyright: ignore[reportPrivateUsage]
+        "mutation-receipt", D, first, first_ref
+    )
+    journal._cas_phase_identity(  # pyright: ignore[reportPrivateUsage]
+        "mutation-receipt", D, first, first_ref
+    )
+    second = _IdentityFixture(operation_id=D, payload="two")
+    second_ref = journal._store.put_bytes(  # pyright: ignore[reportPrivateUsage]
+        canonical_bytes(second),
+        media_type="application/vnd.avo.main-graduation-mutation-receipt+json",
+        role="main-graduation-mutation-receipt",
+        max_bytes=journal._max,  # pyright: ignore[reportPrivateUsage]
+    )
+    with pytest.raises(MainGraduationRecordConflictError):
+        journal._cas_phase_identity(  # pyright: ignore[reportPrivateUsage]
+            "mutation-receipt", D, second, second_ref
+        )
+
+
+def test_target_fence_open_claim_is_atomic_under_competing_writers(tmp_path: Path) -> None:
+    journal = MainGraduationJournal(tmp_path)
+
+    def make_fence(digest_seed: str) -> MainUnresolvedMutationFence:
+        values = {
+            "repository_digest": R,
+            "target_ref": "refs/heads/main",
+            "operation_id": D,
+            "stage": "candidate_publication",
+            "intent_digest": D,
+            "source_receipt_digest": D,
+            "external_identity_digest": D,
+            "lease_identity": "avo-controller",
+            "lease_digest": D,
+            "target_scope_digest": main_target_scope_digest(R, "refs/heads/main"),
+            "opened_at": NOW,
+        }
+        probe = MainUnresolvedMutationFence.model_construct(**values, fence_digest=digest_seed)
+        values["fence_digest"] = canonical_digest(
+            probe.model_dump(exclude={"fence_digest"}, mode="json")
+        )
+        return MainUnresolvedMutationFence.model_validate(values)
+
+    fences = [make_fence(D), make_fence(D2)]
+    references = [
+        journal._store.put_bytes(  # pyright: ignore[reportPrivateUsage]
+            canonical_bytes(fence),
+            media_type="application/vnd.avo.main-graduation-unresolved-mutation-fence+json",
+            role="main-graduation-unresolved-mutation-fence",
+            max_bytes=journal._max,  # pyright: ignore[reportPrivateUsage]
+        )
+        for fence in fences
+    ]
+
+    def claim(index: int) -> str:
+        try:
+            journal._cas_target_fence(  # pyright: ignore[reportPrivateUsage]
+                fences[index], references[index]
+            )
+        except MainGraduationRecordConflictError:
+            return "conflict"
+        return "claimed"
+
+    outcomes: list[str]
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        outcomes = list(pool.map(claim, range(2)))
+    assert sorted(outcomes) == ["claimed", "conflict"]
 
 
 def test_eligibility_sequence_and_attempt_recovery_branches(

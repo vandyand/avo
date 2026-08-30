@@ -300,6 +300,19 @@
       ],
       "default": null
     },
+    "parent_resolution_digest": {
+      "anyOf": [
+        {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Parent Resolution Digest"
+    },
     "parent_stage": {
       "anyOf": [
         {

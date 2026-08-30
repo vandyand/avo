@@ -58,7 +58,9 @@ def main_stage_identity_digest(
     stage: MainMutationStage,
     external_key: str,
     *,
-    queue_generation_digest: str | None = None,
+    queue_generation_digest: str | None,
+    repository_digest: str,
+    target_ref: str,
 ) -> Sha256Digest:
     """Derive a deterministic identity for a stage-specific provider object."""
 
@@ -68,6 +70,8 @@ def main_stage_identity_digest(
             "stage": stage,
             "external_key": external_key,
             "queue_generation_digest": queue_generation_digest,
+            "repository_digest": repository_digest,
+            "target_ref": target_ref,
         }
     )
 
@@ -95,6 +99,8 @@ class MainExternalIdentity(MainBound):
             self.stage,
             self.external_key,
             queue_generation_digest=self.queue_generation_digest,
+            repository_digest=self.repository_digest,
+            target_ref=self.target_ref,
         )
         if self.identity_digest != expected:
             raise ValueError("external identity digest mismatch")
@@ -116,6 +122,9 @@ class MainMutationIntent(MainBound):
     parent_stage: MainMutationStage | None = None
     parent_intent_digest: Sha256Digest | None = None
     parent_receipt: MainMutationReceipt | None = None
+    # An ambiguous predecessor remains immutable.  A durable fence
+    # resolution may authorize the next stage without rewriting that receipt.
+    parent_resolution_digest: Sha256Digest | None = None
     lease_identity: NonEmptyString
     lease_digest: Sha256Digest
     lease_epoch_digest: Sha256Digest
@@ -139,8 +148,14 @@ class MainMutationIntent(MainBound):
             raise ValueError("mutation intent has an invalid parent stage")
         if (self.parent_stage is None) != (self.parent_intent_digest is None):
             raise ValueError("parent stage and parent intent must be supplied together")
-        if (self.parent_stage is None) != (self.parent_receipt is None):
-            raise ValueError("parent stage and parent receipt must be supplied together")
+        if self.parent_stage is None and (
+            self.parent_receipt is not None or self.parent_resolution_digest is not None
+        ):
+            raise ValueError("root mutation intent cannot carry a predecessor resolution")
+        if self.parent_stage is not None and (
+            (self.parent_receipt is None) == (self.parent_resolution_digest is None)
+        ):
+            raise ValueError("next mutation intent requires exactly one predecessor proof")
         if self.parent_receipt is not None:
             parent = self.parent_receipt
             if (
@@ -245,7 +260,9 @@ class MainReleaseClaim(MainBound):
     lease_digest: Sha256Digest
     lease_epoch_digest: Sha256Digest
     release_issuer_identity: NonEmptyString
+    release_issuer_app_id: StrictInt = Field(gt=0)
     issuer_isolation_digest: Sha256Digest
+    target_scope_digest: Sha256Digest
     authorization_expires_at: datetime
     lease_expires_at: datetime
     claim_key: Sha256Digest
@@ -262,28 +279,39 @@ class MainReleaseClaim(MainBound):
 
     @model_validator(mode="after")
     def validate_claim(self) -> MainReleaseClaim:
+        if self.release_issuer_app_id == 15368:
+            raise ValueError("validation App 15368 cannot claim release")
+        if self.target_scope_digest != main_target_scope_digest(
+            self.repository_digest, self.target_ref
+        ):
+            raise ValueError("release claim target scope mismatch")
         if self.authorization_expires_at > self.lease_expires_at:
             raise ValueError("release authorization cannot outlive the main lease")
         if (
-            self.claimed_at > self.authorization_expires_at
-            or self.claimed_at > self.lease_expires_at
+            self.claimed_at >= self.authorization_expires_at
+            or self.claimed_at >= self.lease_expires_at
         ):
             raise ValueError("release claim must be created before authority expiry")
-        expected_key = canonical_digest(
-            {
-                "repository_digest": self.repository_digest,
-                "target_ref": self.target_ref,
-                "authorization_digest": self.authorization_digest,
-                "hold_observation_digest": self.hold_observation_digest,
-                "group_sha": self.group_sha,
-                "hold_run_id": self.hold_run_id,
-                "hold_nonce": self.hold_nonce,
-                "queue_generation_digest": self.queue_generation_digest,
-                "lease_epoch_digest": self.lease_epoch_digest,
-                "release_issuer_identity": self.release_issuer_identity,
-                "issuer_isolation_digest": self.issuer_isolation_digest,
-            }
-        )
+        key_values: dict[str, object] = {
+            "repository_digest": self.repository_digest,
+            "target_ref": self.target_ref,
+            "operation_id": self.operation_id,
+            "authorization_digest": self.authorization_digest,
+            "hold_observation_digest": self.hold_observation_digest,
+            "group_sha": self.group_sha,
+            "hold_run_id": self.hold_run_id,
+            "hold_nonce": self.hold_nonce,
+            "queue_generation_digest": self.queue_generation_digest,
+            "lease_epoch_digest": self.lease_epoch_digest,
+            "lease_digest": self.lease_digest,
+            "release_issuer_identity": self.release_issuer_identity,
+            "issuer_isolation_digest": self.issuer_isolation_digest,
+            "authorization_expires_at": self.authorization_expires_at.isoformat(),
+            "lease_expires_at": self.lease_expires_at.isoformat(),
+        }
+        key_values["release_issuer_app_id"] = self.release_issuer_app_id
+        key_values["target_scope_digest"] = self.target_scope_digest
+        expected_key = canonical_digest(key_values)
         if self.claim_key != expected_key:
             raise ValueError("release claim key mismatch")
         if self.claim_digest != canonical_digest(
@@ -300,6 +328,7 @@ class MainUnresolvedMutationFence(MainBound):
     operation_id: Sha256Digest
     stage: MainMutationStage
     intent_digest: Sha256Digest
+    source_receipt_digest: Sha256Digest
     external_identity_digest: Sha256Digest
     lease_identity: NonEmptyString
     lease_digest: Sha256Digest
@@ -330,6 +359,14 @@ class MainMutationFenceResolution(MainBound):
     fence_digest: Sha256Digest
     operation_id: Sha256Digest
     intent_digest: Sha256Digest
+    external_identity_digest: Sha256Digest
+    lease_identity: NonEmptyString
+    lease_digest: Sha256Digest
+    target_scope_digest: Sha256Digest
+    resolved_receipt_digest: Sha256Digest
+    authoritative_observation_digest: Sha256Digest
+    provider_identity: NonEmptyString
+    provider_api_version: NonEmptyString
     outcome: Literal["observed", "not_applied"]
     resolution_digest: Sha256Digest
     resolved_at: datetime
@@ -338,6 +375,10 @@ class MainMutationFenceResolution(MainBound):
 
     @model_validator(mode="after")
     def validate_resolution(self) -> MainMutationFenceResolution:
+        if self.target_scope_digest != main_target_scope_digest(
+            self.repository_digest, self.target_ref
+        ):
+            raise ValueError("mutation resolution target scope mismatch")
         if self.resolution_digest != canonical_digest(
             self.model_dump(exclude={"resolution_digest"}, mode="json")
         ):

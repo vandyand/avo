@@ -2,6 +2,16 @@
   "additionalProperties": false,
   "description": "Append-only closure fact for an unresolved mutation fence.",
   "properties": {
+    "authoritative_observation_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Authoritative Observation Digest",
+      "type": "string"
+    },
+    "external_identity_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "External Identity Digest",
+      "type": "string"
+    },
     "fence_digest": {
       "pattern": "^sha256:[0-9a-f]{64}$",
       "title": "Fence Digest",
@@ -10,6 +20,16 @@
     "intent_digest": {
       "pattern": "^sha256:[0-9a-f]{64}$",
       "title": "Intent Digest",
+      "type": "string"
+    },
+    "lease_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Lease Digest",
+      "type": "string"
+    },
+    "lease_identity": {
+      "minLength": 1,
+      "title": "Lease Identity",
       "type": "string"
     },
     "operation_id": {
@@ -23,6 +43,16 @@
         "not_applied"
       ],
       "title": "Outcome",
+      "type": "string"
+    },
+    "provider_api_version": {
+      "minLength": 1,
+      "title": "Provider Api Version",
+      "type": "string"
+    },
+    "provider_identity": {
+      "minLength": 1,
+      "title": "Provider Identity",
       "type": "string"
     },
     "repository_digest": {
@@ -40,6 +70,11 @@
       "title": "Resolved At",
       "type": "string"
     },
+    "resolved_receipt_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Resolved Receipt Digest",
+      "type": "string"
+    },
     "schema_version": {
       "const": 1,
       "default": 1,
@@ -51,6 +86,11 @@
       "default": "refs/heads/main",
       "title": "Target Ref",
       "type": "string"
+    },
+    "target_scope_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Target Scope Digest",
+      "type": "string"
     }
   },
   "required": [
@@ -58,6 +98,14 @@
     "fence_digest",
     "operation_id",
     "intent_digest",
+    "external_identity_digest",
+    "lease_identity",
+    "lease_digest",
+    "target_scope_digest",
+    "resolved_receipt_digest",
+    "authoritative_observation_digest",
+    "provider_identity",
+    "provider_api_version",
     "outcome",
     "resolution_digest",
     "resolved_at"

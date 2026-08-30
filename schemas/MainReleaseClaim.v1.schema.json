@@ -88,6 +88,11 @@
       "title": "Queue Generation Digest",
       "type": "string"
     },
+    "release_issuer_app_id": {
+      "exclusiveMinimum": 0,
+      "title": "Release Issuer App Id",
+      "type": "integer"
+    },
     "release_issuer_identity": {
       "minLength": 1,
       "title": "Release Issuer Identity",
@@ -115,6 +120,11 @@
       "default": "refs/heads/main",
       "title": "Target Ref",
       "type": "string"
+    },
+    "target_scope_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Target Scope Digest",
+      "type": "string"
     }
   },
   "required": [
@@ -130,7 +140,9 @@
     "lease_digest",
     "lease_epoch_digest",
     "release_issuer_identity",
+    "release_issuer_app_id",
     "issuer_isolation_digest",
+    "target_scope_digest",
     "authorization_expires_at",
     "lease_expires_at",
     "claim_key",

@@ -33,7 +33,14 @@ HEAD = "b" * 40
 def external(stage: MainMutationStage = "candidate_publication") -> MainExternalIdentity:
     key = "refs/heads/avo/candidate/op"
     queue = D if stage != "candidate_publication" else None
-    identity = main_stage_identity_digest(D, stage, key, queue_generation_digest=queue)
+    identity = main_stage_identity_digest(
+        D,
+        stage,
+        key,
+        queue_generation_digest=queue,
+        repository_digest=R,
+        target_ref="refs/heads/main",
+    )
     return MainExternalIdentity(
         repository_digest=R,
         operation_id=D,
@@ -71,12 +78,29 @@ def intent() -> MainMutationIntent:
 
 
 def test_deterministic_identities_and_nonce_are_stable() -> None:
-    value = main_stage_identity_digest(D, "admission_check", "pr:17", queue_generation_digest=D2)
+    value = main_stage_identity_digest(
+        D,
+        "admission_check",
+        "pr:17",
+        queue_generation_digest=D2,
+        repository_digest=R,
+        target_ref="refs/heads/main",
+    )
     assert value == main_stage_identity_digest(
-        D, "admission_check", "pr:17", queue_generation_digest=D2
+        D,
+        "admission_check",
+        "pr:17",
+        queue_generation_digest=D2,
+        repository_digest=R,
+        target_ref="refs/heads/main",
     )
     assert value != main_stage_identity_digest(
-        D, "admission_check", "pr:18", queue_generation_digest=D2
+        D,
+        "admission_check",
+        "pr:18",
+        queue_generation_digest=D2,
+        repository_digest=R,
+        target_ref="refs/heads/main",
     )
     assert main_stage_nonce(value) == main_stage_nonce(value)
     assert main_target_scope_digest(R, "refs/heads/main") == main_target_scope_digest(
@@ -151,7 +175,9 @@ def test_release_claim_key_binds_authorization_hold_group_lease_and_issuer() -> 
         "lease_digest": D2,
         "lease_epoch_digest": D2,
         "release_issuer_identity": "isolated-release",
+        "release_issuer_app_id": 9002,
         "issuer_isolation_digest": D,
+        "target_scope_digest": main_target_scope_digest(R, "refs/heads/main"),
         "authorization_expires_at": NOW.replace(hour=1),
         "lease_expires_at": NOW.replace(hour=2),
         "claimed_at": NOW,
@@ -165,6 +191,7 @@ def test_release_claim_key_binds_authorization_hold_group_lease_and_issuer() -> 
         {
             "repository_digest": R,
             "target_ref": "refs/heads/main",
+            "operation_id": D,
             "authorization_digest": D2,
             "hold_observation_digest": D,
             "group_sha": HEAD,
@@ -172,8 +199,13 @@ def test_release_claim_key_binds_authorization_hold_group_lease_and_issuer() -> 
             "hold_nonce": "hold-nonce",
             "queue_generation_digest": D2,
             "lease_epoch_digest": D2,
+            "lease_digest": D2,
             "release_issuer_identity": "isolated-release",
+            "release_issuer_app_id": 9002,
             "issuer_isolation_digest": D,
+            "target_scope_digest": main_target_scope_digest(R, "refs/heads/main"),
+            "authorization_expires_at": NOW.replace(hour=1).isoformat(),
+            "lease_expires_at": NOW.replace(hour=2).isoformat(),
         }
     )
     probe = MainReleaseClaim.model_construct(**values, claim_digest=D2)  # pyright: ignore[reportArgumentType]
@@ -237,6 +269,7 @@ def test_target_fence_and_resolution_bind_scope_and_intent() -> None:
         "operation_id": D,
         "stage": "candidate_publication",
         "intent_digest": intent().intent_digest,
+        "source_receipt_digest": D2,
         "external_identity_digest": external().identity_digest,
         "lease_identity": "avo-controller",
         "lease_digest": D2,
@@ -257,6 +290,14 @@ def test_target_fence_and_resolution_bind_scope_and_intent() -> None:
         "fence_digest": fence.fence_digest,
         "operation_id": D,
         "intent_digest": intent().intent_digest,
+        "external_identity_digest": external().identity_digest,
+        "lease_identity": "avo-controller",
+        "lease_digest": D2,
+        "target_scope_digest": main_target_scope_digest(R, "refs/heads/main"),
+        "resolved_receipt_digest": D2,
+        "authoritative_observation_digest": D,
+        "provider_identity": "provider",
+        "provider_api_version": "v1",
         "outcome": "observed",
         "resolved_at": NOW,
     }
