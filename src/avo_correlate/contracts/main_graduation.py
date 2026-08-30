@@ -379,6 +379,7 @@ class MainQueueObservation(MainBound):
     release_issuer_app_id: StrictInt = Field(gt=0)
     issuer_isolation_digest: Sha256Digest
     observed_at: datetime
+    pull_request_number: StrictInt = Field(default=0, ge=0)
 
     _aware_observed_at = field_validator("observed_at")(_aware)
 
@@ -388,9 +389,12 @@ class MainQueueObservation(MainBound):
             raise ValueError("validation App 15368 cannot be the release issuer")
         if self.expected_base_commit == "":
             raise ValueError("queue base is required")
+        if (len(self.expected_group_parents) > 1) != (self.pull_request_number > 0):
+            raise ValueError("queue PR membership does not match singleton topology")
         expected_topology = canonical_digest(
             {
                 "expected_group_parents": self.expected_group_parents,
+                "pull_request_number": self.pull_request_number,
                 "merge_method": self.merge_method,
                 "provider_identity": self.provider_identity,
                 "provider_api_version": self.provider_api_version,
@@ -670,6 +674,34 @@ class MainQueueAdmissionObservation(MainBound):
         return self
 
 
+class MainMergeGroupWebhookReceipt(MainBound):
+    """Durable receipt of one authenticated native merge-group webhook."""
+
+    schema_version: Literal[1] = 1
+    operation_id: Sha256Digest
+    group_sha: GitObject
+    group_tree: GitObject
+    group_parents: list[GitObject] = Field(min_length=1)
+    pull_request_number: StrictInt = Field(gt=0)
+    queue_generation_digest: Sha256Digest
+    delivery_id: NonEmptyString
+    body_digest: Sha256Digest
+    observed_at: datetime
+    receipt_digest: Sha256Digest
+
+    _aware_observed_at = field_validator("observed_at")(_aware)
+
+    @model_validator(mode="after")
+    def validate_receipt(self) -> MainMergeGroupWebhookReceipt:
+        if len(set(self.group_parents)) != len(self.group_parents):
+            raise ValueError("merge-group webhook parents must be unique")
+        if self.receipt_digest != canonical_digest(
+            self.model_dump(exclude={"receipt_digest"}, mode="json")
+        ):
+            raise ValueError("merge-group webhook receipt digest mismatch")
+        return self
+
+
 class MainReleaseHoldObservation(MainBound):
     """Distinct pending group-specific hold, created after queue admission."""
 
@@ -705,6 +737,7 @@ class MainReleaseHoldObservation(MainBound):
     check_conclusion: Literal["pending"] = "pending"
     validation_app_id: Literal[15368] = 15368
     other_required_checks: MainMergeGroupChecks
+    merge_group_receipt: MainMergeGroupWebhookReceipt
     protection_manifest_digest: Sha256Digest
     attestation_manifest_digest: Sha256Digest
     observed_at: datetime
@@ -725,6 +758,18 @@ class MainReleaseHoldObservation(MainBound):
             raise ValueError("release group tree differs from deterministic composition")
         if self.other_required_checks.group_sha != self.group_sha:
             raise ValueError("required checks must bind the exact merge-group SHA")
+        receipt = self.merge_group_receipt
+        if (
+            receipt.repository_digest != self.repository_digest
+            or receipt.target_ref != self.target_ref
+            or receipt.operation_id != self.operation_id
+            or receipt.group_sha != self.group_sha
+            or receipt.group_tree != self.group_tree
+            or receipt.group_parents != self.group_parents
+            or receipt.pull_request_number != self.pull_request_number
+            or receipt.queue_generation_digest != self.queue_generation_digest
+        ):
+            raise ValueError("release hold does not bind the durable merge-group receipt")
         if (
             self.other_required_checks.operation_id != self.operation_id
             or self.other_required_checks.repository_digest != self.repository_digest
@@ -896,6 +941,7 @@ class MainCompletionPackage(MainBound):
             self.protection_manifest,
             self.attestation_manifest,
             self.merge_group_checks,
+            self.hold_observation.merge_group_receipt,
             self.release_issuer_binding,
             self.transition_receipt,
             self.provider_receipt,
@@ -1130,6 +1176,7 @@ class MainCompletionPackage(MainBound):
             "main-graduation-protection-manifest",
             "main-graduation-attestation-manifest",
             "main-graduation-merge-group-checks",
+            "main-graduation-merge-group-webhook-receipt",
             "main-graduation-release-issuer-binding",
             "main-graduation-plan",
             "main-graduation-intent",

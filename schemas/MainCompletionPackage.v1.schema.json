@@ -953,6 +953,98 @@
       "title": "MainMergeGroupChecks",
       "type": "object"
     },
+    "MainMergeGroupWebhookReceipt": {
+      "additionalProperties": false,
+      "description": "Durable receipt of one authenticated native merge-group webhook.",
+      "properties": {
+        "body_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Body Digest",
+          "type": "string"
+        },
+        "delivery_id": {
+          "minLength": 1,
+          "title": "Delivery Id",
+          "type": "string"
+        },
+        "group_parents": {
+          "items": {
+            "pattern": "^[0-9a-f]{40}(?:[0-9a-f]{24})?$",
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Group Parents",
+          "type": "array"
+        },
+        "group_sha": {
+          "pattern": "^[0-9a-f]{40}(?:[0-9a-f]{24})?$",
+          "title": "Group Sha",
+          "type": "string"
+        },
+        "group_tree": {
+          "pattern": "^[0-9a-f]{40}(?:[0-9a-f]{24})?$",
+          "title": "Group Tree",
+          "type": "string"
+        },
+        "observed_at": {
+          "format": "date-time",
+          "title": "Observed At",
+          "type": "string"
+        },
+        "operation_id": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Operation Id",
+          "type": "string"
+        },
+        "pull_request_number": {
+          "exclusiveMinimum": 0,
+          "title": "Pull Request Number",
+          "type": "integer"
+        },
+        "queue_generation_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Queue Generation Digest",
+          "type": "string"
+        },
+        "receipt_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Receipt Digest",
+          "type": "string"
+        },
+        "repository_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Repository Digest",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "target_ref": {
+          "const": "refs/heads/main",
+          "default": "refs/heads/main",
+          "title": "Target Ref",
+          "type": "string"
+        }
+      },
+      "required": [
+        "repository_digest",
+        "operation_id",
+        "group_sha",
+        "group_tree",
+        "group_parents",
+        "pull_request_number",
+        "queue_generation_digest",
+        "delivery_id",
+        "body_digest",
+        "observed_at",
+        "receipt_digest"
+      ],
+      "title": "MainMergeGroupWebhookReceipt",
+      "type": "object"
+    },
     "MainPreparationAuthorization": {
       "additionalProperties": false,
       "description": "Reversible authorization; it cannot authorize a main mutation.",
@@ -1587,6 +1679,12 @@
           "title": "Provider Identity",
           "type": "string"
         },
+        "pull_request_number": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Pull Request Number",
+          "type": "integer"
+        },
         "queue_enabled": {
           "const": true,
           "default": true,
@@ -2021,6 +2119,9 @@
           "title": "Max Entries Per Group",
           "type": "integer"
         },
+        "merge_group_receipt": {
+          "$ref": "#/$defs/MainMergeGroupWebhookReceipt"
+        },
         "observed_at": {
           "format": "date-time",
           "title": "Observed At",
@@ -2121,6 +2222,7 @@
         "release_issuer_app_id",
         "issuer_isolation_digest",
         "other_required_checks",
+        "merge_group_receipt",
         "protection_manifest_digest",
         "attestation_manifest_digest",
         "observed_at"

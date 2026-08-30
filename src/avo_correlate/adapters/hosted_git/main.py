@@ -1,22 +1,14 @@
-"""Hosted Git providers."""
+"""Compatibility entrypoint for the protected-main provider.
 
-from .campaign import GitHubCampaignProvider
-from .github import (
-    GitHubEvidenceSnapshot,
-    GitHubIntegrationProvider,
-    GitHubProtectionPolicy,
-    GitHubProvider,
-    GitHubPullRequestBinding,
-    GitHubPullRequestDiscovery,
-    GitHubRefObservation,
-    GitHubRESTProvider,
-    GitHubRollbackTopology,
-    github_repository_digest,
-)
+The implementation lives in :mod:`protected_main` so the main-specific
+authority is explicit at import sites.
+"""
+
 from .protected_main import (
     MainGraduationAttester,
     MainMergeGroupObservation,
     MainProtectedProvider,
+    MainProviderAttester,
     MainPullRequestObservation,
     MainRefObservation,
     MainRepositoryObservation,
@@ -30,19 +22,10 @@ from .protected_main import (
 )
 
 __all__ = [
-    "GitHubCampaignProvider",
-    "GitHubEvidenceSnapshot",
-    "GitHubIntegrationProvider",
-    "GitHubProtectionPolicy",
-    "GitHubProvider",
-    "GitHubPullRequestBinding",
-    "GitHubPullRequestDiscovery",
-    "GitHubRESTProvider",
-    "GitHubRefObservation",
-    "GitHubRollbackTopology",
     "MainGraduationAttester",
     "MainMergeGroupObservation",
     "MainProtectedProvider",
+    "MainProviderAttester",
     "MainPullRequestObservation",
     "MainRefObservation",
     "MainRepositoryObservation",
@@ -53,5 +36,4 @@ __all__ = [
     "ProtectedMainProviderError",
     "ProtectedMainRejected",
     "ProtectedMainSnapshot",
-    "github_repository_digest",
 ]
