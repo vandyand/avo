@@ -92,6 +92,7 @@ def _chain(journal: MainGraduationJournal) -> tuple[Any, dict[str, Any]]:
         "merge-group-checks": package.merge_group_checks,
         "release-authorization": authorization,
         "release-transition": transition,
+        "claimed-release-transition": package.claimed_transition_receipt,
         "provider-receipt": package.provider_receipt,
         "reconciliation": package.reconciliation,
         "merge-group-webhook-receipt": hold.merge_group_receipt,
