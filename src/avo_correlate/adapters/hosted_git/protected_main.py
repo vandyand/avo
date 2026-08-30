@@ -31,6 +31,7 @@ from avo_correlate.adapters.hosted_git.github import (
 from avo_correlate.contracts.main_graduation import (
     MainCheckObservation,
     MainMergeGroupChecks,
+    MainMergeGroupWebhookReceipt,
     MainProtectionManifest,
     MainProviderReceipt,
     MainQueueAdmissionObservation,
@@ -130,8 +131,7 @@ class MainMergeGroupObservation:
     pull_request_numbers: tuple[int, ...]
     queue_generation_digest: str
     observed_at: datetime
-    webhook_delivery_id: str = ""
-    webhook_body_digest: str = ""
+    webhook_receipt: MainMergeGroupWebhookReceipt
 
 
 @dataclass(frozen=True, slots=True)
@@ -900,6 +900,18 @@ class ProtectedMainProvider:
             raise ProtectedMainProviderError(
                 "durable authenticated queue observation is required for merge group"
             )
+        current_queue = self.observe_queue()
+        if (
+            current_queue.queue_generation_digest != queue.queue_generation_digest
+            or current_queue.expected_base_commit != queue.expected_base_commit
+            or current_queue.expected_base_tree != queue.expected_base_tree
+            or current_queue.expected_group_parents != queue.expected_group_parents
+            or current_queue.group_topology_digest != queue.group_topology_digest
+        ):
+            raise ProtectedMainProviderError(
+                "merge group queue snapshot is stale at webhook delivery"
+            )
+        queue = current_queue
         if pull_request_number is None or pull_request_number <= 0:
             raise ProtectedMainProviderError("merge group PR membership evidence is required")
         number = pull_request_number
@@ -923,6 +935,29 @@ class ProtectedMainProvider:
             raise ProtectedMainProviderError("merge group response topology differs from commit")
         self._seen_webhook_deliveries.add(delivery)
         body_digest = "sha256:" + hashlib.sha256(webhook_body).hexdigest()
+        observed_at = datetime.now(UTC)
+        receipt_payload = {
+            "repository_digest": self.repository_digest,
+            "target_ref": "refs/heads/main",
+            "operation_id": queue.operation_id,
+            "group_sha": group_sha,
+            "group_tree": observed_tree,
+            "group_parents": list(queue.expected_group_parents),
+            "pull_request_number": number,
+            "queue_generation_digest": queue.queue_generation_digest,
+            "delivery_id": delivery,
+            "body_digest": body_digest,
+            "observed_at": observed_at,
+        }
+        receipt_probe = MainMergeGroupWebhookReceipt.model_construct(**receipt_payload)
+        receipt = MainMergeGroupWebhookReceipt.model_validate(
+            {
+                **receipt_payload,
+                "receipt_digest": canonical_digest(
+                    receipt_probe.model_dump(exclude={"receipt_digest"}, mode="json")
+                ),
+            }
+        )
         return MainMergeGroupObservation(
             self.repository_digest,
             group_sha,
@@ -930,9 +965,8 @@ class ProtectedMainProvider:
             tuple(queue.expected_group_parents),
             (number,),
             queue.queue_generation_digest,
-            datetime.now(UTC),
-            delivery,
-            body_digest,
+            receipt.observed_at,
+            receipt,
         )
 
     def observe_snapshot(
@@ -1341,8 +1375,9 @@ class MainGraduationAttester:
             hold.group_sha != group.group_sha
             or hold.group_tree != group.group_tree
             or tuple(hold.group_parents) != group.group_parents
+            or hold.merge_group_receipt != group.webhook_receipt
         ):
-            raise ProtectedMainProviderError("hold group identity or topology mismatch")
+            raise ProtectedMainProviderError("hold group identity, topology, or receipt mismatch")
         if (
             hold.queue_generation_digest != queue.queue_generation_digest
             or hold.queue_members != list(group.pull_request_numbers)

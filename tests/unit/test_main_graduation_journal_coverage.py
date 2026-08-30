@@ -34,6 +34,7 @@ from avo_correlate.contracts.main_graduation import (
     MainInverseDeltaArtifact,
     MainLeaseEvidence,
     MainMergeGroupChecks,
+    MainMergeGroupWebhookReceipt,
     MainPreparationAuthorization,
     MainProtectionManifest,
     MainProviderReceipt,
@@ -484,6 +485,28 @@ def completion() -> MainCompletionPackage:
         issuer_isolation_digest=D,
         observed_at=NOW,
     )
+    receipt_payload = {
+        "repository_digest": R,
+        "target_ref": "refs/heads/main",
+        "operation_id": D,
+        "group_sha": GROUP,
+        "group_tree": TREE,
+        "group_parents": [BASE, HEAD],
+        "pull_request_number": 1,
+        "queue_generation_digest": D,
+        "delivery_id": "delivery-1",
+        "body_digest": D,
+        "observed_at": NOW,
+    }
+    receipt_probe = MainMergeGroupWebhookReceipt.model_construct(**receipt_payload)
+    receipt = MainMergeGroupWebhookReceipt.model_validate(
+        {
+            **receipt_payload,
+            "receipt_digest": canonical_digest(
+                receipt_probe.model_dump(exclude={"receipt_digest"}, mode="json")
+            ),
+        }
+    )
     hold = MainReleaseHoldObservation.model_construct(
         operation_id=D,
         repository_digest=R,
@@ -508,6 +531,7 @@ def completion() -> MainCompletionPackage:
         release_issuer_app_id=9001,
         issuer_isolation_digest=D,
         other_required_checks=checks,
+        merge_group_receipt=receipt,
         protection_manifest_digest=D,
         attestation_manifest_digest=D,
         observed_at=NOW,
@@ -623,6 +647,7 @@ def completion() -> MainCompletionPackage:
                 "main-graduation-protection-manifest",
                 "main-graduation-attestation-manifest",
                 "main-graduation-merge-group-checks",
+                "main-graduation-merge-group-webhook-receipt",
                 "main-graduation-release-issuer-binding",
                 "main-graduation-plan",
                 "main-graduation-intent",
@@ -1016,6 +1041,38 @@ def test_completion_validator_covers_full_cross_stage_closure() -> None:
         package.validate_completion()
 
 
+def test_merge_group_webhook_receipt_is_cas_indexed_across_restart_and_rebound_conflicts(
+    tmp_path: Path,
+) -> None:
+    package = completion()
+    receipt = package.hold_observation.merge_group_receipt
+    journal = MainGraduationJournal(tmp_path)
+    reference = journal.record_merge_group_webhook_receipt(receipt)
+    restarted = MainGraduationJournal(tmp_path)
+    durable = restarted.read_merge_group_webhook_receipt(receipt.operation_id)
+    assert durable is not None
+    assert durable[1] == reference
+    rebound_payload = receipt.model_dump(mode="json", exclude={"operation_id", "receipt_digest"})
+    rebound_payload["operation_id"] = D2
+    rebound_payload["observed_at"] = datetime.fromisoformat(
+        str(rebound_payload["observed_at"]).replace("Z", "+00:00")
+    )
+    rebound_probe = MainMergeGroupWebhookReceipt.model_construct(**rebound_payload)
+    rebound = MainMergeGroupWebhookReceipt.model_validate(
+        {
+            **rebound_payload,
+            "receipt_digest": canonical_digest(
+                rebound_probe.model_dump(exclude={"receipt_digest"}, mode="json")
+            ),
+        }
+    )
+    with pytest.raises(MainGraduationRecordConflictError, match="delivery"):
+        restarted.record_merge_group_webhook_receipt(rebound)
+    forged = receipt.model_copy(update={"delivery_id": ""})
+    with pytest.raises(MainGraduationJournalError):
+        restarted.record_merge_group_webhook_receipt(forged)
+
+
 def test_journal_wrappers_and_low_level_guards(tmp_path: Path) -> None:
     journal = MainGraduationJournal(tmp_path)
     assert journal.read("eligibility", D) is None
@@ -1175,7 +1232,7 @@ def test_completion_orchestration_and_conflict_edges(
     journal = MainGraduationJournal(tmp_path)
     package = completion()
     values = journal._child_values(package)
-    assert len(values) == 17
+    assert len(values) == 18
     called: list[str] = []
     monkeypatch.setattr(journal, "_require_exact", lambda kind, record: called.append(kind))
     for name in (
@@ -1191,7 +1248,7 @@ def test_completion_orchestration_and_conflict_edges(
         monkeypatch.setattr(journal, name, lambda record, _name=name: called.append(_name))
     journal._verify_completion_prerequisites(package)
     assert called[:3] == ["source-package", "delta", "composition"]
-    assert len(called) == 25
+    assert len(called) == 26
     monkeypatch.setattr(journal, "_verify_completion_prerequisites", lambda package: None)
     with pytest.raises(MainGraduationJournalError, match="content-bound"):
         journal._materialize_children(package)

@@ -30,6 +30,7 @@ from avo_correlate.contracts.main_graduation import (
     MainInverseDeltaArtifact,
     MainLeaseEvidence,
     MainMergeGroupChecks,
+    MainMergeGroupWebhookReceipt,
     MainPreparationAuthorization,
     MainProtectionManifest,
     MainProviderReceipt,
@@ -77,6 +78,15 @@ class _RunNonceEnvelope(StrictModel):
     reference: ArtifactRef
 
 
+class _WebhookDeliveryEnvelope(StrictModel):
+    """Durable create-once binding for one native webhook delivery ID."""
+
+    schema_version: Literal[1] = 1
+    operation_id: str
+    delivery_id: str
+    reference: ArtifactRef
+
+
 _MODELS: dict[str, type[StrictModel]] = {
     "ledger-started": EligibilityLedgerStarted,
     "plan": MainGraduationPlan,
@@ -88,6 +98,7 @@ _MODELS: dict[str, type[StrictModel]] = {
     "protection": MainProtectionManifest,
     "attestations": MainAttestationManifest,
     "merge-group-checks": MainMergeGroupChecks,
+    "merge-group-webhook-receipt": MainMergeGroupWebhookReceipt,
     "release-issuer-binding": MainReleaseIssuerBinding,
     "intent": MainGraduationIntent,
     "preparation-authorization": MainPreparationAuthorization,
@@ -220,6 +231,7 @@ class MainGraduationJournal:
             elif kind == "queue-admission":
                 self._require_queue_admission(cast(MainQueueAdmissionObservation, checked))
             elif kind == "release-hold":
+                self._require_merge_group_receipt(cast(MainReleaseHoldObservation, checked))
                 self._require_admission(cast(MainReleaseHoldObservation, checked))
             elif kind == "release-authorization":
                 self._require_hold(cast(MainReleaseAuthorization, checked))
@@ -259,6 +271,12 @@ class MainGraduationJournal:
             )
             if prior_global is not None:
                 reference = prior_global
+        elif kind == "merge-group-webhook-receipt":
+            prior_delivery = self._index_webhook_delivery(
+                cast(MainMergeGroupWebhookReceipt, checked), reference
+            )
+            if prior_delivery is not None:
+                reference = prior_delivery
         index = self._indexes / kind / f"{operation_id.removeprefix('sha256:')}.json"
         index.parent.mkdir(parents=True, exist_ok=True)
         payload = canonical_bytes(reference)
@@ -339,6 +357,7 @@ class MainGraduationJournal:
             elif kind == "queue-admission":
                 self._require_queue_admission(cast(MainQueueAdmissionObservation, record))
             elif kind == "release-hold":
+                self._require_merge_group_receipt(cast(MainReleaseHoldObservation, record))
                 self._require_admission(cast(MainReleaseHoldObservation, record))
             elif kind == "release-authorization":
                 self._require_hold(cast(MainReleaseAuthorization, record))
@@ -383,6 +402,9 @@ class MainGraduationJournal:
             "main-graduation-protection-manifest": package.protection_manifest,
             "main-graduation-attestation-manifest": package.attestation_manifest,
             "main-graduation-merge-group-checks": package.merge_group_checks,
+            "main-graduation-merge-group-webhook-receipt": (
+                package.hold_observation.merge_group_receipt
+            ),
             "main-graduation-release-issuer-binding": package.release_issuer_binding,
             "main-graduation-plan": package.plan,
             "main-graduation-intent": package.intent,
@@ -468,6 +490,7 @@ class MainGraduationJournal:
             ("protection", package.protection_manifest),
             ("attestations", package.attestation_manifest),
             ("merge-group-checks", package.merge_group_checks),
+            ("merge-group-webhook-receipt", package.hold_observation.merge_group_receipt),
             ("release-issuer-binding", package.release_issuer_binding),
             ("plan", package.plan),
             ("intent", package.intent),
@@ -1291,6 +1314,88 @@ class MainGraduationJournal:
         key = canonical_digest({"stage": stage, "run_id": run_id, "nonce": nonce})
         return self._indexes / f"{stage}-run-nonce" / f"{key.removeprefix('sha256:')}.json"
 
+    def _webhook_delivery_path(self, delivery_id: str) -> Path:
+        key = canonical_digest({"stage": "merge-group-webhook", "delivery_id": delivery_id})
+        return (
+            self._indexes
+            / "merge-group-webhook-delivery"
+            / f"{key.removeprefix('sha256:')}.json"
+        )
+
+    def _index_webhook_delivery(
+        self, record: MainMergeGroupWebhookReceipt, reference: ArtifactRef
+    ) -> ArtifactRef | None:
+        path = self._webhook_delivery_path(record.delivery_id)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        payload = canonical_bytes(
+            _WebhookDeliveryEnvelope(
+                operation_id=record.operation_id,
+                delivery_id=record.delivery_id,
+                reference=reference,
+            )
+        )
+        try:
+            with path.open("xb") as handle:
+                handle.write(payload)
+                handle.flush()
+                os.fsync(handle.fileno())
+            _sync_directory(path.parent)
+            return None
+        except FileExistsError:
+            try:
+                raw = path.read_text(encoding="utf-8").encode("utf-8")
+                parsed = json.loads(raw, object_pairs_hook=_strict_pairs)
+                current = _WebhookDeliveryEnvelope.model_validate(parsed)
+                if canonical_bytes(current) != raw:
+                    raise ValueError("webhook delivery index is noncanonical")
+                old_data = self._store.read_bytes(current.reference)
+                old = MainMergeGroupWebhookReceipt.model_validate_json(old_data)
+            except (OSError, ValueError, TypeError, UnicodeError, json.JSONDecodeError) as exc:
+                raise MainGraduationJournalError("webhook delivery index is malformed") from exc
+            if (
+                current.delivery_id != record.delivery_id
+                or current.operation_id != record.operation_id
+                or old != record
+            ):
+                raise MainGraduationRecordConflictError(
+                    f"merge-group webhook delivery is already bound: {record.delivery_id}"
+                ) from None
+            return current.reference
+        except OSError as exc:
+            raise MainGraduationJournalError("webhook delivery was not durably indexed") from exc
+
+    def _verify_webhook_delivery(self, record: MainMergeGroupWebhookReceipt) -> None:
+        path = self._webhook_delivery_path(record.delivery_id)
+        if not path.is_file():
+            raise MainGraduationJournalError("merge-group webhook delivery is not durably indexed")
+        try:
+            raw = path.read_text(encoding="utf-8").encode("utf-8")
+            envelope = _WebhookDeliveryEnvelope.model_validate(
+                json.loads(raw, object_pairs_hook=_strict_pairs)
+            )
+            if canonical_bytes(envelope) != raw:
+                raise ValueError("webhook delivery index is noncanonical")
+            if envelope.operation_id != record.operation_id:
+                raise MainGraduationRecordConflictError("webhook delivery operation differs")
+            if self._store.read_bytes(envelope.reference) != canonical_bytes(record):
+                raise MainGraduationRecordConflictError("webhook delivery receipt differs")
+        except MainGraduationRecordConflictError:
+            raise
+        except (OSError, ValueError, TypeError, UnicodeError, json.JSONDecodeError) as exc:
+            raise MainGraduationJournalError("webhook delivery index is malformed") from exc
+
+    def _require_merge_group_receipt(self, hold: MainReleaseHoldObservation) -> None:
+        durable = self._read("merge-group-webhook-receipt", hold.operation_id)
+        if durable is None:
+            raise MainGraduationJournalError(
+                "release hold requires durable merge-group webhook receipt"
+            )
+        receipt = cast(MainMergeGroupWebhookReceipt, durable[0])
+        if receipt != hold.merge_group_receipt:
+            raise MainGraduationRecordConflictError(
+                "release hold receipt differs from durable receipt"
+            )
+
     def _index_run_nonce(
         self,
         stage: Literal["admission", "hold"],
@@ -1586,6 +1691,16 @@ class MainGraduationJournal:
 
     def record_release_hold(self, record: MainReleaseHoldObservation) -> ArtifactRef:
         return self._record("release-hold", record)
+
+    def record_merge_group_webhook_receipt(
+        self, record: MainMergeGroupWebhookReceipt
+    ) -> ArtifactRef:
+        return self._record("merge-group-webhook-receipt", record)
+
+    def read_merge_group_webhook_receipt(
+        self, operation_id: str
+    ) -> tuple[StrictModel, ArtifactRef] | None:
+        return self._read("merge-group-webhook-receipt", operation_id)
 
     def read_release_hold(self, operation_id: str) -> tuple[StrictModel, ArtifactRef] | None:
         return self._read("release-hold", operation_id)
