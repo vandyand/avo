@@ -1,6 +1,7 @@
 import asyncio
 import hashlib
 import json
+import sys
 from datetime import UTC, datetime
 from pathlib import Path
 from types import SimpleNamespace
@@ -802,6 +803,10 @@ def test_codex_preflight_requires_exact_chatgpt_pro_identity(
     monkeypatch.setattr(
         "avo_correlate.adapters.harness.codex.platform.system", lambda: "Linux"
     )
+    # The SDK is an optional extra.  Stub only its version probe so this
+    # contract test remains deterministic in the base development environment;
+    # the exact-version gate is still exercised by preflight.
+    monkeypatch.setitem(sys.modules, "openai_codex", SimpleNamespace(__version__="0.147.0"))
 
     def report_for(
         identity: CodexAccountIdentity,
@@ -873,6 +878,10 @@ def test_codex_preflight_surfaces_account_probe_and_declared_socket_failures(
     monkeypatch.setattr(
         "avo_correlate.adapters.harness.codex.platform.system", lambda: "Linux"
     )
+    # Keep this injected account-probe failure reachable when the optional SDK
+    # extra is not installed locally.  Preflight must still enforce the exact
+    # SDK version before declaring the profile compatible.
+    monkeypatch.setitem(sys.modules, "openai_codex", SimpleNamespace(__version__="0.147.0"))
 
     def fail_account(runtime_profile: HarnessRuntimeProfile) -> CodexAccountIdentity:
         raise RuntimeError("account transport failed")

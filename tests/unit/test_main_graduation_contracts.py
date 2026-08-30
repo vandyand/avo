@@ -854,13 +854,33 @@ def test_journal_rejects_attempt_without_canonical_durable_eligibility(tmp_path:
 
 def test_global_admission_run_nonce_replay_uses_original_reference(tmp_path: Path) -> None:
     journal = MainGraduationJournal(tmp_path)
+    admission = MainQueueAdmissionObservation.model_construct(
+        operation_id=DIGEST,
+        repository_digest=DIGEST,
+        target_ref="refs/heads/main",
+        preparation_authorization_digest=DIGEST,
+        package_digest=DIGEST,
+        composition_digest=DIGEST,
+        pull_request_number=1,
+        pull_request_url="https://example.test/p/1",
+        base_commit=BASE,
+        base_tree=TREE,
+        head_commit="b" * 40,
+        head_tree=TREE,
+        admission_sha="b" * 40,
+        admission_run_id="run",
+        admission_nonce="nonce",
+        queue_generation_digest=DIGEST,
+        protection_manifest_digest=DIGEST,
+        issuer_identity="issuer",
+        release_issuer_app_id=9002,
+        issuer_isolation_digest=DIGEST,
+        observed_at=datetime.now(UTC),
+    )
     first_ref = journal._store.put_bytes(  # pyright: ignore[reportPrivateUsage]
-        b"admission", media_type="application/json", role="test", max_bytes=1024
+        canonical_bytes(admission), media_type="application/json", role="test", max_bytes=4096
     )
     replay_ref = first_ref.model_copy(update={"created_at": datetime.now(UTC) + timedelta(days=1)})
-    admission = MainQueueAdmissionObservation.model_construct(
-        operation_id=DIGEST, admission_run_id="run", admission_nonce="nonce"
-    )
     assert journal._index_run_nonce("admission", admission, first_ref) is None  # pyright: ignore[reportPrivateUsage]
     journal._read = lambda _kind, operation_id: (  # pyright: ignore[reportPrivateUsage]
         (admission, first_ref) if operation_id == DIGEST else None

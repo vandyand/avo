@@ -1,0 +1,141 @@
+{
+  "additionalProperties": false,
+  "description": "Release transition receipt that cannot exist without the one-use claim.",
+  "properties": {
+    "claim_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Claim Digest",
+      "type": "string"
+    },
+    "deploy_performed": {
+      "const": false,
+      "default": false,
+      "title": "Deploy Performed",
+      "type": "boolean"
+    },
+    "group_sha": {
+      "pattern": "^[0-9a-f]{40}(?:[0-9a-f]{24})?$",
+      "title": "Group Sha",
+      "type": "string"
+    },
+    "hold_nonce": {
+      "minLength": 1,
+      "title": "Hold Nonce",
+      "type": "string"
+    },
+    "hold_run_id": {
+      "minLength": 1,
+      "title": "Hold Run Id",
+      "type": "string"
+    },
+    "issuer_identity": {
+      "minLength": 1,
+      "title": "Issuer Identity",
+      "type": "string"
+    },
+    "issuer_isolation_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Issuer Isolation Digest",
+      "type": "string"
+    },
+    "mutation_receipt_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Mutation Receipt Digest",
+      "type": "string"
+    },
+    "mutation_resolution_digest": {
+      "anyOf": [
+        {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Mutation Resolution Digest"
+    },
+    "observed_at": {
+      "format": "date-time",
+      "title": "Observed At",
+      "type": "string"
+    },
+    "operation_id": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Operation Id",
+      "type": "string"
+    },
+    "outcome": {
+      "enum": [
+        "transitioned",
+        "already_transitioned",
+        "reconciliation_required"
+      ],
+      "title": "Outcome",
+      "type": "string"
+    },
+    "receipt_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Receipt Digest",
+      "type": "string"
+    },
+    "release_authorization_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Release Authorization Digest",
+      "type": "string"
+    },
+    "release_issuer_app_id": {
+      "exclusiveMinimum": 0,
+      "title": "Release Issuer App Id",
+      "type": "integer"
+    },
+    "repository_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Repository Digest",
+      "type": "string"
+    },
+    "response_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Response Digest",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "target_ref": {
+      "const": "refs/heads/main",
+      "default": "refs/heads/main",
+      "title": "Target Ref",
+      "type": "string"
+    },
+    "transition_count": {
+      "const": 1,
+      "default": 1,
+      "title": "Transition Count",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "repository_digest",
+    "operation_id",
+    "release_authorization_digest",
+    "claim_digest",
+    "group_sha",
+    "hold_run_id",
+    "hold_nonce",
+    "issuer_identity",
+    "release_issuer_app_id",
+    "issuer_isolation_digest",
+    "outcome",
+    "response_digest",
+    "observed_at",
+    "mutation_receipt_digest",
+    "receipt_digest"
+  ],
+  "title": "MainClaimedReleaseTransitionReceipt",
+  "type": "object"
+}

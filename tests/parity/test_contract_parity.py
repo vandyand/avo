@@ -17,5 +17,25 @@ def test_checked_in_schemas_match_generation(tmp_path: Path) -> None:
     export(tmp_path)
     checked_in = Path("schemas")
     generated = {item.name: item.read_bytes() for item in tmp_path.glob("*.json")}
-    committed = {item.name: item.read_bytes() for item in checked_in.glob("*.json")}
+    # MainCompletionPackage.v1 is retained as an immutable historical wire
+    # contract.  It is intentionally not regenerated after the breaking C4
+    # v2 bump and must never be accepted by the v2 model.
+    committed = {
+        item.name: item.read_bytes()
+        for item in checked_in.glob("*.json")
+        if item.name != "MainCompletionPackage.v1.schema.json"
+    }
     assert generated == committed
+
+
+def test_main_completion_historical_schema_is_retained_and_distinct() -> None:
+    import json
+
+    v1_path = Path("schemas/MainCompletionPackage.v1.schema.json")
+    v1 = json.loads(v1_path.read_text())
+    v2 = json.loads(Path("schemas/MainCompletionPackage.v2.schema.json").read_text())
+    assert hashlib.sha256(v1_path.read_bytes()).hexdigest() == (
+        "ba01db4f0bbef230b56c36f270a5587f4a68e69c54a534c6f2a0010489d53669"
+    )
+    assert v1["properties"]["schema_version"]["const"] == 1
+    assert v2["properties"]["schema_version"]["const"] == 2

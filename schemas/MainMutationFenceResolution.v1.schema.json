@@ -1,0 +1,131 @@
+{
+  "additionalProperties": false,
+  "description": "Append-only closure fact for an unresolved mutation fence.",
+  "properties": {
+    "authoritative_observation_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Authoritative Observation Digest",
+      "type": "string"
+    },
+    "external_identity_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "External Identity Digest",
+      "type": "string"
+    },
+    "fence_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Fence Digest",
+      "type": "string"
+    },
+    "intent_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Intent Digest",
+      "type": "string"
+    },
+    "lease_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Lease Digest",
+      "type": "string"
+    },
+    "lease_identity": {
+      "minLength": 1,
+      "title": "Lease Identity",
+      "type": "string"
+    },
+    "observed_outcome": {
+      "anyOf": [
+        {
+          "enum": [
+            "applied",
+            "already_applied"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Observed Outcome"
+    },
+    "operation_id": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Operation Id",
+      "type": "string"
+    },
+    "outcome": {
+      "enum": [
+        "observed",
+        "not_applied"
+      ],
+      "title": "Outcome",
+      "type": "string"
+    },
+    "provider_api_version": {
+      "minLength": 1,
+      "title": "Provider Api Version",
+      "type": "string"
+    },
+    "provider_identity": {
+      "minLength": 1,
+      "title": "Provider Identity",
+      "type": "string"
+    },
+    "repository_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Repository Digest",
+      "type": "string"
+    },
+    "resolution_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Resolution Digest",
+      "type": "string"
+    },
+    "resolved_at": {
+      "format": "date-time",
+      "title": "Resolved At",
+      "type": "string"
+    },
+    "resolved_receipt_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Resolved Receipt Digest",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "target_ref": {
+      "const": "refs/heads/main",
+      "default": "refs/heads/main",
+      "title": "Target Ref",
+      "type": "string"
+    },
+    "target_scope_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Target Scope Digest",
+      "type": "string"
+    }
+  },
+  "required": [
+    "repository_digest",
+    "fence_digest",
+    "operation_id",
+    "intent_digest",
+    "external_identity_digest",
+    "lease_identity",
+    "lease_digest",
+    "target_scope_digest",
+    "resolved_receipt_digest",
+    "authoritative_observation_digest",
+    "provider_identity",
+    "provider_api_version",
+    "outcome",
+    "resolution_digest",
+    "resolved_at"
+  ],
+  "title": "MainMutationFenceResolution",
+  "type": "object"
+}

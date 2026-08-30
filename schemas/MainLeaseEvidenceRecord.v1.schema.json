@@ -1,0 +1,76 @@
+{
+  "additionalProperties": false,
+  "description": "Public durable lease record returned by the main journal API.",
+  "properties": {
+    "acquired_at": {
+      "format": "date-time",
+      "title": "Acquired At",
+      "type": "string"
+    },
+    "evidence_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Evidence Digest",
+      "type": "string"
+    },
+    "expires_at": {
+      "format": "date-time",
+      "title": "Expires At",
+      "type": "string"
+    },
+    "lease_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Lease Digest",
+      "type": "string"
+    },
+    "lease_epoch_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Lease Epoch Digest",
+      "type": "string"
+    },
+    "operation_id": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Operation Id",
+      "type": "string"
+    },
+    "owner": {
+      "minLength": 1,
+      "title": "Owner",
+      "type": "string"
+    },
+    "policy_epoch": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Policy Epoch",
+      "type": "string"
+    },
+    "repository_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Repository Digest",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "target_ref": {
+      "const": "refs/heads/main",
+      "default": "refs/heads/main",
+      "title": "Target Ref",
+      "type": "string"
+    }
+  },
+  "required": [
+    "repository_digest",
+    "operation_id",
+    "owner",
+    "policy_epoch",
+    "lease_epoch_digest",
+    "acquired_at",
+    "expires_at",
+    "lease_digest",
+    "evidence_digest"
+  ],
+  "title": "MainLeaseEvidenceRecord",
+  "type": "object"
+}

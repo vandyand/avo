@@ -1,0 +1,154 @@
+{
+  "additionalProperties": false,
+  "description": "Atomic, create-once claim consumed before isolated release dispatch.",
+  "properties": {
+    "authorization_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Authorization Digest",
+      "type": "string"
+    },
+    "authorization_expires_at": {
+      "format": "date-time",
+      "title": "Authorization Expires At",
+      "type": "string"
+    },
+    "claim_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Claim Digest",
+      "type": "string"
+    },
+    "claim_key": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Claim Key",
+      "type": "string"
+    },
+    "claimed_at": {
+      "format": "date-time",
+      "title": "Claimed At",
+      "type": "string"
+    },
+    "group_sha": {
+      "pattern": "^[0-9a-f]{40}(?:[0-9a-f]{24})?$",
+      "title": "Group Sha",
+      "type": "string"
+    },
+    "hold_nonce": {
+      "minLength": 1,
+      "title": "Hold Nonce",
+      "type": "string"
+    },
+    "hold_observation_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Hold Observation Digest",
+      "type": "string"
+    },
+    "hold_run_id": {
+      "minLength": 1,
+      "title": "Hold Run Id",
+      "type": "string"
+    },
+    "issuer_isolation_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Issuer Isolation Digest",
+      "type": "string"
+    },
+    "lease_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Lease Digest",
+      "type": "string"
+    },
+    "lease_epoch_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Lease Epoch Digest",
+      "type": "string"
+    },
+    "lease_expires_at": {
+      "format": "date-time",
+      "title": "Lease Expires At",
+      "type": "string"
+    },
+    "lease_identity": {
+      "minLength": 1,
+      "title": "Lease Identity",
+      "type": "string"
+    },
+    "one_use": {
+      "const": true,
+      "default": true,
+      "title": "One Use",
+      "type": "boolean"
+    },
+    "operation_id": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Operation Id",
+      "type": "string"
+    },
+    "queue_generation_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Queue Generation Digest",
+      "type": "string"
+    },
+    "release_issuer_app_id": {
+      "exclusiveMinimum": 0,
+      "title": "Release Issuer App Id",
+      "type": "integer"
+    },
+    "release_issuer_identity": {
+      "minLength": 1,
+      "title": "Release Issuer Identity",
+      "type": "string"
+    },
+    "repository_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Repository Digest",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "state": {
+      "const": "claimed",
+      "default": "claimed",
+      "title": "State",
+      "type": "string"
+    },
+    "target_ref": {
+      "const": "refs/heads/main",
+      "default": "refs/heads/main",
+      "title": "Target Ref",
+      "type": "string"
+    },
+    "target_scope_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Target Scope Digest",
+      "type": "string"
+    }
+  },
+  "required": [
+    "repository_digest",
+    "operation_id",
+    "authorization_digest",
+    "hold_observation_digest",
+    "group_sha",
+    "hold_run_id",
+    "hold_nonce",
+    "queue_generation_digest",
+    "lease_identity",
+    "lease_digest",
+    "lease_epoch_digest",
+    "release_issuer_identity",
+    "release_issuer_app_id",
+    "issuer_isolation_digest",
+    "target_scope_digest",
+    "authorization_expires_at",
+    "lease_expires_at",
+    "claim_key",
+    "claimed_at",
+    "claim_digest"
+  ],
+  "title": "MainReleaseClaim",
+  "type": "object"
+}
