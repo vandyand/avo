@@ -1,0 +1,46 @@
+{
+  "additionalProperties": false,
+  "description": "Typed, read-only lookup key for durable main lease evidence.",
+  "properties": {
+    "lease_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Lease Digest",
+      "type": "string"
+    },
+    "operation_id": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Operation Id",
+      "type": "string"
+    },
+    "repository_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Repository Digest",
+      "type": "string"
+    },
+    "requested_at": {
+      "format": "date-time",
+      "title": "Requested At",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "target_ref": {
+      "const": "refs/heads/main",
+      "default": "refs/heads/main",
+      "title": "Target Ref",
+      "type": "string"
+    }
+  },
+  "required": [
+    "repository_digest",
+    "operation_id",
+    "lease_digest",
+    "requested_at"
+  ],
+  "title": "MainLeaseEvidenceReadRequest",
+  "type": "object"
+}

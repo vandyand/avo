@@ -1404,3 +1404,37 @@ __all__ = [
     "main_record_bytes",
     "main_record_digest",
 ]
+
+# Phase-A records remain in a separate module to keep the established evidence
+# models stable, while remaining importable from the main graduation namespace.
+from avo_correlate.contracts.main_graduation_phase_a import (  # noqa: E402
+    MainClaimedReleaseTransitionReceipt,
+    MainExternalIdentity,
+    MainLeaseEvidenceReadRequest,
+    MainLeaseEvidenceRecord,
+    MainMutationFenceResolution,
+    MainMutationIntent,
+    MainMutationReceipt,
+    MainMutationStage,
+    MainReleaseClaim,
+    MainUnresolvedMutationFence,
+    main_stage_identity_digest,
+    main_stage_nonce,
+    main_target_scope_digest,
+)
+
+__all__ += [
+    "MainClaimedReleaseTransitionReceipt",
+    "MainExternalIdentity",
+    "MainLeaseEvidenceReadRequest",
+    "MainLeaseEvidenceRecord",
+    "MainMutationFenceResolution",
+    "MainMutationIntent",
+    "MainMutationReceipt",
+    "MainMutationStage",
+    "MainReleaseClaim",
+    "MainUnresolvedMutationFence",
+    "main_stage_identity_digest",
+    "main_stage_nonce",
+    "main_target_scope_digest",
+]

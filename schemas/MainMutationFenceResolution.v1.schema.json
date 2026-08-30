@@ -1,0 +1,67 @@
+{
+  "additionalProperties": false,
+  "description": "Append-only closure fact for an unresolved mutation fence.",
+  "properties": {
+    "fence_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Fence Digest",
+      "type": "string"
+    },
+    "intent_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Intent Digest",
+      "type": "string"
+    },
+    "operation_id": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Operation Id",
+      "type": "string"
+    },
+    "outcome": {
+      "enum": [
+        "observed",
+        "not_applied"
+      ],
+      "title": "Outcome",
+      "type": "string"
+    },
+    "repository_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Repository Digest",
+      "type": "string"
+    },
+    "resolution_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Resolution Digest",
+      "type": "string"
+    },
+    "resolved_at": {
+      "format": "date-time",
+      "title": "Resolved At",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "target_ref": {
+      "const": "refs/heads/main",
+      "default": "refs/heads/main",
+      "title": "Target Ref",
+      "type": "string"
+    }
+  },
+  "required": [
+    "repository_digest",
+    "fence_digest",
+    "operation_id",
+    "intent_digest",
+    "outcome",
+    "resolution_digest",
+    "resolved_at"
+  ],
+  "title": "MainMutationFenceResolution",
+  "type": "object"
+}

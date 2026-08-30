@@ -1,0 +1,422 @@
+{
+  "$defs": {
+    "MainExternalIdentity": {
+      "additionalProperties": false,
+      "description": "Content-addressed identity of one external object or action.",
+      "properties": {
+        "external_key": {
+          "minLength": 1,
+          "title": "External Key",
+          "type": "string"
+        },
+        "identity_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Identity Digest",
+          "type": "string"
+        },
+        "operation_id": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Operation Id",
+          "type": "string"
+        },
+        "queue_generation_digest": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Queue Generation Digest"
+        },
+        "repository_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Repository Digest",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "stage": {
+          "enum": [
+            "candidate_publication",
+            "pull_request_open",
+            "admission_check",
+            "queue_enqueue",
+            "merge_group_hold",
+            "release_transition"
+          ],
+          "title": "Stage",
+          "type": "string"
+        },
+        "target_ref": {
+          "const": "refs/heads/main",
+          "default": "refs/heads/main",
+          "title": "Target Ref",
+          "type": "string"
+        }
+      },
+      "required": [
+        "repository_digest",
+        "operation_id",
+        "stage",
+        "external_key",
+        "identity_digest"
+      ],
+      "title": "MainExternalIdentity",
+      "type": "object"
+    },
+    "MainMutationReceipt": {
+      "additionalProperties": false,
+      "description": "Create-once provider receipt for exactly one mutation intent.",
+      "properties": {
+        "controller_config_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Controller Config Digest",
+          "type": "string"
+        },
+        "dispatch_started": {
+          "title": "Dispatch Started",
+          "type": "boolean"
+        },
+        "external_identity": {
+          "$ref": "#/$defs/MainExternalIdentity"
+        },
+        "intent_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Intent Digest",
+          "type": "string"
+        },
+        "lease_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Lease Digest",
+          "type": "string"
+        },
+        "lease_epoch_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Lease Epoch Digest",
+          "type": "string"
+        },
+        "lease_identity": {
+          "minLength": 1,
+          "title": "Lease Identity",
+          "type": "string"
+        },
+        "observed_at": {
+          "format": "date-time",
+          "title": "Observed At",
+          "type": "string"
+        },
+        "operation_id": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Operation Id",
+          "type": "string"
+        },
+        "outcome": {
+          "enum": [
+            "applied",
+            "already_applied",
+            "rejected",
+            "ambiguous",
+            "reconciliation_required"
+          ],
+          "title": "Outcome",
+          "type": "string"
+        },
+        "parent_intent_digest": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Parent Intent Digest"
+        },
+        "policy_epoch_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Policy Epoch Digest",
+          "type": "string"
+        },
+        "preparation_authorization_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Preparation Authorization Digest",
+          "type": "string"
+        },
+        "receipt_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Receipt Digest",
+          "type": "string"
+        },
+        "release_authorization_digest": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Release Authorization Digest"
+        },
+        "release_claim_digest": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Release Claim Digest"
+        },
+        "repository_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Repository Digest",
+          "type": "string"
+        },
+        "response_digest": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Response Digest",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "stage": {
+          "enum": [
+            "candidate_publication",
+            "pull_request_open",
+            "admission_check",
+            "queue_enqueue",
+            "merge_group_hold",
+            "release_transition"
+          ],
+          "title": "Stage",
+          "type": "string"
+        },
+        "target_ref": {
+          "const": "refs/heads/main",
+          "default": "refs/heads/main",
+          "title": "Target Ref",
+          "type": "string"
+        }
+      },
+      "required": [
+        "repository_digest",
+        "operation_id",
+        "stage",
+        "intent_digest",
+        "lease_identity",
+        "lease_digest",
+        "lease_epoch_digest",
+        "policy_epoch_digest",
+        "controller_config_digest",
+        "preparation_authorization_digest",
+        "external_identity",
+        "outcome",
+        "dispatch_started",
+        "response_digest",
+        "observed_at",
+        "receipt_digest"
+      ],
+      "title": "MainMutationReceipt",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Append-only intent written before dispatching any external mutation.",
+  "properties": {
+    "controller_config_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Controller Config Digest",
+      "type": "string"
+    },
+    "external_identity": {
+      "$ref": "#/$defs/MainExternalIdentity"
+    },
+    "intent_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Intent Digest",
+      "type": "string"
+    },
+    "lease_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Lease Digest",
+      "type": "string"
+    },
+    "lease_epoch_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Lease Epoch Digest",
+      "type": "string"
+    },
+    "lease_identity": {
+      "minLength": 1,
+      "title": "Lease Identity",
+      "type": "string"
+    },
+    "operation_id": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Operation Id",
+      "type": "string"
+    },
+    "parent_intent_digest": {
+      "anyOf": [
+        {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Parent Intent Digest"
+    },
+    "parent_receipt": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/MainMutationReceipt"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "parent_stage": {
+      "anyOf": [
+        {
+          "enum": [
+            "candidate_publication",
+            "pull_request_open",
+            "admission_check",
+            "queue_enqueue",
+            "merge_group_hold",
+            "release_transition"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Parent Stage"
+    },
+    "policy_epoch_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Policy Epoch Digest",
+      "type": "string"
+    },
+    "preparation_authorization_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Preparation Authorization Digest",
+      "type": "string"
+    },
+    "recorded_at": {
+      "format": "date-time",
+      "title": "Recorded At",
+      "type": "string"
+    },
+    "release_authorization_digest": {
+      "anyOf": [
+        {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Release Authorization Digest"
+    },
+    "release_claim_digest": {
+      "anyOf": [
+        {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Release Claim Digest"
+    },
+    "repository_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Repository Digest",
+      "type": "string"
+    },
+    "request_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Request Digest",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "stage": {
+      "enum": [
+        "candidate_publication",
+        "pull_request_open",
+        "admission_check",
+        "queue_enqueue",
+        "merge_group_hold",
+        "release_transition"
+      ],
+      "title": "Stage",
+      "type": "string"
+    },
+    "state": {
+      "const": "intent_recorded",
+      "default": "intent_recorded",
+      "title": "State",
+      "type": "string"
+    },
+    "target_ref": {
+      "const": "refs/heads/main",
+      "default": "refs/heads/main",
+      "title": "Target Ref",
+      "type": "string"
+    }
+  },
+  "required": [
+    "repository_digest",
+    "operation_id",
+    "stage",
+    "lease_identity",
+    "lease_digest",
+    "lease_epoch_digest",
+    "policy_epoch_digest",
+    "controller_config_digest",
+    "preparation_authorization_digest",
+    "external_identity",
+    "request_digest",
+    "recorded_at",
+    "intent_digest"
+  ],
+  "title": "MainMutationIntent",
+  "type": "object"
+}

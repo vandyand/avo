@@ -1,0 +1,72 @@
+{
+  "additionalProperties": false,
+  "description": "Content-addressed identity of one external object or action.",
+  "properties": {
+    "external_key": {
+      "minLength": 1,
+      "title": "External Key",
+      "type": "string"
+    },
+    "identity_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Identity Digest",
+      "type": "string"
+    },
+    "operation_id": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Operation Id",
+      "type": "string"
+    },
+    "queue_generation_digest": {
+      "anyOf": [
+        {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Queue Generation Digest"
+    },
+    "repository_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Repository Digest",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "stage": {
+      "enum": [
+        "candidate_publication",
+        "pull_request_open",
+        "admission_check",
+        "queue_enqueue",
+        "merge_group_hold",
+        "release_transition"
+      ],
+      "title": "Stage",
+      "type": "string"
+    },
+    "target_ref": {
+      "const": "refs/heads/main",
+      "default": "refs/heads/main",
+      "title": "Target Ref",
+      "type": "string"
+    }
+  },
+  "required": [
+    "repository_digest",
+    "operation_id",
+    "stage",
+    "external_key",
+    "identity_digest"
+  ],
+  "title": "MainExternalIdentity",
+  "type": "object"
+}

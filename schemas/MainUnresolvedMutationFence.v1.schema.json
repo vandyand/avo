@@ -1,0 +1,95 @@
+{
+  "additionalProperties": false,
+  "description": "Open target-scoped fence created for an ambiguous external mutation.",
+  "properties": {
+    "external_identity_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "External Identity Digest",
+      "type": "string"
+    },
+    "fence_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Fence Digest",
+      "type": "string"
+    },
+    "intent_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Intent Digest",
+      "type": "string"
+    },
+    "lease_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Lease Digest",
+      "type": "string"
+    },
+    "lease_identity": {
+      "minLength": 1,
+      "title": "Lease Identity",
+      "type": "string"
+    },
+    "opened_at": {
+      "format": "date-time",
+      "title": "Opened At",
+      "type": "string"
+    },
+    "operation_id": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Operation Id",
+      "type": "string"
+    },
+    "repository_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Repository Digest",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "stage": {
+      "enum": [
+        "candidate_publication",
+        "pull_request_open",
+        "admission_check",
+        "queue_enqueue",
+        "merge_group_hold",
+        "release_transition"
+      ],
+      "title": "Stage",
+      "type": "string"
+    },
+    "state": {
+      "const": "open",
+      "default": "open",
+      "title": "State",
+      "type": "string"
+    },
+    "target_ref": {
+      "const": "refs/heads/main",
+      "default": "refs/heads/main",
+      "title": "Target Ref",
+      "type": "string"
+    },
+    "target_scope_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Target Scope Digest",
+      "type": "string"
+    }
+  },
+  "required": [
+    "repository_digest",
+    "operation_id",
+    "stage",
+    "intent_digest",
+    "external_identity_digest",
+    "lease_identity",
+    "lease_digest",
+    "target_scope_digest",
+    "opened_at",
+    "fence_digest"
+  ],
+  "title": "MainUnresolvedMutationFence",
+  "type": "object"
+}
