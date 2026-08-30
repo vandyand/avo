@@ -5,6 +5,7 @@ from __future__ import annotations
 from avo_correlate.contracts import (
     MainLeaseEvidenceRecord,
     MainMutationFenceResolution,
+    MainMutationIntent,
     MainMutationReceipt,
     MainProviderPostStateObservation,
     MainProviderReceipt,
@@ -30,6 +31,30 @@ class DeterministicPhaseAAuthorityVerifier:
             raise ValueError("test resolution predates its source receipt")
         if not resolution.provider_identity or not resolution.provider_api_version:
             raise ValueError("test resolution lacks provider authority")
+
+    def verify_mutation_receipt(
+        self, receipt: MainMutationReceipt, intent: MainMutationIntent
+    ) -> None:
+        if (
+            receipt.operation_id != intent.operation_id
+            or receipt.repository_digest != intent.repository_digest
+            or receipt.target_ref != intent.target_ref
+            or receipt.stage != intent.stage
+            or receipt.intent_digest != intent.intent_digest
+            or receipt.parent_intent_digest != intent.parent_intent_digest
+            or receipt.lease_identity != intent.lease_identity
+            or receipt.lease_digest != intent.lease_digest
+            or receipt.lease_epoch_digest != intent.lease_epoch_digest
+            or receipt.policy_epoch_digest != intent.policy_epoch_digest
+            or receipt.controller_config_digest != intent.controller_config_digest
+            or receipt.preparation_authorization_digest
+            != intent.preparation_authorization_digest
+            or receipt.release_authorization_digest
+            != intent.release_authorization_digest
+            or receipt.release_claim_digest != intent.release_claim_digest
+            or receipt.external_identity != intent.external_identity
+        ):
+            raise ValueError("test mutation receipt binding differs")
 
     def verify_provider_post_state(
         self,

@@ -34,8 +34,12 @@ from avo_correlate.contracts import (
     MainMutationIntent,
     MainMutationReceipt,
     MainMutationStage,
+    MainProviderPostStateObservation,
+    MainProviderReceipt,
     MainQueueAdmissionObservation,
+    MainReconciliation,
     MainReleaseClaim,
+    MainReleaseHoldObservation,
     MainUnresolvedMutationFence,
     StrictModel,
     main_stage_identity_digest,
@@ -275,6 +279,176 @@ def _lease_record(
     return MainLeaseEvidenceRecord.model_validate(values)
 
 
+class _RejectMutationReceiptAuthority:
+    """Mechanical authority failure used to prove all receipt paths fail closed."""
+
+    def verify_lease_evidence(self, record: MainLeaseEvidenceRecord) -> None:
+        pass
+
+    def verify_mutation_receipt(
+        self, receipt: MainMutationReceipt, intent: MainMutationIntent
+    ) -> None:
+        raise ValueError("test provider receipt authority rejected")
+
+    def verify_fence_resolution(
+        self, resolution: MainMutationFenceResolution, source_receipt: MainMutationReceipt
+    ) -> None:
+        pass
+
+    def verify_provider_post_state(
+        self,
+        observation: MainProviderPostStateObservation,
+        provider_receipt: MainProviderReceipt,
+        reconciliation: MainReconciliation,
+    ) -> None:
+        pass
+
+
+def _receipt_with_outcome(
+    intent: MainMutationIntent, outcome: str
+) -> MainMutationReceipt:
+    values: dict[str, Any] = _receipt(intent).model_dump(mode="python")
+    values["outcome"] = outcome
+    values["dispatch_started"] = outcome != "rejected"
+    values["receipt_digest"] = D
+    probe = MainMutationReceipt.model_construct(**values)
+    values["receipt_digest"] = canonical_digest(
+        probe.model_dump(exclude={"receipt_digest"}, mode="json")
+    )
+    return MainMutationReceipt.model_validate(values)
+
+
+def test_mutation_receipt_authority_failure_preserves_target_block(tmp_path: Path) -> None:
+    journal = _journal(tmp_path)
+    _disable_phase_prerequisites(journal)
+    intent = _intent()
+    journal.record_mutation_intent(intent)
+    journal._phase_a_authority_verifier = _RejectMutationReceiptAuthority()  # type: ignore[assignment]
+
+    forged = _receipt_with_outcome(intent, "applied")
+    with pytest.raises(MainGraduationJournalError, match="authority verification"):
+        journal.record_mutation_receipt(forged)
+
+    active = journal._target_fence_path(intent)  # pyright: ignore[reportPrivateUsage]
+    assert active.is_dir()
+    assert journal._target_reservation_record_path(active).is_file()  # pyright: ignore[reportPrivateUsage]
+    assert not journal._phase_identity_path(  # pyright: ignore[reportPrivateUsage]
+        "mutation-receipt", forged.receipt_digest
+    ).exists()
+    with pytest.raises(MainGraduationJournalError, match="unresolved mutation fence"):
+        journal.assert_no_unresolved_mutation_fence(R, "refs/heads/main")
+
+
+def test_ambiguous_receipt_authority_failure_cannot_create_fence(tmp_path: Path) -> None:
+    journal = _journal(tmp_path)
+    _disable_phase_prerequisites(journal)
+    intent = _intent()
+    journal.record_mutation_intent(intent)
+    forged = _receipt_with_outcome(intent, "ambiguous")
+    journal._phase_a_authority_verifier = _RejectMutationReceiptAuthority()  # type: ignore[assignment]
+
+    with pytest.raises(MainGraduationJournalError, match="authority verification"):
+        journal.record_mutation_receipt(forged)
+    fence = _fence(forged)
+    journal = MainGraduationJournal(
+        tmp_path, phase_a_authority_verifier=_RejectMutationReceiptAuthority()
+    )
+    with pytest.raises(MainGraduationJournalError):
+        journal.record_unresolved_mutation_fence(fence)
+    assert not journal._phase_identity_path(  # pyright: ignore[reportPrivateUsage]
+        "mutation-receipt", forged.receipt_digest
+    ).exists()
+    assert not journal._phase_identity_path(  # pyright: ignore[reportPrivateUsage]
+        "unresolved-mutation-fence", fence.fence_digest
+    ).exists()
+
+
+def test_mutation_receipt_authority_is_reverified_after_restart(tmp_path: Path) -> None:
+    journal = _journal(tmp_path)
+    _disable_phase_prerequisites(journal)
+    intent = _intent()
+    journal.record_mutation_intent(intent)
+    receipt = _receipt(intent)
+    journal.record_mutation_receipt(receipt)
+
+    restarted = MainGraduationJournal(
+        tmp_path, phase_a_authority_verifier=_RejectMutationReceiptAuthority()
+    )
+    _disable_phase_prerequisites(restarted)
+    with pytest.raises(MainGraduationJournalError, match="authority verification"):
+        restarted.read_mutation_receipt(receipt.receipt_digest)
+    with pytest.raises(MainGraduationJournalError, match="authority verification"):
+        restarted.assert_no_unresolved_mutation_fence(R, "refs/heads/main")
+
+
+def test_forged_parent_receipt_cannot_authorize_next_intent(tmp_path: Path) -> None:
+    accepting = _journal(tmp_path)
+    _disable_phase_prerequisites(accepting)
+    parent = _intent()
+    accepting.record_mutation_intent(parent)
+    parent_receipt = _receipt_with_outcome(parent, "applied")
+    accepting.record_mutation_receipt(parent_receipt)
+    journal = MainGraduationJournal(
+        tmp_path, phase_a_authority_verifier=_RejectMutationReceiptAuthority()
+    )
+    child = cast(
+        MainMutationIntent,
+        _with_digest(
+            MainMutationIntent,
+            "intent_digest",
+            repository_digest=R,
+            target_ref="refs/heads/main",
+            operation_id=OP,
+            stage="pull_request_open",
+            parent_stage="candidate_publication",
+            parent_intent_digest=parent.intent_digest,
+            parent_receipt=parent_receipt,
+            parent_resolution_digest=None,
+            lease_identity="avo-controller",
+            lease_digest=D2,
+            lease_epoch_digest=D2,
+            policy_epoch_digest=D2,
+            controller_config_digest=D2,
+            preparation_authorization_digest=D2,
+            external_identity=_external(OP, "refs/heads/avo/candidate/pr", "pull_request_open"),
+            request_digest=D3,
+            recorded_at=NOW,
+        ),
+    )
+    prep = SimpleNamespace(
+        authorization_digest=D2,
+        repository_digest=R,
+        target_ref="refs/heads/main",
+        lease_identity="avo-controller",
+        lease_digest=D2,
+        policy_epoch=D2,
+    )
+    lease = SimpleNamespace(
+        owner="avo-controller",
+        lease_digest=D2,
+        policy_epoch=D2,
+        lease_epoch_digest=D2,
+        repository_digest=R,
+        target_ref="refs/heads/main",
+        expires_at=NOW + timedelta(hours=1),
+    )
+
+    original_read = journal._read  # pyright: ignore[reportPrivateUsage]
+
+    def read(kind: str, key: str) -> Any:
+        if kind == "preparation-authorization":
+            return prep, None
+        if kind == "lease-evidence-record":
+            return lease, None
+        return original_read(kind, key)
+
+    journal._read = read  # type: ignore[method-assign]
+    journal._controller_config_digest = lambda _operation_id: D2  # type: ignore[method-assign]
+    with pytest.raises(MainGraduationJournalError, match="authority verification"):
+        journal.record_mutation_intent(child)
+    assert not journal._target_fence_path(child).exists()  # pyright: ignore[reportPrivateUsage]
+
+
 def _disable_phase_prerequisites(journal: MainGraduationJournal) -> None:
     # The production chain is covered elsewhere; these tests target Phase-A
     # CAS behavior and keep their fixtures independent of the coordinator.
@@ -432,6 +606,81 @@ def test_release_claim_global_envelope_operation_binding_is_verified(tmp_path: P
         journal._assert_release_claim(claim)  # pyright: ignore[reportPrivateUsage]
 
 
+def test_release_claim_cannot_predate_authorization(tmp_path: Path) -> None:
+    """A backdated claim must not satisfy the release-intent chronology chain."""
+    journal = _journal(tmp_path)
+    hold = MainReleaseHoldObservation.model_construct(
+        repository_digest=R,
+        target_ref="refs/heads/main",
+        operation_id=OP,
+        group_sha=HEAD,
+        hold_run_id="hold-run",
+        hold_nonce="hold-nonce",
+        queue_generation_digest=D2,
+    )
+    auth = SimpleNamespace(
+        operation_id=OP,
+        repository_digest=R,
+        target_ref="refs/heads/main",
+        authorization_digest=D2,
+        group_sha=HEAD,
+        hold_run_id="hold-run",
+        hold_nonce="hold-nonce",
+        queue_generation_digest=D2,
+        lease_identity="avo-controller",
+        lease_digest=D2,
+        release_issuer_identity="isolated-release",
+        release_issuer_app_id=9002,
+        issuer_isolation_digest=D3,
+        expires_at=NOW + timedelta(hours=1),
+        authorized_at=NOW,
+    )
+    lease = SimpleNamespace(
+        operation_id=OP,
+        repository_digest=R,
+        target_ref="refs/heads/main",
+        lease_digest=D2,
+        lease_epoch_digest=D3,
+        expires_at=NOW + timedelta(hours=1),
+    )
+    claim = MainReleaseClaim.model_construct(
+        repository_digest=R,
+        target_ref="refs/heads/main",
+        operation_id=OP,
+        authorization_digest=D2,
+        hold_observation_digest=canonical_digest(hold),
+        group_sha=HEAD,
+        hold_run_id="hold-run",
+        hold_nonce="hold-nonce",
+        queue_generation_digest=D2,
+        lease_identity="avo-controller",
+        lease_digest=D2,
+        lease_epoch_digest=D3,
+        release_issuer_identity="isolated-release",
+        release_issuer_app_id=9002,
+        issuer_isolation_digest=D3,
+        target_scope_digest=main_target_scope_digest(R, "refs/heads/main"),
+        authorization_expires_at=NOW + timedelta(hours=1),
+        lease_expires_at=NOW + timedelta(hours=1),
+        claim_key=D,
+        claimed_at=NOW - timedelta(seconds=1),
+        claim_digest=D2,
+    )
+
+    def read(kind: str, _key: str) -> tuple[object, None] | None:
+        return {
+            "release-authorization": (auth, None),
+            "release-hold": (hold, None),
+            "lease-evidence-record": (lease, None),
+        }.get(kind)
+
+    journal._read = read  # type: ignore[method-assign]
+    with pytest.raises(MainGraduationJournalError, match="release claim binding"):
+        MainGraduationJournal._validate_phase_chain(  # pyright: ignore[reportPrivateUsage]
+            journal, "release-claim", claim
+        )
+
+
 @pytest.mark.parametrize(
     ("field", "value"),
     (
@@ -439,10 +688,13 @@ def test_release_claim_global_envelope_operation_binding_is_verified(tmp_path: P
         ("repository_digest", D3),
         ("target_ref", "refs/heads/other"),
         ("external_identity", "wrong"),
+        ("recorded_at", NOW - timedelta(minutes=6)),
+        ("claim_claimed_at", NOW + timedelta(minutes=1)),
+        ("auth_expires_at", NOW + timedelta(hours=2)),
     ),
 )
 def test_release_intent_rejects_claim_scope_mismatch(
-    tmp_path: Path, field: str, value: str
+    tmp_path: Path, field: str, value: object
 ) -> None:
     journal = _journal(tmp_path)
     intent = MainMutationIntent.model_construct(
@@ -490,6 +742,8 @@ def test_release_intent_rejects_claim_scope_mismatch(
         repository_digest=R,
         target_ref="refs/heads/main",
         release_issuer_app_id=9002,
+        authorized_at=NOW - timedelta(minutes=5),
+        expires_at=NOW + timedelta(hours=1),
     )
     claim_values: dict[str, object] = {
         "claim_digest": D3,
@@ -502,6 +756,8 @@ def test_release_intent_rejects_claim_scope_mismatch(
         "hold_nonce": "hold-nonce",
         "queue_generation_digest": D2,
         "release_issuer_app_id": 9002,
+        "claimed_at": NOW - timedelta(minutes=1),
+        "authorization_expires_at": NOW + timedelta(hours=1),
     }
     if field == "external_identity":
         intent = intent.model_copy(
@@ -511,6 +767,12 @@ def test_release_intent_rejects_claim_scope_mismatch(
                 )
             }
         )
+    elif field == "recorded_at":
+        intent = intent.model_copy(update={"recorded_at": value})
+    elif field == "claim_claimed_at":
+        claim_values["claimed_at"] = value
+    elif field == "auth_expires_at":
+        auth.expires_at = value
     else:
         claim_values[field] = value
     claim = SimpleNamespace(**claim_values)

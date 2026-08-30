@@ -85,11 +85,11 @@ class MainPhaseAAuthorityVerifier(Protocol):
     """Controller-owned verifier for authority-bearing Phase-A evidence.
 
     A DTO supplied by a coordinator is never authority by itself.  Production
-    composition injects a verifier that authenticates the lease backend and
-    the provider receipt used to resolve an ambiguity, and the provider
-    post-state observation required by C4 completion.  The injection remains
-    optional for the historical non-Phase-A journal surface, but C4 completion
-    always fails closed when it is absent.
+    composition injects a verifier that authenticates lease evidence, every
+    provider mutation receipt, fence resolutions, and the provider post-state
+    observation required by C4 completion.  The injection remains optional for
+    the historical non-Phase-A journal surface, but every Phase-A authority
+    boundary fails closed when it is absent.
     """
 
     def verify_lease_evidence(self, record: MainLeaseEvidenceRecord) -> None: ...
@@ -98,6 +98,10 @@ class MainPhaseAAuthorityVerifier(Protocol):
         self,
         resolution: MainMutationFenceResolution,
         source_receipt: MainMutationReceipt,
+    ) -> None: ...
+
+    def verify_mutation_receipt(
+        self, receipt: MainMutationReceipt, intent: MainMutationIntent
     ) -> None: ...
 
     def verify_provider_post_state(
@@ -695,6 +699,9 @@ class MainGraduationJournal:
             self._validate_phase_chain(kind, checked)
             if kind == "lease-evidence-record":
                 self._verify_lease_authority(cast(MainLeaseEvidenceRecord, checked))
+            elif kind == "mutation-receipt":
+                receipt = cast(MainMutationReceipt, checked)
+                self._verify_mutation_receipt(receipt, self._source_intent(receipt))
             elif kind == "mutation-fence-resolution":
                 resolution = cast(MainMutationFenceResolution, checked)
                 self._verify_fence_authority(resolution, self._source_receipt(resolution))
@@ -716,6 +723,9 @@ class MainGraduationJournal:
             # Reserve the target slot before publishing any of the other
             # operation indexes.  A caller may dispatch only after this method
             # returns, so a crash cannot expose an apparently free target.
+            # Phase A has no executor: the live executor must perform a
+            # trusted-clock lease/authorization recheck immediately before
+            # provider dispatch.
             self._cas_target_mutation_reservation(intent, reference)
             self._cas_stage_identity(intent.external_identity.identity_digest, intent, reference)
             self._cas_operation_stage_identity(intent, reference)
@@ -821,6 +831,7 @@ class MainGraduationJournal:
             if kind == "mutation-receipt":
                 receipt = cast(MainMutationReceipt, record)
                 self._assert_phase_identity(kind, receipt.intent_digest, receipt)
+                self._verify_mutation_receipt(receipt, self._source_intent(receipt))
             elif kind == "mutation-fence-resolution":
                 resolution = cast(MainMutationFenceResolution, record)
                 self._assert_phase_identity(kind, resolution.fence_digest, resolution)
@@ -833,6 +844,8 @@ class MainGraduationJournal:
                 self._assert_phase_identity(kind, transition.claim_digest, transition)
             return record, envelope.reference
         except MainGraduationRecordConflictError:
+            raise
+        except MainGraduationJournalError:
             raise
         except (
             OSError,
@@ -1507,6 +1520,9 @@ class MainGraduationJournal:
         current = self._read_target_reservation(active)
         if current.intent_digest != receipt.intent_digest:
             raise MainGraduationRecordConflictError("terminal receipt reservation differs")
+        # Re-verify provider authority at the destructive reservation-release
+        # boundary; a fabricated terminal DTO must not free the target slot.
+        self._verify_mutation_receipt(receipt, self._source_intent(receipt))
         reservation.unlink()
         _sync_directory(active)
         if not self._target_fence_record_path(active).exists():
@@ -1574,6 +1590,17 @@ class MainGraduationJournal:
                     raise MainGraduationJournalError(
                         "mutation intent parent receipt is not durable"
                     )
+                parent_intent_prior = self._read(
+                    "mutation-intent", intent.parent_intent_digest or ""
+                )
+                if parent_intent_prior is None:
+                    raise MainGraduationJournalError(
+                        "mutation intent parent intent is not durable"
+                    )
+                self._verify_mutation_receipt(
+                    intent.parent_receipt,
+                    cast(MainMutationIntent, parent_intent_prior[0]),
+                )
             self._verify_phase_parent_resolution(intent)
             if intent.stage == "release_transition":
                 auth_prior = self._read("release-authorization", intent.operation_id)
@@ -1589,6 +1616,11 @@ class MainGraduationJournal:
                     or auth.operation_id != intent.operation_id
                     or auth.repository_digest != intent.repository_digest
                     or auth.target_ref != intent.target_ref
+                    or auth.expires_at != durable_claim.authorization_expires_at
+                    or intent.recorded_at < auth.authorized_at
+                    or intent.recorded_at < durable_claim.claimed_at
+                    or intent.recorded_at >= auth.expires_at
+                    or intent.recorded_at >= durable_claim.authorization_expires_at
                     or durable_claim.operation_id != intent.operation_id
                     or durable_claim.repository_digest != intent.repository_digest
                     or durable_claim.target_ref != intent.target_ref
@@ -1704,6 +1736,7 @@ class MainGraduationJournal:
                     claim.lease_epoch_digest != lease.lease_epoch_digest,
                     claim.lease_expires_at != lease.expires_at,
                     claim.authorization_expires_at != auth.expires_at,
+                    claim.claimed_at < auth.authorized_at,
                     claim.claimed_at >= claim.authorization_expires_at,
                     claim.claimed_at >= claim.lease_expires_at,
                     claim.release_issuer_identity != auth.release_issuer_identity,
@@ -3137,6 +3170,7 @@ class MainGraduationJournal:
             or canonical_bytes(receipt) != data
         ):
             raise MainGraduationRecordConflictError("mutation receipt identity differs")
+        self._verify_mutation_receipt(receipt, self._source_intent(receipt))
         return receipt, envelope.reference
 
     def _source_receipt(
@@ -3146,6 +3180,15 @@ class MainGraduationJournal:
         if prior is None:
             raise MainGraduationJournalError("mutation resolution receipt is missing")
         return cast(MainMutationReceipt, prior[0])
+
+    def _source_intent(self, receipt: MainMutationReceipt) -> MainMutationIntent:
+        prior = self._read("mutation-intent", receipt.intent_digest)
+        if prior is None:
+            raise MainGraduationJournalError("mutation receipt intent is missing")
+        intent = cast(MainMutationIntent, prior[0])
+        if intent.intent_digest != receipt.intent_digest:
+            raise MainGraduationRecordConflictError("mutation receipt intent differs")
+        return intent
 
     def _verify_lease_authority(self, record: MainLeaseEvidenceRecord) -> None:
         verifier = self._phase_a_authority_verifier
@@ -3164,6 +3207,23 @@ class MainGraduationJournal:
                 "Phase-A journal requires an injected authority verifier"
             )
         verifier.verify_fence_resolution(resolution, source_receipt)
+
+    def _verify_mutation_receipt(
+        self, receipt: MainMutationReceipt, intent: MainMutationIntent
+    ) -> None:
+        verifier = self._phase_a_authority_verifier
+        if verifier is None:
+            raise MainGraduationJournalError(
+                "Phase-A journal requires an injected authority verifier"
+            )
+        try:
+            verifier.verify_mutation_receipt(receipt, intent)
+        except MainGraduationJournalError:
+            raise
+        except Exception as exc:
+            raise MainGraduationJournalError(
+                "mutation receipt authority verification failed"
+            ) from exc
 
     def _verify_provider_post_state_authority(
         self,
