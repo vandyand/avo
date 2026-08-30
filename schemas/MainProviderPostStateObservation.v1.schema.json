@@ -43,6 +43,11 @@
       "title": "Repository Digest",
       "type": "string"
     },
+    "response_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Response Digest",
+      "type": "string"
+    },
     "result_commit": {
       "pattern": "^[0-9a-f]{40}(?:[0-9a-f]{24})?$",
       "title": "Result Commit",
@@ -83,6 +88,7 @@
     "result_commit",
     "result_tree",
     "result_parents",
+    "response_digest",
     "observed_at",
     "observation_digest"
   ],

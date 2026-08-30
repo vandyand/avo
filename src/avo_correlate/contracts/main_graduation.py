@@ -881,6 +881,7 @@ class MainProviderPostStateObservation(MainBound):
     result_commit: GitObject
     result_tree: GitObject
     result_parents: list[GitObject]
+    response_digest: Sha256Digest
     observed_at: datetime
     authoritative: Literal[True] = True
     observation_digest: Sha256Digest
@@ -910,10 +911,6 @@ class MainProviderReceipt(MainBound):
     result_parents: list[GitObject] = Field(default_factory=list)
     response_digest: Sha256Digest
     observed_at: datetime
-    # C1-C3 provider receipts may omit this newer observation.  A C4
-    # completion, however, must carry it and bind its final result to the
-    # provider-authoritative post-state artifact.
-    post_state_observation: MainProviderPostStateObservation | None = None
     deploy_performed: Literal[False] = False
 
     _aware_observed_at = field_validator("observed_at")(_aware)
@@ -928,21 +925,6 @@ class MainProviderReceipt(MainBound):
             value is not None for value in (self.result_commit, self.result_tree)
         ):
             raise ValueError("non-success receipt cannot claim result objects")
-        if self.post_state_observation is not None:
-            observation = self.post_state_observation
-            if (
-                observation.operation_id != self.operation_id
-                or observation.repository_digest != self.repository_digest
-                or observation.target_ref != self.target_ref
-                or observation.provider_identity != self.provider_identity
-                or observation.provider_api_version != self.provider_api_version
-                or observation.release_authorization_digest
-                != self.release_authorization_digest
-                or observation.result_commit != self.result_commit
-                or observation.result_tree != self.result_tree
-                or observation.result_parents != self.result_parents
-            ):
-                raise ValueError("provider post-state observation is not receipt-bound")
         return self
 
 
@@ -1215,6 +1197,8 @@ class MainCompletionPackage(MainBound):
             or post_state.result_commit != self.provider_receipt.result_commit
             or post_state.result_tree != self.provider_receipt.result_tree
             or post_state.result_parents != self.provider_receipt.result_parents
+            or post_state.response_digest != self.provider_receipt.response_digest
+            or post_state.observed_at != self.provider_receipt.observed_at
         ):
             raise ValueError("provider post-state observation is not receipt-bound")
         if self.reconciliation.state != "completed":

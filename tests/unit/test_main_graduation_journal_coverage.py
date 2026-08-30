@@ -39,6 +39,7 @@ from avo_correlate.contracts.main_graduation import (
     MainMergeGroupWebhookReceipt,
     MainPreparationAuthorization,
     MainProtectionManifest,
+    MainProviderPostStateObservation,
     MainProviderReceipt,
     MainQueueAdmissionObservation,
     MainQueueObservation,
@@ -53,6 +54,17 @@ from avo_correlate.contracts.main_graduation import (
     main_operation_id,
     main_record_bytes,
     main_record_digest,
+    main_release_external_identity_digest,
+    main_release_external_key,
+    main_target_scope_digest,
+)
+from avo_correlate.contracts.main_graduation_phase_a import (
+    MainClaimedReleaseTransitionReceipt,
+    MainExternalIdentity,
+    MainLeaseEvidenceRecord,
+    MainMutationIntent,
+    MainMutationReceipt,
+    MainReleaseClaim,
 )
 from avo_correlate.contracts.promotion_policy import path_manifest_digest
 from avo_correlate.domain.canonical import canonical_bytes, canonical_digest
@@ -620,6 +632,184 @@ def completion() -> MainCompletionPackage:
     object.__setattr__(hold, "admission_observation_digest", canonical_digest(admission))
     object.__setattr__(authorization, "hold_observation_digest", canonical_digest(hold))
     object.__setattr__(provider, "release_authorization_digest", canonical_digest(authorization))
+    lease_record = MainLeaseEvidenceRecord.model_construct(
+        operation_id=D,
+        repository_digest=R,
+        target_ref="refs/heads/main",
+        owner="lease",
+        policy_epoch=D,
+        lease_epoch_digest=D,
+        acquired_at=NOW - timedelta(minutes=1),
+        expires_at=NOW + timedelta(minutes=5),
+        lease_digest=D,
+        evidence_digest=D2,
+    )
+    claim_key = canonical_digest(
+        {
+            "repository_digest": R,
+            "target_ref": "refs/heads/main",
+            "operation_id": D,
+            "authorization_digest": authorization.authorization_digest,
+            "hold_observation_digest": canonical_digest(hold),
+            "group_sha": GROUP,
+            "hold_run_id": "hold-run",
+            "hold_nonce": "hold-nonce",
+            "queue_generation_digest": D,
+            "lease_epoch_digest": D,
+            "lease_digest": D,
+            "release_issuer_identity": "isolated-release",
+            "release_issuer_app_id": 9001,
+            "issuer_isolation_digest": D,
+            "authorization_expires_at": (NOW + timedelta(minutes=5)).isoformat(),
+            "lease_expires_at": (NOW + timedelta(minutes=5)).isoformat(),
+            "target_scope_digest": main_target_scope_digest(R, "refs/heads/main"),
+        }
+    )
+    claim = MainReleaseClaim.model_construct(
+        operation_id=D,
+        repository_digest=R,
+        target_ref="refs/heads/main",
+        authorization_digest=authorization.authorization_digest,
+        hold_observation_digest=canonical_digest(hold),
+        group_sha=GROUP,
+        hold_run_id="hold-run",
+        hold_nonce="hold-nonce",
+        queue_generation_digest=D,
+        lease_identity="lease",
+        lease_digest=D,
+        lease_epoch_digest=D,
+        release_issuer_identity="isolated-release",
+        release_issuer_app_id=9001,
+        issuer_isolation_digest=D,
+        target_scope_digest=main_target_scope_digest(R, "refs/heads/main"),
+        authorization_expires_at=NOW + timedelta(minutes=5),
+        lease_expires_at=NOW + timedelta(minutes=5),
+        claim_key=claim_key,
+        claimed_at=NOW,
+        claim_digest=D,
+    )
+    release_key = main_release_external_key(
+        operation_id=D,
+        repository_digest=R,
+        target_ref="refs/heads/main",
+        authorization_digest=authorization.authorization_digest,
+        hold_observation_digest=canonical_digest(hold),
+        group_sha=GROUP,
+        hold_run_id="hold-run",
+        hold_nonce="hold-nonce",
+        queue_generation_digest=D,
+        release_check_context="avo-main-release",
+        release_issuer_app_id=9001,
+    )
+    release_identity = MainExternalIdentity.model_construct(
+        operation_id=D,
+        repository_digest=R,
+        target_ref="refs/heads/main",
+        stage="release_transition",
+        external_key=release_key,
+        queue_generation_digest=D,
+        identity_digest=main_release_external_identity_digest(
+            operation_id=D,
+            repository_digest=R,
+            target_ref="refs/heads/main",
+            authorization_digest=authorization.authorization_digest,
+            hold_observation_digest=canonical_digest(hold),
+            group_sha=GROUP,
+            hold_run_id="hold-run",
+            hold_nonce="hold-nonce",
+            queue_generation_digest=D,
+            release_check_context="avo-main-release",
+            release_issuer_app_id=9001,
+        ),
+    )
+    release_intent_probe = MainMutationIntent.model_construct(
+        operation_id=D,
+        repository_digest=R,
+        target_ref="refs/heads/main",
+        stage="release_transition",
+        parent_stage="merge_group_hold",
+        parent_intent_digest=D,
+        parent_resolution_digest=D,
+        lease_identity="lease",
+        lease_digest=D,
+        lease_epoch_digest=D,
+        policy_epoch_digest=D,
+        controller_config_digest=D2,
+        preparation_authorization_digest=canonical_digest(prep),
+        release_authorization_digest=authorization.authorization_digest,
+        release_claim_digest=claim.claim_digest,
+        external_identity=release_identity,
+        request_digest=D,
+        recorded_at=NOW,
+        intent_digest=D,
+    )
+    object.__setattr__(release_intent_probe, "intent_digest", canonical_digest(
+        release_intent_probe.model_dump(exclude={"intent_digest"}, mode="json")
+    ))
+    release_mutation_probe = MainMutationReceipt.model_construct(
+        operation_id=D,
+        repository_digest=R,
+        target_ref="refs/heads/main",
+        stage="release_transition",
+        intent_digest=release_intent_probe.intent_digest,
+        parent_intent_digest=D,
+        lease_identity="lease",
+        lease_digest=D,
+        lease_epoch_digest=D,
+        policy_epoch_digest=D,
+        controller_config_digest=D2,
+        preparation_authorization_digest=canonical_digest(prep),
+        release_authorization_digest=authorization.authorization_digest,
+        release_claim_digest=claim.claim_digest,
+        external_identity=release_identity,
+        outcome="applied",
+        dispatch_started=True,
+        response_digest=D,
+        observed_at=NOW,
+        receipt_digest=D,
+    )
+    object.__setattr__(release_mutation_probe, "receipt_digest", canonical_digest(
+        release_mutation_probe.model_dump(exclude={"receipt_digest"}, mode="json")
+    ))
+    claimed_probe = MainClaimedReleaseTransitionReceipt.model_construct(
+        operation_id=D,
+        repository_digest=R,
+        target_ref="refs/heads/main",
+        release_authorization_digest=authorization.authorization_digest,
+        claim_digest=claim.claim_digest,
+        group_sha=GROUP,
+        hold_run_id="hold-run",
+        hold_nonce="hold-nonce",
+        issuer_identity="isolated-release",
+        release_issuer_app_id=9001,
+        issuer_isolation_digest=D,
+        outcome="transitioned",
+        response_digest=D,
+        observed_at=NOW,
+        mutation_receipt_digest=release_mutation_probe.receipt_digest,
+        receipt_digest=D,
+    )
+    object.__setattr__(claimed_probe, "receipt_digest", canonical_digest(
+        claimed_probe.model_dump(exclude={"receipt_digest"}, mode="json")
+    ))
+    post_state_probe = MainProviderPostStateObservation.model_construct(
+        operation_id=D,
+        repository_digest=R,
+        target_ref="refs/heads/main",
+        release_authorization_digest=canonical_digest(authorization),
+        provider_identity="provider",
+        provider_api_version="v1",
+        result_commit=HEAD,
+        result_tree=TREE,
+        result_parents=[BASE],
+        response_digest=D,
+        observed_at=NOW,
+        authoritative=True,
+        observation_digest=D,
+    )
+    object.__setattr__(post_state_probe, "observation_digest", canonical_digest(
+        post_state_probe.model_dump(exclude={"observation_digest"}, mode="json")
+    ))
     return MainCompletionPackage.model_construct(
         operation_id=D,
         repository_digest=R,
@@ -639,6 +829,13 @@ def completion() -> MainCompletionPackage:
         release_authorization=authorization,
         transition_receipt=transition,
         provider_receipt=provider,
+        lease_evidence_record=lease_record,
+        release_claim=claim,
+        claimed_transition_receipt=claimed_probe,
+        release_transition_intent=release_intent_probe,
+        release_transition_mutation_receipt=release_mutation_probe,
+        release_transition_fence_resolution=None,
+        provider_post_state_observation=post_state_probe,
         reconciliation=reconciliation,
         artifacts=[
             ref(role=role)
@@ -660,6 +857,12 @@ def completion() -> MainCompletionPackage:
                 "main-graduation-release-authorization",
                 "main-graduation-release-transition",
                 "main-graduation-provider-receipt",
+                "main-graduation-lease-evidence-record",
+                "main-graduation-release-claim",
+                "main-graduation-claimed-release-transition",
+                "main-graduation-mutation-intent",
+                "main-graduation-mutation-receipt",
+                "main-graduation-provider-post-state-observation",
                 "main-graduation-reconciliation",
             )
         ],
@@ -1237,9 +1440,12 @@ def test_completion_orchestration_and_conflict_edges(
     journal = MainGraduationJournal(tmp_path)
     package = completion()
     values = journal._child_values(package)
-    assert len(values) == 18
+    assert len(values) == 24
     called: list[str] = []
     monkeypatch.setattr(journal, "_require_exact", lambda kind, record: called.append(kind))
+    monkeypatch.setattr(
+        journal, "_require_phase_exact", lambda kind, record: called.append(kind)
+    )
     for name in (
         "_verify_source_package",
         "_verify_plan_evidence",
@@ -1251,10 +1457,21 @@ def test_completion_orchestration_and_conflict_edges(
         "_require_reconciliation",
     ):
         monkeypatch.setattr(journal, name, lambda record, _name=name: called.append(_name))
+    monkeypatch.setattr(
+        journal,
+        "_verify_provider_post_state_authority",
+        lambda observation, provider_receipt, reconciliation: called.append(
+            "provider-post-state-authority"
+        ),
+    )
     journal._verify_completion_prerequisites(package)
     assert called[:3] == ["source-package", "delta", "composition"]
-    assert len(called) == 26
-    monkeypatch.setattr(journal, "_verify_completion_prerequisites", lambda package: None)
+    assert len(called) == 33
+    monkeypatch.setattr(
+        journal,
+        "_verify_completion_prerequisites",
+        lambda package, *, require_post_state_durable=True: None,
+    )
     with pytest.raises(MainGraduationJournalError, match="content-bound"):
         journal._materialize_children(package)
     with pytest.raises(MainGraduationJournalError, match="metadata mismatch"):
@@ -1466,7 +1683,11 @@ def test_journal_materializes_and_verifies_every_completion_child(
 ) -> None:
     journal = MainGraduationJournal(tmp_path)
     package = completion()
-    monkeypatch.setattr(journal, "_verify_completion_prerequisites", lambda _package: None)
+    monkeypatch.setattr(
+        journal,
+        "_verify_completion_prerequisites",
+        lambda _package, *, require_post_state_durable=True: None,
+    )
     values: dict[str, Any] = journal._child_values(package)
     references: list[ArtifactRef] = []
     for role, value in values.items():

@@ -37,6 +37,7 @@ from avo_correlate.contracts.main_graduation import (
     MainMergeGroupWebhookReceipt,
     MainPreparationAuthorization,
     MainProtectionManifest,
+    MainProviderPostStateObservation,
     MainProviderReceipt,
     MainQueueAdmissionObservation,
     MainQueueObservation,
@@ -83,8 +84,10 @@ class MainPhaseAAuthorityVerifier(Protocol):
 
     A DTO supplied by a coordinator is never authority by itself.  Production
     composition injects a verifier that authenticates the lease backend and
-    the provider receipt used to resolve an ambiguity.  The optional injection
-    keeps the historical, non-Phase-A journal surface usable by C1-C3 code.
+    the provider receipt used to resolve an ambiguity, and the provider
+    post-state observation required by C4 completion.  The injection remains
+    optional for the historical non-Phase-A journal surface, but C4 completion
+    always fails closed when it is absent.
     """
 
     def verify_lease_evidence(self, record: MainLeaseEvidenceRecord) -> None: ...
@@ -93,6 +96,13 @@ class MainPhaseAAuthorityVerifier(Protocol):
         self,
         resolution: MainMutationFenceResolution,
         source_receipt: MainMutationReceipt,
+    ) -> None: ...
+
+    def verify_provider_post_state(
+        self,
+        observation: MainProviderPostStateObservation,
+        provider_receipt: MainProviderReceipt,
+        reconciliation: MainReconciliation,
     ) -> None: ...
 
 
@@ -180,6 +190,7 @@ _MODELS: dict[str, type[StrictModel]] = {
     "release-authorization": MainReleaseAuthorization,
     "release-transition": MainReleaseTransitionReceipt,
     "provider-receipt": MainProviderReceipt,
+    "provider-post-state-observation": MainProviderPostStateObservation,
     "reconciliation": MainReconciliation,
     "inverse-delta": MainInverseDeltaArtifact,
     "rollback-authorization": MainRollbackAuthorization,
@@ -350,6 +361,19 @@ class MainGraduationJournal:
                 self._require_release_authorization(cast(MainReleaseTransitionReceipt, checked))
             elif kind == "provider-receipt":
                 self._require_provider_receipt(cast(MainProviderReceipt, checked))
+            elif kind == "provider-post-state-observation":
+                observation = cast(MainProviderPostStateObservation, checked)
+                provider_prior = self._read("provider-receipt", observation.operation_id)
+                reconciliation_prior = self._read("reconciliation", observation.operation_id)
+                if provider_prior is None or reconciliation_prior is None:
+                    raise MainGraduationJournalError(
+                        "provider post-state requires durable provider receipt and reconciliation"
+                    )
+                self._verify_provider_post_state_authority(
+                    observation,
+                    cast(MainProviderReceipt, provider_prior[0]),
+                    cast(MainReconciliation, reconciliation_prior[0]),
+                )
             elif kind == "reconciliation":
                 self._require_reconciliation(cast(MainReconciliation, checked))
             elif kind == "rollback-authorization":
@@ -476,6 +500,19 @@ class MainGraduationJournal:
                 self._require_release_authorization(cast(MainReleaseTransitionReceipt, record))
             elif kind == "provider-receipt":
                 self._require_provider_receipt(cast(MainProviderReceipt, record))
+            elif kind == "provider-post-state-observation":
+                observation = cast(MainProviderPostStateObservation, record)
+                provider_prior = self._read("provider-receipt", observation.operation_id)
+                reconciliation_prior = self._read("reconciliation", observation.operation_id)
+                if provider_prior is None or reconciliation_prior is None:
+                    raise MainGraduationJournalError(
+                        "provider post-state requires durable provider receipt and reconciliation"
+                    )
+                self._verify_provider_post_state_authority(
+                    observation,
+                    cast(MainProviderReceipt, provider_prior[0]),
+                    cast(MainReconciliation, reconciliation_prior[0]),
+                )
             elif kind == "reconciliation":
                 self._require_reconciliation(cast(MainReconciliation, record))
             elif kind == "rollback-authorization":
@@ -525,14 +562,11 @@ class MainGraduationJournal:
             "main-graduation-release-authorization": package.release_authorization,
             "main-graduation-release-transition": package.transition_receipt,
             "main-graduation-provider-receipt": package.provider_receipt,
+            "main-graduation-provider-post-state-observation": (
+                package.provider_post_state_observation
+            ),
             "main-graduation-reconciliation": package.reconciliation,
         }
-        # ``model_construct`` is used by a few C1-C3 coverage probes.  Keep
-        # those probes able to exercise the historical child closure, while a
-        # normally validated C4 package always has the complete authority
-        # fields and takes this strict branch.
-        if not hasattr(package, "lease_evidence_record"):
-            return values
         values.update(
             {
                 "main-graduation-lease-evidence-record": package.lease_evidence_record,
@@ -549,7 +583,10 @@ class MainGraduationJournal:
         return values
 
     def _materialize_children(self, package: MainCompletionPackage) -> None:
-        self._verify_completion_prerequisites(package)
+        # The provider post-state is itself a new durable child of this
+        # completion.  Verify its controller authority before publishing it,
+        # then the normal child loop persists it content-addressably.
+        self._verify_completion_prerequisites(package, require_post_state_durable=False)
         references = {item.role: item for item in package.artifacts}
         values = self._child_values(package)
         if set(references) != set(values):
@@ -1674,7 +1711,9 @@ class MainGraduationJournal:
             raise MainGraduationJournalError("mutation intent plan is missing")
         return cast(MainGraduationPlan, prior[0]).controller_config_digest
 
-    def _verify_completion_prerequisites(self, package: MainCompletionPackage) -> None:
+    def _verify_completion_prerequisites(
+        self, package: MainCompletionPackage, *, require_post_state_durable: bool = True
+    ) -> None:
         """Completion is only a closure over already verified durable stages."""
         stages: tuple[tuple[str, StrictModel], ...] = (
             ("source-package", package.source_package),
@@ -1694,27 +1733,29 @@ class MainGraduationJournal:
             ("release-authorization", package.release_authorization),
             ("release-transition", package.transition_receipt),
             ("provider-receipt", package.provider_receipt),
+            ("provider-post-state-observation", package.provider_post_state_observation),
             ("reconciliation", package.reconciliation),
         )
         for kind, record in stages:
+            if kind == "provider-post-state-observation" and not require_post_state_durable:
+                continue
             self._require_exact(kind, record)
-        if hasattr(package, "lease_evidence_record"):
-            phase_records: tuple[tuple[str, StrictModel], ...] = (
-                ("lease-evidence-record", package.lease_evidence_record),
-                ("release-claim", package.release_claim),
-                ("claimed-release-transition", package.claimed_transition_receipt),
-                ("mutation-intent", package.release_transition_intent),
-                ("mutation-receipt", package.release_transition_mutation_receipt),
+        phase_records: tuple[tuple[str, StrictModel], ...] = (
+            ("lease-evidence-record", package.lease_evidence_record),
+            ("release-claim", package.release_claim),
+            ("claimed-release-transition", package.claimed_transition_receipt),
+            ("mutation-intent", package.release_transition_intent),
+            ("mutation-receipt", package.release_transition_mutation_receipt),
+        )
+        if package.release_transition_fence_resolution is not None:
+            phase_records += (
+                (
+                    "mutation-fence-resolution",
+                    package.release_transition_fence_resolution,
+                ),
             )
-            if package.release_transition_fence_resolution is not None:
-                phase_records += (
-                    (
-                        "mutation-fence-resolution",
-                        package.release_transition_fence_resolution,
-                    ),
-                )
-            for kind, record in phase_records:
-                self._require_phase_exact(kind, record)
+        for kind, record in phase_records:
+            self._require_phase_exact(kind, record)
         # Re-run the standalone loaders after exact matching.  This makes a
         # model_construct completion incapable of bypassing nested checks.
         self._verify_source_package(package.source_package)
@@ -1724,6 +1765,11 @@ class MainGraduationJournal:
         self._require_hold(package.release_authorization)
         self._require_release_authorization(package.transition_receipt)
         self._require_provider_receipt(package.provider_receipt)
+        self._verify_provider_post_state_authority(
+            package.provider_post_state_observation,
+            package.provider_receipt,
+            package.reconciliation,
+        )
         self._require_reconciliation(package.reconciliation)
 
     def _verify_source_package(self, package: MainSourcePackageBinding) -> None:
@@ -2930,6 +2976,26 @@ class MainGraduationJournal:
                 "Phase-A journal requires an injected authority verifier"
             )
         verifier.verify_fence_resolution(resolution, source_receipt)
+
+    def _verify_provider_post_state_authority(
+        self,
+        observation: MainProviderPostStateObservation,
+        provider_receipt: MainProviderReceipt,
+        reconciliation: MainReconciliation,
+    ) -> None:
+        """Require controller verification of the durable provider post-state.
+
+        The ``authoritative`` literal on the DTO is deliberately not trusted;
+        only the injected controller-owned verifier can attest that the
+        provider response actually observed the protected target.
+        """
+
+        verifier = self._phase_a_authority_verifier
+        if verifier is None:
+            raise MainGraduationJournalError(
+                "C4 completion requires an injected provider post-state verifier"
+            )
+        verifier.verify_provider_post_state(observation, provider_receipt, reconciliation)
 
     def record_claimed_release_transition(
         self, record: MainClaimedReleaseTransitionReceipt

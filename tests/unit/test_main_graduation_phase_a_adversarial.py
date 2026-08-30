@@ -242,6 +242,7 @@ def _transition(
             outcome="transitioned",
             response_digest=response_digest,
             observed_at=NOW,
+            mutation_receipt_digest=D3,
         ),
     )
 

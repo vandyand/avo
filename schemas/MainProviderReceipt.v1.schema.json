@@ -1,97 +1,4 @@
 {
-  "$defs": {
-    "MainProviderPostStateObservation": {
-      "additionalProperties": false,
-      "description": "Provider-attested post-state for the protected target.\n\nGit object names in a coordinator receipt are claims until a provider\nobservation binds them to an authoritative read-after-write response.\nThis record is the typed, content-addressed post-state evidence required\nby the C4 completion contract.",
-      "properties": {
-        "authoritative": {
-          "const": true,
-          "default": true,
-          "title": "Authoritative",
-          "type": "boolean"
-        },
-        "observation_digest": {
-          "pattern": "^sha256:[0-9a-f]{64}$",
-          "title": "Observation Digest",
-          "type": "string"
-        },
-        "observed_at": {
-          "format": "date-time",
-          "title": "Observed At",
-          "type": "string"
-        },
-        "operation_id": {
-          "pattern": "^sha256:[0-9a-f]{64}$",
-          "title": "Operation Id",
-          "type": "string"
-        },
-        "provider_api_version": {
-          "minLength": 1,
-          "title": "Provider Api Version",
-          "type": "string"
-        },
-        "provider_identity": {
-          "minLength": 1,
-          "title": "Provider Identity",
-          "type": "string"
-        },
-        "release_authorization_digest": {
-          "pattern": "^sha256:[0-9a-f]{64}$",
-          "title": "Release Authorization Digest",
-          "type": "string"
-        },
-        "repository_digest": {
-          "pattern": "^sha256:[0-9a-f]{64}$",
-          "title": "Repository Digest",
-          "type": "string"
-        },
-        "result_commit": {
-          "pattern": "^[0-9a-f]{40}(?:[0-9a-f]{24})?$",
-          "title": "Result Commit",
-          "type": "string"
-        },
-        "result_parents": {
-          "items": {
-            "pattern": "^[0-9a-f]{40}(?:[0-9a-f]{24})?$",
-            "type": "string"
-          },
-          "title": "Result Parents",
-          "type": "array"
-        },
-        "result_tree": {
-          "pattern": "^[0-9a-f]{40}(?:[0-9a-f]{24})?$",
-          "title": "Result Tree",
-          "type": "string"
-        },
-        "schema_version": {
-          "const": 1,
-          "default": 1,
-          "title": "Schema Version",
-          "type": "integer"
-        },
-        "target_ref": {
-          "const": "refs/heads/main",
-          "default": "refs/heads/main",
-          "title": "Target Ref",
-          "type": "string"
-        }
-      },
-      "required": [
-        "repository_digest",
-        "operation_id",
-        "release_authorization_digest",
-        "provider_identity",
-        "provider_api_version",
-        "result_commit",
-        "result_tree",
-        "result_parents",
-        "observed_at",
-        "observation_digest"
-      ],
-      "title": "MainProviderPostStateObservation",
-      "type": "object"
-    }
-  },
   "additionalProperties": false,
   "properties": {
     "deploy_performed": {
@@ -118,17 +25,6 @@
       ],
       "title": "Outcome",
       "type": "string"
-    },
-    "post_state_observation": {
-      "anyOf": [
-        {
-          "$ref": "#/$defs/MainProviderPostStateObservation"
-        },
-        {
-          "type": "null"
-        }
-      ],
-      "default": null
     },
     "provider_api_version": {
       "minLength": 1,
