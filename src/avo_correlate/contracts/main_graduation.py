@@ -1048,6 +1048,11 @@ class MainCompletionPackage(MainBound):
         ):
             raise ValueError("C4 completion authority target binding differs")
         if (
+            claim.claimed_at < self.release_authorization.authorized_at
+            or claim.authorization_expires_at != self.release_authorization.expires_at
+        ):
+            raise ValueError("C4 release claim chronology is invalid")
+        if (
             claim.authorization_digest != self.release_authorization.authorization_digest
             or claim.hold_observation_digest != canonical_digest(self.hold_observation)
             or claim.lease_digest != lease.lease_digest
@@ -1060,6 +1065,13 @@ class MainCompletionPackage(MainBound):
             or self.release_authorization.lease_identity != lease.owner
         ):
             raise ValueError("C4 release claim is not bound to the durable lease and hold")
+        if not (
+            self.release_authorization.authorized_at
+            <= release_intent.recorded_at
+            < self.release_authorization.expires_at
+            and claim.claimed_at <= release_intent.recorded_at < claim.authorization_expires_at
+        ):
+            raise ValueError("C4 release mutation chronology is invalid")
         if (
             claimed.release_authorization_digest != self.release_authorization.authorization_digest
             or claimed.claim_digest != claim.claim_digest
@@ -1148,6 +1160,26 @@ class MainCompletionPackage(MainBound):
             or claimed.mutation_receipt_digest != mutation.receipt_digest
         ):
             raise ValueError("C4 release mutation receipt is not claim and intent bound")
+        if mutation.outcome in {"applied", "already_applied"}:
+            observations_in_window = (
+                self.release_authorization.authorized_at
+                <= self.transition_receipt.observed_at
+                < self.release_authorization.expires_at
+                and self.release_authorization.authorized_at
+                <= claimed.observed_at
+                < self.release_authorization.expires_at
+            )
+        else:
+            # An ambiguous dispatch may be reconciled read-only after the
+            # lease/authorization window.  The intent still proves that the
+            # dispatch was authorized before expiry; resolution time is not a
+            # second authorization deadline.
+            observations_in_window = (
+                self.release_authorization.authorized_at <= self.transition_receipt.observed_at
+                and self.release_authorization.authorized_at <= claimed.observed_at
+            )
+        if not observations_in_window:
+            raise ValueError("C4 release transition chronology is invalid")
         resolution = cast(
             MainMutationFenceResolution | None,
             getattr(self, "release_transition_fence_resolution", None),

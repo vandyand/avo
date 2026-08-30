@@ -179,7 +179,9 @@ def test_c4_post_state_requires_injected_authority_verifier(tmp_path: Path) -> N
         )
 
 
-def _ambiguous_completion_with_resolution() -> MainCompletionPackage:
+def _ambiguous_completion_with_resolution(
+    *, resolved_at: datetime = NOW
+) -> MainCompletionPackage:
     package = completion_package()
     mutation = package.release_transition_mutation_receipt.model_copy(
         update={"outcome": "ambiguous"}
@@ -219,7 +221,7 @@ def _ambiguous_completion_with_resolution() -> MainCompletionPackage:
         outcome="observed",
         observed_outcome="applied",
         resolution_digest=package.operation_id,
-        resolved_at=NOW,
+        resolved_at=resolved_at,
     )
     object.__setattr__(
         resolution,
@@ -312,6 +314,13 @@ def test_observed_resolution_requires_explicit_terminal_outcome() -> None:
         MainCompletionPackage.validate_completion(tampered)  # pyright: ignore[reportCallIssue]
 
 
+def test_recovered_ambiguity_can_resolve_after_authorization_expiry() -> None:
+    package = _ambiguous_completion_with_resolution(
+        resolved_at=NOW + timedelta(minutes=6)
+    )
+    assert MainCompletionPackage.validate_completion(package) is package  # pyright: ignore[reportCallIssue]
+
+
 def test_not_applied_resolution_cannot_complete() -> None:
     package = _ambiguous_completion_with_resolution()
     resolution = package.release_transition_fence_resolution
@@ -335,6 +344,95 @@ def test_not_applied_resolution_cannot_complete() -> None:
     )
     with pytest.raises(ValueError, match="completion cannot finalize a not-applied"):
         MainCompletionPackage.validate_completion(tampered)  # pyright: ignore[reportCallIssue]
+
+
+def _rebound_mutation_chain(
+    package: MainCompletionPackage,
+    *,
+    claim_update: dict[str, Any] | None = None,
+    intent_update: dict[str, Any] | None = None,
+) -> MainCompletionPackage:
+    claim = package.release_claim
+    if claim_update:
+        claim = claim.model_copy(update=claim_update)
+        object.__setattr__(
+            claim,
+            "claim_digest",
+            canonical_digest(claim.model_dump(exclude={"claim_digest"}, mode="json")),
+        )
+    intent_updates = dict(intent_update or {})
+    if claim_update:
+        intent_updates["release_claim_digest"] = claim.claim_digest
+    intent = package.release_transition_intent.model_copy(update=intent_updates)
+    object.__setattr__(
+        intent,
+        "intent_digest",
+        canonical_digest(intent.model_dump(exclude={"intent_digest"}, mode="json")),
+    )
+    mutation = package.release_transition_mutation_receipt.model_copy(
+        update={"intent_digest": intent.intent_digest}
+    )
+    object.__setattr__(
+        mutation,
+        "receipt_digest",
+        canonical_digest(mutation.model_dump(exclude={"receipt_digest"}, mode="json")),
+    )
+    claimed = package.claimed_transition_receipt.model_copy(
+        update={"mutation_receipt_digest": mutation.receipt_digest}
+    )
+    object.__setattr__(
+        claimed,
+        "receipt_digest",
+        canonical_digest(claimed.model_dump(exclude={"receipt_digest"}, mode="json")),
+    )
+    return package.model_copy(
+        update={
+            "release_claim": claim,
+            "release_transition_intent": intent,
+            "release_transition_mutation_receipt": mutation,
+            "claimed_transition_receipt": claimed,
+        }
+    )
+
+
+@pytest.mark.parametrize(
+    ("claim_update", "intent_update", "message"),
+    (
+        ({"claimed_at": NOW - timedelta(seconds=1)}, None, "release claim chronology"),
+        (None, {"recorded_at": NOW - timedelta(seconds=1)}, "release mutation chronology"),
+        (None, {"recorded_at": NOW + timedelta(minutes=5)}, "release mutation chronology"),
+    ),
+)
+def test_completion_rejects_stale_release_authority_chronology(
+    claim_update: dict[str, Any] | None,
+    intent_update: dict[str, Any] | None,
+    message: str,
+) -> None:
+    package = _rebound_mutation_chain(
+        completion_package(), claim_update=claim_update, intent_update=intent_update
+    )
+    with pytest.raises(ValueError, match=message):
+        MainCompletionPackage.validate_completion(package)  # pyright: ignore[reportCallIssue]
+
+
+@pytest.mark.parametrize(
+    ("observed_at", "valid"),
+    ((NOW, True), (NOW + timedelta(minutes=5), False)),
+)
+def test_completion_release_observations_respect_authorization_window(
+    observed_at: datetime, valid: bool
+) -> None:
+    package = completion_package()
+    transition = package.transition_receipt.model_copy(update={"observed_at": observed_at})
+    claimed = package.claimed_transition_receipt.model_copy(update={"observed_at": observed_at})
+    package = package.model_copy(
+        update={"transition_receipt": transition, "claimed_transition_receipt": claimed}
+    )
+    if valid:
+        assert MainCompletionPackage.validate_completion(package) is package  # pyright: ignore[reportCallIssue]
+    else:
+        with pytest.raises(ValueError, match="release transition chronology"):
+            MainCompletionPackage.validate_completion(package)  # pyright: ignore[reportCallIssue]
 
 
 @pytest.mark.parametrize("field", ("response_digest", "observed_at"))
