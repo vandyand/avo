@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import hashlib
+import hmac
+import json
 from collections.abc import Mapping
 from datetime import UTC, datetime
 from typing import cast
@@ -23,7 +26,7 @@ from avo_correlate.contracts.main_graduation import (
     MainQueueAdmissionObservation,
     MainReleaseAuthorization,
     MainReleaseHoldObservation,
-    MainReleaseIssuerBinding,
+    MainReleaseTransitionReceipt,
 )
 
 A = "a" * 40
@@ -76,13 +79,21 @@ class FakeTransport:
                 },
             }],
         }
-        self.ruleset_page: list[JsonObject] = [{"id": 42}]
+        self.effective_rules: list[JsonObject] = [{
+            "type": "merge_queue",
+            "ruleset_source_type": "Repository",
+            "ruleset_source": "avo/repo",
+            "ruleset_id": 42,
+            "parameters": {},
+        }]
         self.protection_contexts: list[str] = ["unit-validation", "avo-main-release"]
         self.protection_checks: list[JsonObject] = [
             {"context": "unit-validation", "app_id": 15368},
             {"context": "avo-main-release", "app_id": 9001},
         ]
         self.runs: list[JsonObject] = []
+        self.check_pages: list[list[JsonObject]] | None = None
+        self.check_total_count: int | None = None
 
     def __call__(
         self, method: str, url: str, body: JsonBody | None, headers: Mapping[str, str]
@@ -130,8 +141,8 @@ class FakeTransport:
                     "checks": self.protection_checks,
                 }
             })
-        if url == prefix + "/rulesets?includes_parents=true&targets=branch&per_page=100&page=1":
-            return 200, cast(JsonValue, self.ruleset_page)
+        if url == prefix + "/rules/branches/main":
+            return 200, cast(JsonValue, self.effective_rules)
         if url == prefix + "/rulesets/42":
             return 200, self.ruleset
         if url == prefix + "/git/ref/heads/main":
@@ -146,7 +157,18 @@ class FakeTransport:
                 "parents": [{"sha": parent} for parent in parents],
             }
         if "/check-runs" in url:
-            return 200, cast(JsonValue, {"check_runs": self.runs})
+            if self.check_pages is None:
+                return 200, cast(
+                    JsonValue, {"total_count": len(self.runs), "check_runs": self.runs}
+                )
+            page = int(url.rsplit("page=", 1)[-1])
+            page_runs = self.check_pages[page - 1] if page <= len(self.check_pages) else []
+            return 200, cast(JsonValue, {
+                "total_count": self.check_total_count
+                if self.check_total_count is not None
+                else sum(len(item) for item in self.check_pages),
+                "check_runs": page_runs,
+            })
         raise AssertionError(f"unexpected endpoint: {method} {url}")
 
 
@@ -161,7 +183,39 @@ def provider(fake: JsonTransport) -> ProtectedMainProvider:
         trusted_check_contexts=("unit-validation",),
         token="token",
         transport=fake,
+        webhook_secret="webhook-secret",
     )
+
+
+def signed_webhook(
+    *,
+    sha: str = G,
+    base_sha: str = A,
+    delivery: str = "delivery-1",
+    changes: JsonObject | None = None,
+) -> tuple[bytes, dict[str, str]]:
+    group: JsonObject = {
+        "head_sha": sha,
+        "head_ref": "refs/heads/gh-readonly-queue/main/7-1",
+        "base_sha": base_sha,
+        "base_ref": "main",
+    }
+    if changes is not None:
+        group.update(changes)
+    body = json.dumps(
+        {
+            "action": "checks_requested",
+            "repository": {"full_name": "avo/repo"},
+            "merge_group": group,
+        },
+        separators=(",", ":"),
+    ).encode()
+    signature = hmac.new(b"webhook-secret", body, hashlib.sha256).hexdigest()
+    return body, {
+        "X-GitHub-Event": "merge_group",
+        "X-GitHub-Delivery": delivery,
+        "X-Hub-Signature-256": "sha256=" + signature,
+    }
 
 
 def check(
@@ -188,6 +242,14 @@ def test_graphql_queue_is_official_endpoint_and_binds_singleton_entry() -> None:
     assert queue.expected_group_parents == [A, D]
     assert any(method == "POST" and url.endswith("/graphql") for method, url, _ in fake.calls)
     assert not any("merge-queue" in url for _, url, _ in fake.calls)
+
+
+def test_effective_rules_endpoint_is_authority_even_for_wildcard_conditions() -> None:
+    fake = FakeTransport()
+    fake.ruleset["conditions"] = {"ref_name": {"include": ["~DEFAULT_BRANCH"], "exclude": ["*"]}}
+    manifest = provider(fake).observe_protection()
+    assert manifest.required is True
+    assert any(url.endswith("/rules/branches/main") for _, url, _ in fake.calls)
 
 
 def test_graphql_queue_can_be_observed_before_enqueue_without_inventing_group_topology() -> None:
@@ -229,7 +291,6 @@ RULESET_MUTATIONS: list[dict[str, JsonValue]] = [
     {"bypass_actors": [{}]},
     {"bypass_actors": None},
     {"rules": []},
-    {"conditions": {"ref_name": {"include": ["refs/heads/dev"], "exclude": []}}},
 ]
 
 
@@ -245,7 +306,16 @@ def test_protection_requires_active_full_ruleset_without_bypass(
 
 def test_ruleset_page_bounds_fail_closed() -> None:
     fake = FakeTransport()
-    fake.ruleset_page = [{"id": index + 1} for index in range(101)]
+    fake.effective_rules = [
+        {
+            "type": "merge_queue",
+            "ruleset_source_type": "Repository",
+            "ruleset_source": "avo/repo",
+            "ruleset_id": index + 1,
+            "parameters": {},
+        }
+        for index in range(101)
+    ]
     with pytest.raises(ProtectedMainProviderError):
         provider(fake).observe_protection()
 
@@ -326,23 +396,78 @@ def test_merge_group_requires_authenticated_event_and_rechecks_commit_topology()
     fake = FakeTransport()
     main = provider(fake)
     queue = main.observe_queue()
-    event: JsonObject = {
-        "merge_group": {
-            "head_sha": G,
-            "tree_sha": E,
-            "parents": [{"sha": A}, {"sha": D}],
-            "pull_request_numbers": [7],
-            "queue_generation_digest": queue.queue_generation_digest,
-        }
-    }
-    group = main.observe_merge_group(G, event=event, queue=queue, pull_request_number=7)
+    body, headers = signed_webhook()
+    group = main.observe_merge_group(
+        G, webhook_body=body, webhook_headers=headers, queue=queue, pull_request_number=7
+    )
     assert group.group_parents == (A, D)
     assert group.group_tree == E
     with pytest.raises(ProtectedMainProviderError):
         main.observe_merge_group(G)
-    event["merge_group"]["pull_request_numbers"] = [7, 8]  # type: ignore[index]
+    body, headers = signed_webhook(
+        delivery="delivery-2", changes={"pull_request_numbers": [7, 8]}
+    )
     with pytest.raises(ProtectedMainProviderError):
-        main.observe_merge_group(G, event=event, queue=queue)
+        main.observe_merge_group(G, webhook_body=body, webhook_headers=headers, queue=queue)
+
+
+@pytest.mark.parametrize("header, value", [
+    ("X-GitHub-Event", "push"),
+    ("X-Hub-Signature-256", "sha256=" + "0" * 64),
+])
+def test_merge_group_webhook_authentication_and_replay_are_fail_closed(
+    header: str, value: str,
+) -> None:
+    fake = FakeTransport()
+    main = provider(fake)
+    body, headers = signed_webhook(delivery="delivery-auth")
+    headers[header] = value
+    with pytest.raises(ProtectedMainProviderError):
+        main.observe_merge_group(G, webhook_body=body, webhook_headers=headers)
+    body, headers = signed_webhook(delivery="delivery-replay")
+    queue = main.observe_queue()
+    main.observe_merge_group(
+        G, webhook_body=body, webhook_headers=headers, queue=queue, pull_request_number=7
+    )
+    with pytest.raises(ProtectedMainProviderError):
+        main.observe_merge_group(
+            G, webhook_body=body, webhook_headers=headers, queue=queue, pull_request_number=7
+        )
+
+
+def test_merge_group_webhook_rejects_duplicate_headers_and_json_keys() -> None:
+    fake = FakeTransport()
+    main = provider(fake)
+    body, headers = signed_webhook(delivery="delivery-duplicate-header")
+    headers["x-github-event"] = "merge_group"
+    with pytest.raises(ProtectedMainProviderError):
+        main.observe_merge_group(G, webhook_body=body, webhook_headers=headers)
+    body = (
+        b'{"action":"checks_requested","action":"checks_requested",'
+        b'"repository":{"full_name":"avo/repo"},"merge_group":{}}'
+    )
+    headers = {
+        "X-GitHub-Event": "merge_group",
+        "X-GitHub-Delivery": "delivery-duplicate-json",
+        "X-Hub-Signature-256": "sha256="
+        + hmac.new(b"webhook-secret", body, hashlib.sha256).hexdigest(),
+    }
+    with pytest.raises(ProtectedMainProviderError):
+        main.observe_merge_group(G, webhook_body=body, webhook_headers=headers)
+
+
+def test_check_runs_require_complete_bounded_pagination() -> None:
+    fake = FakeTransport()
+    first = check(name="unit-validation")
+    second = check(name="other")
+    second["id"] = 2
+    fake.check_pages = [[first], [second]]
+    assert len(provider(fake).observe_check_runs(G)) == 2
+    fake = FakeTransport()
+    fake.check_pages = [[check(name="unit-validation")], [check(name="other")]]
+    fake.check_total_count = 1001
+    with pytest.raises(ProtectedMainProviderError):
+        provider(fake).observe_check_runs(G)
 
 
 @pytest.mark.parametrize("mutation", [
@@ -353,16 +478,11 @@ def test_merge_group_event_substitution_is_rejected(mutation: dict[str, JsonValu
     fake = FakeTransport()
     main = provider(fake)
     queue = main.observe_queue()
-    event: JsonObject = {
-        "head_sha": G,
-        "tree_sha": E,
-        "parents": [{"sha": A}, {"sha": D}],
-        "pull_request_numbers": [7],
-        "queue_generation_digest": queue.queue_generation_digest,
-    }
-    event.update(mutation)
+    body, headers = signed_webhook(changes=mutation)
     with pytest.raises(ProtectedMainProviderError):
-        main.observe_merge_group(G, event=event, queue=queue, pull_request_number=7)
+        main.observe_merge_group(
+            G, webhook_body=body, webhook_headers=headers, queue=queue, pull_request_number=7
+        )
 
 
 @pytest.mark.parametrize("mutation", [
@@ -464,7 +584,7 @@ def test_release_attestation_rejects_caller_supplied_identity_string() -> None:
         attester.attest_release(
             cast(MainReleaseAuthorization, None),
             cast(MainReleaseHoldObservation, None),
-            cast(MainReleaseIssuerBinding, "isolated-release"),
+            cast(MainReleaseTransitionReceipt, "isolated-release"),
         )
 
 

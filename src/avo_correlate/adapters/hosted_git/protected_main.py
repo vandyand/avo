@@ -9,6 +9,9 @@ issuer are separate stages.
 
 from __future__ import annotations
 
+import hashlib
+import hmac
+import json
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass
@@ -34,7 +37,6 @@ from avo_correlate.contracts.main_graduation import (
     MainQueueObservation,
     MainReleaseAuthorization,
     MainReleaseHoldObservation,
-    MainReleaseIssuerBinding,
     MainReleaseTransitionReceipt,
 )
 from avo_correlate.domain.canonical import canonical_digest
@@ -128,6 +130,8 @@ class MainMergeGroupObservation:
     pull_request_numbers: tuple[int, ...]
     queue_generation_digest: str
     observed_at: datetime
+    webhook_delivery_id: str = ""
+    webhook_body_digest: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -239,6 +243,7 @@ class ProtectedMainProvider:
         provider_api_version: str = "2022-11-28",
         token: str | None = None,
         transport: JsonTransport | None = None,
+        webhook_secret: str | None = None,
     ) -> None:
         if not owner or not repo or any(char in owner + repo for char in "/\\"):
             raise ValueError("invalid GitHub repository binding")
@@ -276,6 +281,10 @@ class ProtectedMainProvider:
         self.provider_api_version = provider_api_version
         self.token = token
         self.transport = transport or self._missing_transport
+        # Credentials are process-local verification material only.  They are
+        # never copied into C1 evidence, manifests, or receipts.
+        self._webhook_secret = webhook_secret
+        self._seen_webhook_deliveries: set[str] = set()
 
     @staticmethod
     def _missing_transport(
@@ -346,29 +355,26 @@ class ProtectedMainProvider:
             raise ProtectedMainProviderError("GitHub GraphQL query failed")
         return _object(raw.get("data"), "GraphQL data")
 
-    def _read_rulesets(self) -> list[JsonObject]:
-        """Read every repository ruleset page with bounded, stable pagination."""
-        result: list[JsonObject] = []
-        seen: set[int] = set()
-        for page in range(1, 101):
-            raw = self._call(
-                self.repository_path
-                + f"/rulesets?includes_parents=true&targets=branch&per_page=100&page={page}"
-            )
-            items = _items(raw, "rulesets")
-            if not items:
-                return result
-            if len(items) > 100:
-                raise ProtectedMainProviderError("ruleset page exceeds configured bound")
-            for item in items:
-                ident = _int(item, "id", "ruleset")
-                if ident <= 0 or ident in seen:
-                    raise ProtectedMainProviderError("ruleset identity is duplicated or invalid")
-                seen.add(ident)
-                result.append(item)
-            if len(items) < 100:
-                return result
-        raise ProtectedMainProviderError("ruleset pagination exceeded configured bound")
+    def _read_effective_rules(self) -> list[JsonObject]:
+        """Read GitHub's authoritative, already-evaluated rules for main."""
+        raw = self._call(self.repository_path + "/rules/branches/main")
+        rules = _items(raw, "effective branch rules")
+        if not rules or len(rules) > 100:
+            raise ProtectedMainProviderError("effective main rules are missing or oversized")
+        seen: set[tuple[str, str, int, str]] = set()
+        for rule in rules:
+            source_type = _str(rule, "ruleset_source_type", "effective branch rule")
+            source = _str(rule, "ruleset_source", "effective branch rule")
+            ident = _int(rule, "ruleset_id", "effective branch rule")
+            rule_type = _str(rule, "type", "effective branch rule")
+            key = (source_type.casefold(), source.casefold(), ident, rule_type)
+            if ident <= 0 or key in seen:
+                raise ProtectedMainProviderError(
+                    "effective ruleset identity is duplicated or invalid"
+                )
+            seen.add(key)
+            _nested(rule, "parameters", "effective branch rule")
+        return rules
 
     def _queue_configuration(self, config: JsonObject | None = None) -> JsonObject:
         if config is None:
@@ -385,37 +391,45 @@ class ProtectedMainProvider:
         """Require the official active merge-queue ruleset, including no bypass."""
         applicable: list[JsonObject] = []
         merge_rules: list[tuple[JsonObject, JsonObject]] = []
-        for summary in self._read_rulesets():
-            ident = _int(summary, "id", "ruleset")
-            full = _object(self._call(self.repository_path + f"/rulesets/{ident}"), "ruleset")
+        effective_rules = self._read_effective_rules()
+        resolved: dict[tuple[str, str, int], JsonObject] = {}
+        for rule in effective_rules:
+            source_type = _str(rule, "ruleset_source_type", "effective branch rule")
+            source = _str(rule, "ruleset_source", "effective branch rule")
+            ident = _int(rule, "ruleset_id", "effective branch rule")
+            key = (source_type.casefold(), source.casefold(), ident)
+            if key in resolved:
+                continue
+            if source_type.casefold() == "organization":
+                path = f"/orgs/{quote(source, safe='')}/rulesets/{ident}"
+            elif source_type.casefold() == "repository":
+                path = self.repository_path + f"/rulesets/{ident}"
+            else:
+                raise ProtectedMainProviderError("effective ruleset source type is unsupported")
+            full = _object(self._call(path), "ruleset")
             if _int(full, "id", "ruleset") != ident:
                 raise ProtectedMainProviderError("ruleset response identity differs from request")
+            if _str(full, "source_type", "ruleset").casefold() != source_type.casefold():
+                raise ProtectedMainProviderError("ruleset source type differs from applied rule")
+            if _str(full, "source", "ruleset").casefold() != source.casefold():
+                raise ProtectedMainProviderError("ruleset source differs from applied rule")
+            resolved[key] = full
             for field in ("name", "source_type", "source", "target", "enforcement"):
                 _str(full, field, "ruleset")
-            conditions = _nested(full, "conditions", "ruleset")
-            refs = _nested(conditions, "ref_name", "ruleset conditions")
-            include = refs.get("include")
-            exclude = refs.get("exclude")
-            if not isinstance(include, list) or any(not isinstance(item, str) for item in include):
-                raise ProtectedMainProviderError("ruleset ref conditions are incomplete")
-            if not isinstance(exclude, list) or any(not isinstance(item, str) for item in exclude):
-                raise ProtectedMainProviderError("ruleset ref exclusions are incomplete")
-            if "refs/heads/main" not in include or "refs/heads/main" in exclude:
-                continue
-            applicable.append(full)
             if _str(full, "target", "ruleset") != "branch":
                 raise ProtectedMainProviderError("main ruleset target is not branch")
-            if _str(full, "enforcement", "ruleset") != "active":
-                raise ProtectedMainProviderError("main ruleset is not actively enforced")
+            if _str(full, "enforcement", "ruleset").casefold() != "active":
+                raise ProtectedMainProviderError("main ruleset is not active")
             bypass = full.get("bypass_actors")
             if not isinstance(bypass, list):
                 raise ProtectedMainProviderError("ruleset bypass actors are unavailable")
             if bypass:
                 raise ProtectedMainProviderError("main ruleset permits bypass actors")
             rules = _items(full.get("rules"), "ruleset rules")
-            for rule in rules:
-                if _str(rule, "type", "ruleset rule") == "merge_queue":
-                    merge_rules.append((full, _nested(rule, "parameters", "merge queue rule")))
+            for full_rule in rules:
+                if _str(full_rule, "type", "ruleset rule") == "merge_queue":
+                    merge_rules.append((full, _nested(full_rule, "parameters", "merge queue rule")))
+        applicable = list(resolved.values())
         if len(merge_rules) != 1 or not applicable:
             raise ProtectedMainProviderError(
                 "active main merge_queue ruleset is missing or conflicting"
@@ -776,59 +790,149 @@ class ProtectedMainProvider:
         self,
         group_sha: str,
         *,
-        event: JsonObject | None = None,
+        webhook_body: bytes | None = None,
+        webhook_headers: Mapping[str, str] | None = None,
         queue: MainQueueObservation | None = None,
         pull_request_number: int | None = None,
     ) -> MainMergeGroupObservation:
-        """Observe a GitHub ``merge_group`` event, never a synthetic REST resource.
+        """Observe one authenticated native GitHub ``merge_group`` webhook.
 
-        GitHub does not expose a REST merge-group endpoint.  The authenticated
-        webhook/event adapter supplies the exact event payload and this method
-        re-reads the immutable commit object to bind tree and complete parent
-        topology.  The event must include singleton membership and queue
-        generation evidence; missing fields are not inferred.
+        Membership and generation are deliberately *not* accepted from the
+        webhook (or its caller).  They are re-read from the documented
+        GraphQL merge queue and the immutable commit object.
         """
         group_sha = _git(group_sha, "merge group SHA")
-        if event is None:
-            raise ProtectedMainProviderError("authenticated merge_group event evidence is required")
-        event_group = event.get("merge_group")
-        raw = _object(event_group, "merge_group event") if event_group is not None else event
-        event_sha = raw.get("head_sha") or raw.get("group_sha")
-        if not isinstance(event_sha, str) or event_sha != group_sha:
-            raise ProtectedMainProviderError("merge_group event SHA differs from request")
-        tree_value = raw.get("tree_sha")
-        tree = _git(tree_value, "merge group tree") if isinstance(tree_value, str) else None
-        parents_raw = raw.get("parents")
-        parents = tuple(
-            _git(_str(item, "sha", "merge group parent"), "merge group parent")
-            for item in _items(parents_raw, "merge group parents")
-        )
-        _, observed_tree, observed_parents = self._read_commit(group_sha, "merge group commit")
-        if tree is not None and observed_tree != tree:
-            raise ProtectedMainProviderError("merge group response tree differs from commit")
-        if observed_parents != parents:
-            raise ProtectedMainProviderError("merge group response topology differs from commit")
-        tree = observed_tree
-        numbers_raw = raw.get("pull_request_numbers")
-        if not isinstance(numbers_raw, list) or any(
-            isinstance(item, bool) or not isinstance(item, int) for item in numbers_raw
+        secret = self._webhook_secret
+        if secret is None or not secret:
+            raise ProtectedMainProviderError("merge_group webhook secret is not configured")
+        if not isinstance(webhook_body, bytes) or not webhook_body:
+            raise ProtectedMainProviderError("raw merge_group webhook bytes are required")
+        if len(webhook_body) > 1_048_576:
+            raise ProtectedMainProviderError("merge_group webhook body is oversized")
+        if webhook_headers is None:
+            raise ProtectedMainProviderError("merge_group webhook headers are required")
+        raw_headers = cast(Mapping[object, object], webhook_headers)
+        normalized_headers: dict[str, str] = {}
+        for key, value in raw_headers.items():
+            if (
+                not isinstance(key, str)
+                or not isinstance(value, str)
+                or len(key) > 256
+                or len(value) > 4096
+                or key.casefold() in normalized_headers
+            ):
+                raise ProtectedMainProviderError("merge_group webhook headers are malformed")
+            normalized_headers[key.casefold()] = value
+        if len(normalized_headers) > 64:
+            raise ProtectedMainProviderError("merge_group webhook headers are oversized")
+
+        def header(name: str) -> str:
+            return normalized_headers.get(name.casefold(), "")
+
+        if header("X-GitHub-Event") != "merge_group":
+            raise ProtectedMainProviderError("webhook is not a merge_group event")
+        delivery = header("X-GitHub-Delivery")
+        signature = header("X-Hub-Signature-256")
+        expected = "sha256=" + hmac.new(
+            secret.encode("utf-8"), webhook_body, hashlib.sha256
+        ).hexdigest()
+        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}", delivery) or not re.fullmatch(
+            r"sha256=[0-9a-f]{64}", signature
         ):
-            raise ProtectedMainProviderError("merge group membership is malformed")
-        numbers = tuple(cast(int, item) for item in numbers_raw)
-        if len(numbers) != 1 or numbers[0] <= 0:
-            raise ProtectedMainProviderError("merge group must contain exactly one PR")
-        if pull_request_number is not None and numbers != (pull_request_number,):
-            raise ProtectedMainProviderError("merge group contains an unrelated pull request")
-        generation = _digest(
-            _str(raw, "queue_generation_digest", "merge group"), "queue generation"
+            raise ProtectedMainProviderError(
+                "merge_group webhook authentication headers are malformed"
+            )
+        if not hmac.compare_digest(signature, expected):
+            raise ProtectedMainProviderError("merge_group webhook signature is invalid")
+        if delivery in self._seen_webhook_deliveries:
+            raise ProtectedMainProviderError("merge_group webhook delivery was already used")
+
+        def unique_pairs(pairs: list[tuple[str, object]]) -> dict[str, object]:
+            result: dict[str, object] = {}
+            for key, value in pairs:
+                if key in result:
+                    raise ValueError("duplicate JSON object key")
+                result[key] = value
+            return result
+
+        try:
+            decoded = json.loads(
+                webhook_body.decode("utf-8"),
+                object_pairs_hook=unique_pairs,
+                parse_constant=lambda value: (_ for _ in ()).throw(
+                    ValueError(f"unsupported JSON constant: {value}")
+                ),
+            )
+        except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
+            raise ProtectedMainProviderError("merge_group webhook body is not valid JSON") from exc
+        event = _object(cast(JsonValue, decoded), "merge_group webhook")
+        if _str(event, "action", "merge_group webhook") != "checks_requested":
+            raise ProtectedMainProviderError("merge_group webhook action is not checks_requested")
+        repository = _nested(event, "repository", "merge_group webhook")
+        if _str(repository, "full_name", "merge_group webhook repository").casefold() != (
+            f"{self.owner}/{self.repo}".casefold()
+        ):
+            raise ProtectedMainProviderError("merge_group webhook repository differs from binding")
+        event_group = _nested(event, "merge_group", "merge_group webhook")
+        forbidden = {"pull_request_numbers", "queue_generation_digest", "tree_sha", "parents"}
+        if forbidden.intersection(event_group):
+            raise ProtectedMainProviderError(
+                "merge_group webhook contains caller-derived provenance"
+            )
+        event_sha = _git(
+            _str(event_group, "head_sha", "merge_group webhook"), "merge group event SHA"
         )
-        if queue is not None:
-            if generation != queue.queue_generation_digest:
-                raise ProtectedMainProviderError("merge group queue generation differs")
-            if parents != tuple(queue.expected_group_parents):
-                raise ProtectedMainProviderError("merge group topology differs from queue")
+        if event_sha != group_sha:
+            raise ProtectedMainProviderError("merge_group event SHA differs from request")
+        head_ref = _str(event_group, "head_ref", "merge_group webhook")
+        if not (
+            head_ref.startswith("refs/heads/gh-readonly-queue/main/")
+            or head_ref.startswith("gh-readonly-queue/main/")
+        ):
+            raise ProtectedMainProviderError(
+                "merge_group webhook head ref is not GitHub's queue ref"
+            )
+        base_ref = _str(event_group, "base_ref", "merge_group webhook")
+        if base_ref not in {"main", "refs/heads/main"}:
+            raise ProtectedMainProviderError("merge_group webhook base ref differs from main")
+
+        if queue is None:
+            raise ProtectedMainProviderError(
+                "durable authenticated queue observation is required for merge group"
+            )
+        if pull_request_number is None or pull_request_number <= 0:
+            raise ProtectedMainProviderError("merge group PR membership evidence is required")
+        number = pull_request_number
+        entry_head = queue.expected_group_parents[-1]
+        entry_base = queue.expected_base_commit
+        pr_observation = self.observe_pull_request(number, expected_base_commit=entry_base)
+        if pr_observation.head_commit != entry_head:
+            raise ProtectedMainProviderError("merge group queue entry does not match PR head")
+        if entry_base != queue.expected_base_commit or queue.expected_group_parents != [
+            entry_base,
+            entry_head,
+        ]:
+            raise ProtectedMainProviderError("merge group topology differs from queue")
+        event_base_sha = _git(
+            _str(event_group, "base_sha", "merge_group webhook"), "merge group base SHA"
+        )
+        if event_base_sha != entry_base:
+            raise ProtectedMainProviderError("merge_group webhook base SHA differs from queue")
+        _, observed_tree, observed_parents = self._read_commit(group_sha, "merge group commit")
+        if observed_parents != tuple(queue.expected_group_parents):
+            raise ProtectedMainProviderError("merge group response topology differs from commit")
+        self._seen_webhook_deliveries.add(delivery)
+        body_digest = "sha256:" + hashlib.sha256(webhook_body).hexdigest()
         return MainMergeGroupObservation(
-            self.repository_digest, group_sha, tree, parents, numbers, generation, datetime.now(UTC)
+            self.repository_digest,
+            group_sha,
+            observed_tree,
+            tuple(queue.expected_group_parents),
+            (number,),
+            queue.queue_generation_digest,
+            datetime.now(UTC),
+            delivery,
+            body_digest,
         )
 
     def observe_snapshot(
@@ -836,7 +940,8 @@ class ProtectedMainProvider:
         pull_request_number: int,
         *,
         group_sha: str | None = None,
-        group_event: JsonObject | None = None,
+        group_webhook_body: bytes | None = None,
+        group_webhook_headers: Mapping[str, str] | None = None,
     ) -> ProtectedMainSnapshot:
         """Read repository, main, PR, queue, protection, and optional group together."""
         repository = self.observe_repository()
@@ -850,7 +955,8 @@ class ProtectedMainProvider:
         group = (
             self.observe_merge_group(
                 group_sha,
-                event=group_event,
+                webhook_body=group_webhook_body,
+                webhook_headers=group_webhook_headers,
                 queue=queue,
                 pull_request_number=pull_request.number,
             )
@@ -862,11 +968,33 @@ class ProtectedMainProvider:
     def observe_check_runs(self, sha: str) -> tuple[MainCheckObservation, ...]:
         """Read one SHA's complete check-run set; never infer checks from a PR."""
         sha = _git(sha, "check SHA")
-        raw = _object(
-            self._call(self.repository_path + "/commits/" + sha + "/check-runs?per_page=100"),
-            "check runs",
-        )
-        runs = _items(raw.get("check_runs"), "check runs")
+        runs: list[JsonObject] = []
+        total_count: int | None = None
+        for page in range(1, 11):
+            raw = _object(
+                self._call(
+                    self.repository_path
+                    + "/commits/"
+                    + sha
+                    + f"/check-runs?per_page=100&page={page}"
+                ),
+                "check runs",
+            )
+            page_total = _int(raw, "total_count", "check runs")
+            page_runs = _items(raw.get("check_runs"), "check runs")
+            if page_total < 0 or page_total > 1000 or len(page_runs) > 100:
+                raise ProtectedMainProviderError("check run response is oversized")
+            if total_count is None:
+                total_count = page_total
+            elif total_count != page_total:
+                raise ProtectedMainProviderError("check run total changed during pagination")
+            runs.extend(page_runs)
+            if len(runs) >= page_total:
+                break
+            if not page_runs:
+                raise ProtectedMainProviderError("check run pagination is incomplete")
+        if total_count is None or len(runs) != total_count:
+            raise ProtectedMainProviderError("check run response is incomplete")
         result: list[MainCheckObservation] = []
         for run in runs:
             app = run.get("app")
@@ -1290,63 +1418,57 @@ class MainGraduationAttester:
         self,
         authorization: MainReleaseAuthorization,
         hold: MainReleaseHoldObservation,
-        issuer_identity: MainReleaseIssuerBinding | None = None,
-    ) -> MainReleaseAuthorization:
-        if not isinstance(issuer_identity, MainReleaseIssuerBinding):
+        transition_receipt: MainReleaseTransitionReceipt | None = None,
+    ) -> MainReleaseTransitionReceipt:
+        """Validate a post-transition receipt; this method grants no authority."""
+        if not isinstance(transition_receipt, MainReleaseTransitionReceipt):
             raise ProtectedMainProviderError(
-                "typed authenticated release issuer binding is required"
+                "authenticated release transition receipt is required"
             )
         if (
-            issuer_identity.issuer_id != self.provider.release_issuer_identity
-            or issuer_identity.app_id != self.provider.release_issuer_app_id
-            or issuer_identity.isolation_digest != self.provider.issuer_isolation_digest
-            or issuer_identity.operation_id != authorization.operation_id
-            or issuer_identity.repository_digest != authorization.repository_digest
-            or issuer_identity.target_ref != authorization.target_ref
-        ):
-            raise ProtectedMainProviderError("wrong release issuer binding")
-        if (
-            authorization.release_issuer_identity != issuer_identity.issuer_id
-            or authorization.release_issuer_app_id != issuer_identity.app_id
-        ):
-            raise ProtectedMainProviderError("release authorization issuer mismatch")
-        if authorization.release_issuer_app_id == 15368 or authorization.used:
-            raise ProtectedMainProviderError(
-                "validation App 15368 or reused authorization cannot release"
-            )
-        if (
-            authorization.repository_digest != hold.repository_digest
-            or authorization.target_ref != hold.target_ref
-            or authorization.operation_id != hold.operation_id
-        ):
-            raise ProtectedMainProviderError("release authorization target or operation drift")
-        if authorization.preparation_authorization_digest != hold.preparation_authorization_digest:
-            raise ProtectedMainProviderError("release authorization preparation drift")
-        if authorization.admission_observation_digest != hold.admission_observation_digest:
-            raise ProtectedMainProviderError("release authorization admission drift")
-        if authorization.hold_observation_digest != canonical_digest(hold):
-            raise ProtectedMainProviderError("release authorization hold evidence drift")
-        if (
-            authorization.package_digest != hold.package_digest
-            or authorization.composition_digest != hold.composition_digest
-            or authorization.queue_generation_digest != hold.queue_generation_digest
-        ):
-            raise ProtectedMainProviderError("release authorization evidence drift")
-        if authorization.issuer_isolation_digest != self.provider.issuer_isolation_digest:
-            raise ProtectedMainProviderError("release authorization isolation drift")
-        if authorization.expires_at <= datetime.now(UTC):
-            raise ProtectedMainProviderError("release authorization is expired")
-        if (
-            authorization.group_sha != hold.group_sha
-            or authorization.hold_run_id != hold.hold_run_id
-            or authorization.hold_nonce != hold.hold_nonce
+            transition_receipt.repository_digest != self.provider.repository_digest
+            or transition_receipt.target_ref != "refs/heads/main"
+            or transition_receipt.issuer_identity != self.provider.release_issuer_identity
+            or transition_receipt.release_issuer_app_id != self.provider.release_issuer_app_id
+            or transition_receipt.release_issuer_app_id == self.provider.validation_app_id
+            or transition_receipt.issuer_isolation_digest != self.provider.issuer_isolation_digest
+            or transition_receipt.outcome not in {"transitioned", "already_transitioned"}
         ):
             raise ProtectedMainProviderError(
-                "release authorization cannot transfer to another hold"
+                "release transition receipt issuer or outcome is invalid"
             )
-        if hold.check_state != "in_progress" or hold.check_conclusion != "pending":
-            raise ProtectedMainProviderError("release hold is not pending")
-        return authorization
+        if type(authorization) is not MainReleaseAuthorization or type(
+            hold
+        ) is not MainReleaseHoldObservation:
+            raise ProtectedMainProviderError("release authorization and hold evidence are required")
+        if (
+            transition_receipt.operation_id != authorization.operation_id
+            or transition_receipt.release_authorization_digest != canonical_digest(authorization)
+            or transition_receipt.group_sha != hold.group_sha
+            or transition_receipt.hold_run_id != hold.hold_run_id
+            or transition_receipt.hold_nonce != hold.hold_nonce
+            or transition_receipt.group_sha != authorization.group_sha
+            or transition_receipt.hold_run_id != authorization.hold_run_id
+            or transition_receipt.hold_nonce != authorization.hold_nonce
+        ):
+            raise ProtectedMainProviderError("release transition receipt evidence drift")
+        checks = self.provider.observe_check_runs(transition_receipt.group_sha)
+        matches = [check for check in checks if check.context == "avo-main-release"]
+        if len(matches) != 1:
+            raise ProtectedMainProviderError("release transition check is missing or duplicated")
+        check = matches[0]
+        if (
+            check.sha != transition_receipt.group_sha
+            or check.app_id != transition_receipt.release_issuer_app_id
+            or check.status != "completed"
+            or check.conclusion != "success"
+            or check.run_id != transition_receipt.hold_run_id
+            or check.nonce != transition_receipt.hold_nonce
+        ):
+            raise ProtectedMainProviderError(
+                "release transition was not accepted by the isolated App"
+            )
+        return transition_receipt
 
 
 # Names used by application adapters and external callers.

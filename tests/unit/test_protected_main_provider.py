@@ -47,8 +47,9 @@ def test_check_observation_is_exact_sha_app_and_unique() -> None:
         assert headers["Authorization"] == "Bearer fake-token"
         return 200, cast(
             JsonValue,
-            {
-                "check_runs": [
+                {
+                    "total_count": 1,
+                    "check_runs": [
                     {
                         "id": 1,
                         "name": "avo-main-release",
