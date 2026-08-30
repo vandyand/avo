@@ -72,12 +72,23 @@ and isolated release issuance; typed evidence supplied by a caller is data for
 verification, never authority.
 
 Every externally meaningful action has an append-only intent-before-dispatch record and a
-create-once receipt or reconciliation record. The journal is the source of truth for
-attempt start, preparation, publication, PR, admission, enqueue, merge-group hold,
-release, post-state, cleanup, and completion. It must expose durable main-lease evidence
-with owner, operation, target, policy epoch, and expiry, plus a target-scoped unresolved
-external-mutation fence. An open fence blocks overlapping attempts and all new writes;
+create-once receipt or reconciliation record. The target-scoped unresolved external
+mutation slot/fence is reserved durably in the same transaction as each mutation intent,
+before dispatch reaches any provider capability. This ordering removes the crash window
+between an external call and fence creation: if dispatch may have begun, the reservation
+already exists. A successful or rejected authoritative observation, or later conclusive
+reconciliation, resolves the reservation; an ambiguous, incomplete, or missing outcome
+keeps it open. The journal is the source of truth for attempt start, preparation,
+publication, PR, admission, enqueue, merge-group hold, release, post-state, cleanup, and
+completion. It must expose durable main-lease evidence with owner, operation, target,
+policy epoch, and expiry. An open fence blocks overlapping attempts and all new writes;
 recovery may only read and reconcile the provider until the ambiguity is closed.
+
+Provider and lease evidence DTOs are data, not authority. Phase-A journal and coordinator
+contracts therefore require injected, controller-owned verifier capabilities to
+authenticate and validate those DTOs. Callers may submit observations for verification,
+but a caller-supplied DTO, lease snapshot, or claimed issuer identity cannot itself
+authorize a mutation or close a fence.
 
 Release authorization includes an atomic, durable, create-once claim bound to its exact
 authorization digest, hold run/nonce, merge group, lease epoch, and isolated issuer.
