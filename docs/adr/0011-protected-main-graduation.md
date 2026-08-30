@@ -61,6 +61,34 @@ and queue manifests, attester identities, lease/intent/preparation-authorization
 authorization digests, and
 `deploy_performed: false`.
 
+### C4 Phase A contract freeze
+
+The first coordinator increment is contract-only. It must not publish a candidate, create
+or modify a pull request, enqueue, create or update a check/hold, transition a release
+check, update a ref, or otherwise write to a provider. The coordinator has no provider
+merge, ref-update, check-write, or release-issuer capability. Separate narrow capability
+interfaces govern publication, PR preparation, enqueue, isolated admission issuance,
+and isolated release issuance; typed evidence supplied by a caller is data for
+verification, never authority.
+
+Every externally meaningful action has an append-only intent-before-dispatch record and a
+create-once receipt or reconciliation record. The journal is the source of truth for
+attempt start, preparation, publication, PR, admission, enqueue, merge-group hold,
+release, post-state, cleanup, and completion. It must expose durable main-lease evidence
+with owner, operation, target, policy epoch, and expiry, plus a target-scoped unresolved
+external-mutation fence. An open fence blocks overlapping attempts and all new writes;
+recovery may only read and reconcile the provider until the ambiguity is closed.
+
+Release authorization includes an atomic, durable, create-once claim bound to its exact
+authorization digest, hold run/nonce, merge group, lease epoch, and isolated issuer.
+Claiming is separate from dispatch, but once dispatch may have begun no recovery path may
+issue a second release transition after a lost or delayed receipt. Authorization expiry
+cannot exceed the lease expiry or configured maximum TTL. Admission and group-hold run
+IDs/nonces are deterministic from the operation and exact external identities, including
+the queue generation, so evidence cannot transfer across regenerated PRs or groups.
+These Phase A rules make ambiguous external writes fail closed without guessing or
+replaying a mutation.
+
 ### Canonical input and deterministic composition
 
 The only eligible input is a trusted, immutable, canonical successful

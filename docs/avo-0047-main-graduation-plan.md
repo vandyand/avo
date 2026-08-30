@@ -21,6 +21,39 @@ containment, multi-host coordination, and any widening of integration-only contr
 providers. Human authority remains available for exceptions and constitutional changes,
 not routine approvals.
 
+## C4 Phase A — contract-first coordinator boundary
+
+Phase A freezes the coordinator and recovery contracts before any provider implementation.
+It is documentation, schema, journal, and test-contract work only: it creates no candidate,
+PR, queue entry, check run, hold, release transition, or other remote mutation. The
+coordinator is deliberately orchestration-only and has no merge, ref-update, check-write,
+or release-issuer capability. Capabilities are injected through narrow interfaces with
+separate publication, PR, enqueue, admission-issuer, and release-issuer roles; a DTO or
+caller-supplied observation cannot confer authority.
+
+The Phase A journal defines one append-only chronology for every externally meaningful
+boundary: attempt start, preparation authorization, each mutation intent, its provider
+receipt or reconciliation, admission and hold observations, release claim, release
+transition, authoritative post-state, cleanup, and completion. Intents are written before
+dispatch, receipts are create-once, and conflicting duplicates remain unresolved rather
+than being overwritten. The journal also exposes durable main-lease evidence (including
+owner, operation, target, policy epoch, and expiry) and a target-scoped unresolved-external-
+mutation fence. While that fence is open, a new attempt cannot overlap or issue a new
+write; recovery is read-only until the ambiguity is resolved.
+
+The release boundary has an atomic, durable, create-once claim keyed by the exact
+authorization digest, hold run/nonce, group, lease epoch, and issuer. Claiming is distinct
+from dispatch: after dispatch may have begun, recovery must never issue a second release
+transition, even when the receipt is lost. Release authorization expiry is bounded by the
+lease expiry and configured maximum TTL.
+
+Admission and group-hold identities are deterministic and operation-bound (including the
+exact PR/group, queue generation, source/head identity, and nonce derivation inputs), so a
+success cannot transfer to a regenerated candidate, PR, or merge group. If an external
+write may have happened but cannot be authoritatively observed, recovery only reads and
+reconciles; it never retries admission, hold, release, enqueue, or publication by guessing.
+Phase A does not add provider writes or grant the coordinator release authority.
+
 ## Dependency-ordered task graph
 
 The IDs below are stable leaf IDs. A leaf may not be accepted until every dependency is
@@ -31,7 +64,7 @@ accepted and its write scope is reviewed.
 | AVO-004.7-C1 | Main contracts and journal | AVO-004.6 | New `main_graduation` contract models, canonical serializers, schema exports, and a dedicated journal/artifact namespace. No integration contract edits. | Strict models include `MainPreparationAuthorization`, `MainQueueAdmissionObservation`, `MainReleaseHoldObservation`, and one-use `MainReleaseAuthorization` with two SHA-specific states of the pinned `avo-main-release` context, exact hold/admission run ID/nonce, queue-generation identity, issuer/isolation contract, and App 15368 validation identity. Reject extras, mutable integration heads, wrong target, missing children, production/constitutional paths, `deploy=true`, duplicate evidence, and stale epochs. Plan/lease/intent/preparation-auth/admission/hold/release-auth/receipt/completion digests replay identically. |
 | AVO-004.7-C2 | Deterministic composition adapter | AVO-004.7-C1 | New composition module and tests only. Reads the trusted package and a fresh main base; writes immutable candidate/tree/path-manifest artifacts. | Recomputes the exact sole-parent-to-result delta; applies it deterministically to a fresh base; proves exact tree and parent; rejects multi-parent, mutable-head, path-manifest drift, ordinary-risk drift, and disallowed paths. |
 | AVO-004.7-C3 | Protected-main provider and attester | AVO-004.7-C1 | New provider/attester adapter and fixtures; no live provider configuration mutation. | Parses exact repository, main base, PR, queue, queue generation, merge-group, protection/ruleset, admission, hold, check, and receipt observations; accepts PR-head admission success only from the isolated issuer after verifying PR/base/head, active required queue, max entries per group=1, expected base/merge method, no bypass/direct merge, issuer identity, and all admission evidence; after enqueue accepts group evidence only for exact sole-PR membership and exact group tree/topology; accepts group release transition only from the isolated issuer; App 15368 is validation-only; rejects stale/reused PR-head status, head/group transfer, wrong-SHA/App, stale, incomplete, duplicate, queue-disabled, unrelated queued PR, tree/topology mismatch, retargeted, direct-merge/bypass, and protection-drift observations. |
-| AVO-004.7-C4 | Coordinator and recovery | AVO-004.7-C2, AVO-004.7-C3 | New `MainGraduationCoordinator`, recovery adapter, and focused tests. Reuses promotion engine lease/intent/staged-authorization/reconciliation APIs through adapters. | Enforces preparation-auth → publish/PR → isolated PR-head admission observation + successful non-release check → enqueue → distinct group pending-hold observation → one-use release-auth → last-moment issuer revalidation → isolated hold-success chronology; admission success is durable/one-use and permits queue admission only; no provider queue/merge request follows release-auth; duplicate callers lease-fence; crash/timeout around admission/enqueue/auth/hold success reconciles read-only; regeneration creates a new attempt/composition and never transfers auth; successful replay is read-only. |
+| AVO-004.7-C4 | Coordinator and recovery | AVO-004.7-C2, AVO-004.7-C3 | Phase A freezes contracts, append-only journal records, durable lease/fence/claim indexes, deterministic external identities, and narrow capability protocols; later phases add the coordinator/recovery adapter and focused tests. No provider writes in Phase A. | Phase A proves intent-before-dispatch, create-once receipts and atomic one-use release claim; durable main-lease expiry and target-scoped unresolved-mutation fencing; deterministic admission/hold identities; capability separation with no coordinator merge authority; and read-only reconciliation after ambiguous dispatch. The completed C4 implementation must enforce preparation-auth → publish/PR → isolated PR-head admission observation + successful non-release check → enqueue → distinct group pending-hold observation → one-use release-auth → last-moment issuer revalidation → isolated hold-success chronology; no provider queue/merge request follows release-auth; duplicate callers lease-fence; crash/timeout around admission/enqueue/auth/hold success reconciles read-only; regeneration creates a new attempt/composition and never transfers auth; successful replay is read-only. |
 | AVO-004.7-C5 | Main rollback authority | AVO-004.7-C1, AVO-004.7-C3, AVO-004.7-C4 | New `MainRollbackAuthority`, inverse-delta contracts, and tests. No reset, force update, or direct ref update. | Uses identical preparation-auth → PR-head admission success → enqueue → distinct group pending hold → final release-auth → last-moment issuer revalidation → group hold-success order; computes exact inverse on the current main tip; protected result has expected inverse tree and one parent; advanced/conflicting/non-invertible state fails closed; replay and cleanup are idempotent. |
 | AVO-004.7-C6 | Campaign runner and eligibility ledger | AVO-004.7-C4, AVO-004.7-C5 | New runner, frozen activation record, eligibility ledger, threshold accumulator, and evidence package writer. | Begins only after the fresh hosted main rollback drill. Enforces a gap-free scheduler sequence after the watermark: every ordinary nonempty submission is eligible from submission, including upstream integration/package failures, and receives an attempt plus terminal durable failure/reset disposition; later submissions cannot count while an earlier sequence is open; only independently classified empty/non-ordinary inputs are exclusions; no starvation/withholding or silent exclusion. |
 | AVO-004.7-C7 | Deterministic offline gate | AVO-004.7-C1 through AVO-004.7-C6 | Offline harness, fault matrix, and result artifact only. No hosted mutation. | Crash/adversarial matrix covers duplicate lease, stale base, package drift, composition mismatch, check/queue/protection failures, provider ambiguity, wrong topology, rollback conflicts, cleanup ambiguity, and replay. Main remains unchanged and no deployment occurs. |
