@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
@@ -8,6 +9,7 @@ from typing import Any
 import pytest
 from pydantic import ValidationError
 
+import avo_correlate.adapters.artifacts.main_graduation_journal as journal_module
 from avo_correlate.adapters.artifacts.main_graduation_journal import (
     MainGraduationJournal,
     MainGraduationJournalError,
@@ -1457,3 +1459,317 @@ def test_admission_hold_and_release_contract_validators_cover_bindings() -> None
         auth.model_copy(update={"expires_at": NOW}).validate_release_authorization()
     with pytest.raises(ValueError):
         auth.model_copy(update={"release_issuer_app_id": 15368}).validate_release_authorization()
+
+
+def test_journal_materializes_and_verifies_every_completion_child(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    journal = MainGraduationJournal(tmp_path)
+    package = completion()
+    monkeypatch.setattr(journal, "_verify_completion_prerequisites", lambda _package: None)
+    values = journal._child_values(package)
+    references = []
+    for role, value in values.items():
+        payload = canonical_bytes(value)
+        references.append(
+            ArtifactRef(
+                digest=_digest_bytes(payload),
+                size_bytes=len(payload),
+                media_type=f"application/vnd.avo.{role}+json",
+                role=role,
+                created_at=NOW,
+            )
+        )
+    object.__setattr__(package, "artifacts", references)
+    journal._materialize_children(package)
+    journal._verify_children(package)
+    object.__setattr__(
+        package,
+        "artifacts",
+        [references[0].model_copy(update={"digest": D2}), *references[1:]],
+    )
+    with pytest.raises(
+        MainGraduationJournalError, match=r"content-bound|metadata mismatch|unreadable"
+    ):
+        journal._verify_children(package)
+    object.__setattr__(package, "artifacts", references)
+    journal.delete_artifact(references[-1].digest)
+    with pytest.raises(MainGraduationJournalError, match="unreadable"):
+        journal._verify_children(package)
+
+
+def test_journal_deep_stage_bindings_validate_from_durable_map(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    journal = MainGraduationJournal(tmp_path)
+    package = completion()
+    admission = package.admission_observation
+    hold = package.hold_observation
+    prep = package.preparation_authorization
+    authorization = package.release_authorization
+    transition = package.transition_receipt
+    object.__setattr__(package.intent, "candidate_ref", package.composition.candidate_ref)
+    object.__setattr__(prep, "intent_digest", canonical_digest(package.intent))
+    object.__setattr__(admission, "preparation_authorization_digest", canonical_digest(prep))
+    object.__setattr__(hold, "preparation_authorization_digest", canonical_digest(prep))
+    object.__setattr__(hold, "admission_observation_digest", canonical_digest(admission))
+    object.__setattr__(
+        hold, "attestation_manifest_digest", canonical_digest(package.attestation_manifest)
+    )
+    object.__setattr__(authorization, "admission_observation_digest", canonical_digest(admission))
+    object.__setattr__(authorization, "preparation_authorization_digest", canonical_digest(prep))
+    object.__setattr__(authorization, "hold_observation_digest", canonical_digest(hold))
+    object.__setattr__(transition, "release_authorization_digest", canonical_digest(authorization))
+    object.__setattr__(
+        package.provider_receipt,
+        "release_authorization_digest",
+        canonical_digest(authorization),
+    )
+    object.__setattr__(
+        package.reconciliation,
+        "transition_receipt_digest",
+        canonical_digest(transition),
+    )
+    records = {
+        "plan": package.plan,
+        "intent": package.intent,
+        "preparation-authorization": prep,
+        "queue-admission": admission,
+        "release-hold": hold,
+        "queue": package.queue_observation,
+        "protection": package.protection_manifest,
+        "attestations": package.attestation_manifest,
+        "merge-group-checks": package.merge_group_checks,
+        "release-authorization": authorization,
+        "release-transition": transition,
+        "provider-receipt": package.provider_receipt,
+        "reconciliation": package.reconciliation,
+        "merge-group-webhook-receipt": hold.merge_group_receipt,
+    }
+
+    def read(kind: str, _operation_id: str) -> tuple[Any, ArtifactRef] | None:
+        value = records.get(kind)
+        return None if value is None else (value, ref())
+
+    monkeypatch.setattr(journal, "_read", read)
+    journal._require_preparation_chain(prep)
+    journal._require_queue_admission(admission)
+    journal._require_admission(hold)
+    journal._require_hold(authorization)
+    journal._require_release_authorization(transition)
+    journal._require_provider_receipt(package.provider_receipt)
+    journal._require_reconciliation(package.reconciliation)
+
+
+def test_journal_source_package_closure_reads_all_canonical_children(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    journal = MainGraduationJournal(tmp_path)
+    package_bytes = b"{}"
+    child_bytes = b'{"child":true}'
+    package_ref = ArtifactRef(
+        digest=_digest_bytes(package_bytes),
+        size_bytes=len(package_bytes),
+        media_type="application/vnd.avo.integration-campaign+json",
+        role="integration-campaign-package",
+        created_at=NOW,
+    )
+    child_ref = ArtifactRef(
+        digest=_digest_bytes(child_bytes),
+        size_bytes=len(child_bytes),
+        media_type="application/vnd.avo.child+json",
+        role="child",
+        created_at=NOW,
+    )
+    lease_bytes = b'{"lease":true}'
+    lease_ref = child_ref.model_copy(
+        update={
+            "digest": _digest_bytes(lease_bytes),
+            "size_bytes": len(lease_bytes),
+            "role": "promotion-lease-evidence",
+            "media_type": "application/vnd.avo.main-graduation-lease-evidence+json",
+        }
+    )
+    source = SimpleNamespace(
+        receipt=SimpleNamespace(outcome="applied", applied_result_commit=HEAD,
+                                applied_result_tree=TREE, applied_result_parent_commit=BASE),
+        reconciliation=SimpleNamespace(
+            target_ref="refs/heads/integration", target_head_commit=HEAD,
+            target_head_tree=TREE, target_first_parent=BASE, target_parents=[BASE],
+        ),
+        intent=SimpleNamespace(
+            target_ref="refs/heads/integration", repository_digest=R,
+            operation_id=D2,
+        ),
+        bundle=SimpleNamespace(
+            snapshot=SimpleNamespace(target_ref="refs/heads/integration"),
+            comparison=SimpleNamespace(target_ref="refs/heads/integration"),
+            controller_config=SimpleNamespace(controller_identity="source-controller"),
+        ),
+        observation=SimpleNamespace(base_ref="refs/heads/integration"),
+        evidence_artifacts=[child_ref],
+        lease_evidence_artifact=lease_ref,
+        deploy_performed=False,
+    )
+    binding = MainSourcePackageBinding.model_construct(
+        operation_id=D,
+        source_operation_id=D2,
+        repository_digest=R,
+        package_digest=D,
+        package_artifact=package_ref,
+        child_artifacts=[child_ref, lease_ref],
+        source_result_commit=HEAD,
+        source_result_tree=TREE,
+        source_result_parent=BASE,
+        source_issuer="source-controller",
+        source_domain="integration-campaign",
+    )
+    monkeypatch.setattr(
+        journal_module.IntegrationCampaignEvidencePackage,
+        "model_validate",
+        staticmethod(lambda _parsed: source),
+    )
+    monkeypatch.setattr(journal_module, "verify_campaign_package_artifact", lambda *_args: D)
+    monkeypatch.setattr(
+        journal._store,
+        "read_bytes",
+        lambda reference: (
+            package_bytes
+            if reference == package_ref
+            else lease_bytes
+            if reference == lease_ref
+            else child_bytes
+        ),
+    )
+    journal._verify_source_package(binding)
+    for field, value in (
+        ("deploy_performed", True),
+        ("intent", SimpleNamespace(target_ref="refs/heads/integration", repository_digest=D,
+                                   operation_id=D2)),
+        ("evidence_artifacts", []),
+    ):
+        broken = SimpleNamespace(**{**vars(source), field: value})
+        monkeypatch.setattr(
+            journal_module.IntegrationCampaignEvidencePackage,
+            "model_validate",
+            staticmethod(lambda _parsed, broken=broken: broken),
+        )
+        with pytest.raises(MainGraduationJournalError):
+            journal._verify_source_package(binding)
+
+
+def test_journal_intent_lease_and_webhook_metadata_are_verified(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    journal = MainGraduationJournal(tmp_path)
+    read_bytes = journal._store.read_bytes
+    package = completion()
+    intent = package.intent
+    lease_values = {
+        "operation_id": intent.operation_id,
+        "repository_digest": intent.repository_digest,
+        "target_ref": intent.target_ref,
+        "identity": intent.lease_identity,
+        "acquired_at": NOW,
+        "expires_at": NOW + timedelta(minutes=5),
+    }
+    lease_probe = MainLeaseEvidence.model_construct(**lease_values, lease_digest=D)
+    lease = MainLeaseEvidence.model_validate(
+        {
+            **lease_values,
+            "lease_digest": canonical_digest(
+                lease_probe.model_dump(exclude={"lease_digest"}, mode="json")
+            ),
+        }
+    )
+    object.__setattr__(intent, "lease_evidence", lease)
+    object.__setattr__(intent, "lease_digest", lease.lease_digest)
+    lease_bytes = canonical_bytes(lease)
+    lease_ref = ArtifactRef(
+        digest=_digest_bytes(lease_bytes),
+        size_bytes=len(lease_bytes),
+        media_type="application/vnd.avo.main-graduation-lease-evidence+json",
+        role="main-graduation-lease-evidence",
+        created_at=NOW,
+    )
+    object.__setattr__(intent, "lease_evidence_artifact", lease_ref)
+    monkeypatch.setattr(journal._store, "read_bytes", lambda _reference: lease_bytes)
+    journal._verify_intent_lease(intent)
+    monkeypatch.setattr(journal._store, "read_bytes", lambda _reference: b"{}")
+    with pytest.raises(MainGraduationJournalError, match="lease"):
+        journal._verify_intent_lease(intent)
+    monkeypatch.setattr(journal._store, "read_bytes", read_bytes)
+
+    receipt = package.hold_observation.merge_group_receipt
+    reference = journal.record_merge_group_webhook_receipt(receipt)
+    delivery_index = journal._webhook_delivery_path(receipt.delivery_id)
+    envelope = json.loads(delivery_index.read_text(encoding="utf-8"))
+    envelope["reference"]["role"] = "wrong"
+    delivery_index.write_text(json.dumps(envelope, separators=(",", ":")), encoding="utf-8")
+    with pytest.raises(MainGraduationRecordConflictError, match="reference"):
+        journal.read_merge_group_webhook_receipt(receipt.operation_id)
+    assert reference.digest
+
+
+def test_journal_record_read_and_sequence_integrity_edges(tmp_path: Path) -> None:
+    journal = MainGraduationJournal(tmp_path)
+    started = EligibilityLedgerStarted(
+        activation_digest=D,
+        repository_digest=R,
+        controller_config_digest=D2,
+        scheduler_sequence_watermark=0,
+        streak=0,
+    )
+    first = journal.record_ledger_started(started)
+    assert journal.record_ledger_started(started) == first
+    with pytest.raises(MainGraduationRecordConflictError):
+        journal.record_ledger_started(started.model_copy(update={"streak": 1}))
+    eligibility = MainGraduationEligibilityRecord(
+        operation_id=D,
+        repository_digest=R,
+        scheduler_sequence=1,
+        submission_digest=D,
+        classification="excluded",
+        exclusion_reason="not ordinary",
+        exclusion_evidence_digest=D,
+        ordinary=False,
+        nonempty=True,
+    )
+    journal.record_eligibility(eligibility)
+    assert journal.read_eligibility_sequence(1) is not None
+    sequence = tmp_path / "main-graduation-index" / "ledger-sequence" / "00000000000000000001.json"
+    sequence.write_text('{"operation_id":"bad","reference":{}}', encoding="utf-8")
+    with pytest.raises(MainGraduationJournalError):
+        journal.read_eligibility_sequence(1)
+    sequence.write_text(
+        json.dumps(
+            {"operation_id": D, "reference": first.model_dump(mode="json")},
+            separators=(",", ":"),
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(MainGraduationJournalError):
+        journal.read_eligibility_sequence(1)
+    index = tmp_path / "main-graduation-index" / "ledger-started" / (D[7:] + ".json")
+    index.write_text("{}", encoding="utf-8")
+    with pytest.raises(MainGraduationJournalError):
+        journal.read_ledger_started(D)
+
+
+def test_journal_run_nonce_index_is_create_once_and_strictly_recoverable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    journal = MainGraduationJournal(tmp_path)
+    record = MainQueueAdmissionObservation.model_construct(
+        operation_id=D, admission_run_id="admission-run", admission_nonce="admission-nonce"
+    )
+    reference = ref()
+    monkeypatch.setattr(journal, "_read", lambda _kind, _key: (record, reference))
+    assert journal._index_run_nonce("admission", record, reference) is None
+    assert journal._index_run_nonce("admission", record, reference) == reference
+    path = journal._run_nonce_path("admission", "admission-run", "admission-nonce")
+    path.write_text("{}", encoding="utf-8")
+    with pytest.raises(MainGraduationJournalError, match="run/nonce"):
+        journal._index_run_nonce("admission", record, reference)
+    with pytest.raises(MainGraduationJournalError, match="malformed"):
+        journal._index_run_nonce("wrong", record, reference)
