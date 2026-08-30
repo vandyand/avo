@@ -939,6 +939,7 @@ class MainReconciliation(MainBound):
     expected_base_commit: GitObject
     queue_generation_digest: Sha256Digest
     transition_receipt_digest: Sha256Digest | None = None
+    claimed_transition_receipt_digest: Sha256Digest | None = None
     deploy_performed: Literal[False] = False
 
     @model_validator(mode="after")
@@ -1099,9 +1100,6 @@ class MainCompletionPackage(MainBound):
             != claimed.release_issuer_app_id
             or self.transition_receipt.issuer_isolation_digest
             != claimed.issuer_isolation_digest
-            or self.transition_receipt.outcome != claimed.outcome
-            or self.transition_receipt.response_digest != claimed.response_digest
-            or self.transition_receipt.observed_at != claimed.observed_at
         ):
             raise ValueError("legacy transition observation is not claim-bound")
         if (
@@ -1170,13 +1168,14 @@ class MainCompletionPackage(MainBound):
                 < self.release_authorization.expires_at
             )
         else:
-            # An ambiguous dispatch may be reconciled read-only after the
-            # lease/authorization window.  The intent still proves that the
-            # dispatch was authorized before expiry; resolution time is not a
-            # second authorization deadline.
+            # The legacy issuer observation records the initial ambiguous
+            # dispatch and therefore remains inside the authorization window;
+            # the claimed terminal receipt may be produced later by read-only
+            # reconciliation.
             observations_in_window = (
-                self.release_authorization.authorized_at <= self.transition_receipt.observed_at
-                and self.release_authorization.authorized_at <= claimed.observed_at
+                self.release_authorization.authorized_at
+                <= self.transition_receipt.observed_at
+                < self.release_authorization.expires_at
             )
         if not observations_in_window:
             raise ValueError("C4 release transition chronology is invalid")
@@ -1194,9 +1193,18 @@ class MainCompletionPackage(MainBound):
                 or claimed.outcome != expected_claimed_outcome
                 or claimed.response_digest != mutation.response_digest
                 or claimed.observed_at != mutation.observed_at
+                or self.transition_receipt.outcome != expected_claimed_outcome
+                or self.transition_receipt.response_digest != mutation.response_digest
+                or self.transition_receipt.observed_at != mutation.observed_at
             ):
                 raise ValueError("C4 direct mutation and claimed transition differ")
         elif mutation.outcome in {"ambiguous", "reconciliation_required"}:
+            if (
+                self.transition_receipt.outcome != "reconciliation_required"
+                or self.transition_receipt.response_digest != mutation.response_digest
+                or self.transition_receipt.observed_at != mutation.observed_at
+            ):
+                raise ValueError("legacy transition observation is not claim-bound")
             if resolution is None:
                 raise ValueError("ambiguous C4 mutation requires a fence resolution")
             if (
@@ -1246,7 +1254,13 @@ class MainCompletionPackage(MainBound):
                 raise ValueError("completion cannot finalize a not-applied mutation resolution")
         else:
             raise ValueError("C4 completion requires a dispatched release mutation")
-        if self.transition_receipt.outcome not in {"transitioned", "already_transitioned"}:
+        if claimed.outcome not in {"transitioned", "already_transitioned"}:
+            raise ValueError("completion requires terminal claimed release transition")
+        if (
+            mutation.outcome in {"applied", "already_applied"}
+            and self.transition_receipt.outcome
+            not in {"transitioned", "already_transitioned"}
+        ):
             raise ValueError("completion requires terminal release transition")
         if self.provider_receipt.outcome != "observed":
             raise ValueError("completion requires an observed provider result")
@@ -1294,6 +1308,8 @@ class MainCompletionPackage(MainBound):
             self.transition_receipt
         ):
             raise ValueError("reconciliation does not bind release transition")
+        if self.reconciliation.claimed_transition_receipt_digest != claimed.receipt_digest:
+            raise ValueError("reconciliation does not bind claimed release transition")
         if (
             self.reconciliation.queue_generation_digest
             != self.queue_observation.queue_generation_digest

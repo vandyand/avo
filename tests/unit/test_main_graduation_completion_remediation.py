@@ -16,6 +16,7 @@ from avo_correlate.contracts import (
     MainProviderPostStateObservation,
     MainProviderReceipt,
     MainReconciliation,
+    MainReleaseTransitionReceipt,
     main_release_external_identity_digest,
 )
 from avo_correlate.contracts.base import ArtifactRef
@@ -246,13 +247,16 @@ def _ambiguous_completion_with_resolution(
     )
     transition = package.transition_receipt.model_copy(
         update={
-            "outcome": "transitioned",
-            "response_digest": claimed.response_digest,
-            "observed_at": claimed.observed_at,
+            "outcome": "reconciliation_required",
+            "response_digest": mutation.response_digest,
+            "observed_at": mutation.observed_at,
         }
     )
     reconciliation = package.reconciliation.model_copy(
-        update={"transition_receipt_digest": canonical_digest(transition)}
+        update={
+            "transition_receipt_digest": canonical_digest(transition),
+            "claimed_transition_receipt_digest": claimed.receipt_digest,
+        }
     )
     resolution_payload = canonical_bytes(resolution)
     resolution_ref = ArtifactRef(
@@ -319,6 +323,38 @@ def test_recovered_ambiguity_can_resolve_after_authorization_expiry() -> None:
         resolved_at=NOW + timedelta(minutes=6)
     )
     assert MainCompletionPackage.validate_completion(package) is package  # pyright: ignore[reportCallIssue]
+
+
+def test_journal_reconciliation_accepts_recovered_terminal_claim(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    package = _ambiguous_completion_with_resolution(
+        resolved_at=NOW + timedelta(minutes=6)
+    )
+    journal = MainGraduationJournal(tmp_path)
+    records = {
+        "release-transition": package.transition_receipt,
+        "claimed-release-transition": package.claimed_transition_receipt,
+        "provider-receipt": package.provider_receipt,
+        "queue": package.queue_observation,
+        "protection": package.protection_manifest,
+        "plan": package.plan,
+    }
+
+    def read(kind: str, _key: str) -> tuple[Any, Any] | None:
+        value = records.get(kind)
+        return None if value is None else (value, None)
+
+    monkeypatch.setattr(journal, "_read", read)
+    def skip_release(_record: MainReleaseTransitionReceipt) -> None:
+        return
+
+    def skip_provider(_record: MainProviderReceipt) -> None:
+        return
+
+    monkeypatch.setattr(journal, "_require_release_authorization", skip_release)
+    monkeypatch.setattr(journal, "_require_provider_receipt", skip_provider)
+    journal._require_reconciliation(package.reconciliation)  # pyright: ignore[reportPrivateUsage]
 
 
 def test_not_applied_resolution_cannot_complete() -> None:
@@ -441,5 +477,5 @@ def test_legacy_transition_observation_cannot_split_from_claimed(field: str) -> 
     value: Any = D if field == "response_digest" else NOW + timedelta(seconds=1)
     transition = package.transition_receipt.model_copy(update={field: value})
     tampered = package.model_copy(update={"transition_receipt": transition})
-    with pytest.raises(ValueError, match="legacy transition observation is not claim-bound"):
+    with pytest.raises(ValueError, match="C4 direct mutation and claimed transition differ"):
         MainCompletionPackage.validate_completion(tampered)  # pyright: ignore[reportCallIssue]

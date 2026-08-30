@@ -2689,7 +2689,29 @@ class MainGraduationJournal:
         graduation_plan = cast(MainGraduationPlan, plan[0])
         self._require_release_authorization(transition_record)
         self._require_provider_receipt(provider)
-        if reconciliation.state == "completed" and transition_record.outcome not in {
+        claimed_transition: MainClaimedReleaseTransitionReceipt | None = None
+        if reconciliation.claimed_transition_receipt_digest is not None:
+            claimed_prior = self._read(
+                "claimed-release-transition", reconciliation.claimed_transition_receipt_digest
+            )
+            if claimed_prior is None:
+                raise MainGraduationJournalError(
+                    "reconciliation claimed transition is missing"
+                )
+            claimed_transition = cast(MainClaimedReleaseTransitionReceipt, claimed_prior[0])
+            if (
+                claimed_transition.receipt_digest
+                != reconciliation.claimed_transition_receipt_digest
+                or claimed_transition.operation_id != reconciliation.operation_id
+                or claimed_transition.repository_digest != reconciliation.repository_digest
+                or claimed_transition.target_ref != reconciliation.target_ref
+                or claimed_transition.outcome
+                not in {"transitioned", "already_transitioned"}
+            ):
+                raise MainGraduationJournalError(
+                    "reconciliation claimed transition binding differs"
+                )
+        elif reconciliation.state == "completed" and transition_record.outcome not in {
             "transitioned",
             "already_transitioned",
         }:

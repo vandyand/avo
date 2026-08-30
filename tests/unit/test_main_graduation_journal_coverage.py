@@ -792,6 +792,11 @@ def completion() -> MainCompletionPackage:
     object.__setattr__(claimed_probe, "receipt_digest", canonical_digest(
         claimed_probe.model_dump(exclude={"receipt_digest"}, mode="json")
     ))
+    object.__setattr__(
+        reconciliation,
+        "claimed_transition_receipt_digest",
+        claimed_probe.receipt_digest,
+    )
     post_state_probe = MainProviderPostStateObservation.model_construct(
         operation_id=D,
         repository_digest=R,
@@ -1763,6 +1768,7 @@ def test_journal_deep_stage_bindings_validate_from_durable_map(
         "merge-group-checks": package.merge_group_checks,
         "release-authorization": authorization,
         "release-transition": transition,
+        "claimed-release-transition": package.claimed_transition_receipt,
         "provider-receipt": package.provider_receipt,
         "reconciliation": package.reconciliation,
         "merge-group-webhook-receipt": hold.merge_group_receipt,
